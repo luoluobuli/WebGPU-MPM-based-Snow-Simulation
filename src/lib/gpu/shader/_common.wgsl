@@ -7,7 +7,9 @@ struct VertexOut {
 struct Uniforms {
     // 0
 
-    viewInvProjMat: mat4x4f, // 64
+    simulationTimestep: f32, // 4
+    // 16
+    viewInvProjMat: mat4x4f, // 80
 }
 
 struct ParticleData {

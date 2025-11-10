@@ -1,3 +1,5 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 @group(1) @binding(0) var<storage, read> particleDataIn: array<ParticleData>;
 @group(1) @binding(1) var<storage, read_write> particleDataOut: array<ParticleData>;
 
@@ -11,8 +13,8 @@ fn doSimulationStep(
 
     var particle = particleDataIn[threadIndex];
 
-    particle.vel += vec3f(0, 0, -9.81 / 144);
-    particle.pos += particle.vel / 144;
+    particle.vel += vec3f(0, 0, -9.81 * uniforms.simulationTimestep);
+    particle.pos += particle.vel * uniforms.simulationTimestep;
 
     particleDataOut[threadIndex] = particle;
 }

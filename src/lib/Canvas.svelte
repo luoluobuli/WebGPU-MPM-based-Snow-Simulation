@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount, tick } from "svelte";
+import { onDestroy, onMount, tick } from "svelte";
 import { requestGpuDeviceAndContext } from "./gpu/requestGpuDeviceAndContext";
 import { Camera } from "./Camera.svelte";
 import { CameraOrbit } from "./CameraOrbit.svelte";
@@ -21,25 +21,14 @@ let width = $state(300);
 let height = $state(150);
 
 let nParticles = $state(2_000);
-// let simulate: (() => Promise<void>) | null = null;
-// let render: (() => Promise<void>) | null = null;
+let simulationTimestep = $state(1 / 144);
 
-
-// const rerender = async () => {
-//     if (render === null) return;
-
-//     onStatusChange("rendering");
-//     await render();
-//     onStatusChange("done!");
-// };
-
-const updateCanvasSizeAndRerender = async () => {
+const updateCanvasSize = async () => {
     width = innerWidth;
     height = innerHeight;
-
-    // await tick();
-    // await rerender();
 };
+
+let stopSimulation: (() => void) | null;
 
 
 const orbit = new CameraOrbit();
@@ -49,27 +38,20 @@ onMount(async () => {
     const response = await requestGpuDeviceAndContext({onStatusChange, onErr, canvas});
     if (response === null) return;
     const {device, context, format} = response;
-    const runner = new GpuSnowPipelineRunner({device, format, context, nParticles, camera});
-    const render = () => runner.render();
-    const simulate = () => runner.doSimulationStep();
+    const runner = new GpuSnowPipelineRunner({device, format, context, nParticles, simulationTimestepS: simulationTimestep, camera});
 
-    updateCanvasSizeAndRerender();
+    updateCanvasSize();
 
-    const loop = async () => {
-        await simulate();
-        await render();
-
-        requestAnimationFrame(loop);
-    };
-
-    requestAnimationFrame(loop);
+    stopSimulation = runner.loop();
 });
 
-
+onDestroy(() => {
+    stopSimulation?.();
+});
 </script>
 
 
-<svelte:window onresize={() => updateCanvasSizeAndRerender()} />
+<svelte:window onresize={() => updateCanvasSize()} />
 
 <Draggable onDrag={async ({movement}) => {
     orbit.move(movement);

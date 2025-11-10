@@ -34,7 +34,7 @@ export const setupGpuPipelines = ({
 
     const uniformsBuffer = device.createBuffer({
         label: "uniforms buffer",
-        size: 64,
+        size: 80,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
     });
 
@@ -43,7 +43,7 @@ export const setupGpuPipelines = ({
         entries: [
             {
                 binding: 0,
-                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
                 buffer: {
                     type: "uniform",
                 },

@@ -1,10 +1,13 @@
 import type { Camera } from "$lib/Camera.svelte";
 import { setupGpuPipelines } from "./setupGpuPipelines";
 
+const MAX_SIMULATION_DRIFT_MS = 1_000; 
+
 export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;
     private readonly context: GPUCanvasContext;
     private readonly nParticles: number;
+    private readonly simulationTimestepS: number;
     private readonly camera: Camera;
 
     private buffer1IsSource = true;
@@ -16,17 +19,20 @@ export class GpuSnowPipelineRunner {
         format,
         context,
         nParticles,
+        simulationTimestepS,
         camera,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
         context: GPUCanvasContext,
         nParticles: number,
+        simulationTimestepS: number,
         camera: Camera,
     }) {
         this.device = device;
         this.context = context;
         this.nParticles = nParticles;
+        this.simulationTimestepS = simulationTimestepS;
 
         this.camera = camera;
 
@@ -55,7 +61,8 @@ export class GpuSnowPipelineRunner {
     }
 
     async render() {
-        this.device.queue.writeBuffer(this.pipelineData.uniformsBuffer, 0, this.camera.viewInvProj.buffer);
+        this.device.queue.writeBuffer(this.pipelineData.uniformsBuffer, 0, new Float32Array([this.simulationTimestepS]));
+        this.device.queue.writeBuffer(this.pipelineData.uniformsBuffer, 16, this.camera.viewInvProj.buffer);
         
         const commandEncoder = this.device.createCommandEncoder({
             label: "render command encoder",
@@ -87,6 +94,43 @@ export class GpuSnowPipelineRunner {
 
         this.device.queue.submit([commandEncoder.finish()]);
         await this.device.queue.onSubmittedWorkDone();
+    }
+
+    loop() {
+        let handle = 0;
+
+
+        let nSimulationStep = 0;
+        let simulationStartTime = Date.now();
+        const loop = async () => {
+            // catch up the simulation to the current time
+            let currentSimulationTime = simulationStartTime + nSimulationStep * this.simulationTimestepS * 1_000;
+            let timeToSimulate = Date.now() - currentSimulationTime;
+            if (timeToSimulate > MAX_SIMULATION_DRIFT_MS) {
+                // if drifting too much, drop simulation steps 
+                nSimulationStep += Math.ceil(timeToSimulate / (1_000 * this.simulationTimestepS));
+
+                currentSimulationTime = simulationStartTime + nSimulationStep * this.simulationTimestepS * 1_000;
+                timeToSimulate = Date.now() - currentSimulationTime;
+            }
+            while (timeToSimulate > 0) {
+                await this.doSimulationStep();
+
+                nSimulationStep++;
+                timeToSimulate -= this.simulationTimestepS * 1_000;
+            }
+
+
+            await this.render();
+
+            handle = requestAnimationFrame(loop);
+        };
+
+        handle = requestAnimationFrame(loop);
+
+        return () => {
+            cancelAnimationFrame(handle);
+        };
     }
 
     private get simulationStepStorageBindGroup() {
