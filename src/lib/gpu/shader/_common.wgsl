@@ -13,7 +13,8 @@ struct Uniforms {
 struct ParticleData {
     // 0
 
-    pos: vec4f, // 16
+    pos: vec3f, // 12
+    _dummy: f32, // 16
     vel: vec3f, // 28
     mass: f32, // 32
 }

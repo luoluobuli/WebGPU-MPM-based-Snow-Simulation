@@ -1,12 +1,10 @@
 <script lang="ts">
 import { onMount, tick } from "svelte";
 import { requestGpuDeviceAndContext } from "./gpu/requestGpuDeviceAndContext";
-import { setupGpuPipelines } from "./gpu/setupGpuPipelines";
-import { createGpuRenderer } from "./gpu/createGpuRenderer";
 import { Camera } from "./Camera.svelte";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import Draggable, {type Point} from "./Draggable.svelte";
-    import { createGpuSimulator } from "./gpu/createGpuSimulator";
+import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
 
 let {
     onStatusChange,
@@ -23,24 +21,24 @@ let width = $state(300);
 let height = $state(150);
 
 let nParticles = $state(2_000);
-let simulate: (() => Promise<void>) | null = null;
-let render: (() => Promise<void>) | null = null;
+// let simulate: (() => Promise<void>) | null = null;
+// let render: (() => Promise<void>) | null = null;
 
 
-const rerender = async () => {
-    if (render === null) return;
+// const rerender = async () => {
+//     if (render === null) return;
 
-    onStatusChange("rendering");
-    await render();
-    onStatusChange("done!");
-};
+//     onStatusChange("rendering");
+//     await render();
+//     onStatusChange("done!");
+// };
 
 const updateCanvasSizeAndRerender = async () => {
     width = innerWidth;
     height = innerHeight;
 
-    await tick();
-    await rerender();
+    // await tick();
+    // await rerender();
 };
 
 
@@ -51,13 +49,23 @@ onMount(async () => {
     const response = await requestGpuDeviceAndContext({onStatusChange, onErr, canvas});
     if (response === null) return;
     const {device, context, format} = response;
-    const {particleDataBuffer1: particleDataBuffer, uniformsBuffer, uniformsBindGroup, renderPipeline, simulationStepPipeline, simulationStepStorageBindGroup} = setupGpuPipelines({device, format, nParticles});
-    
-    simulate = createGpuSimulator({device, simulationStepPipeline, uniformsBindGroup, simulationStepStorageBindGroup, nParticles});
-    render = createGpuRenderer({device, context, nParticles, uniformsBindGroup, renderPipeline, particleDataBuffer, uniformsBuffer, camera});
-    
+    const runner = new GpuSnowPipelineRunner({device, format, context, nParticles, camera});
+    const render = () => runner.render();
+    const simulate = () => runner.doSimulationStep();
+
     updateCanvasSizeAndRerender();
+
+    const loop = async () => {
+        await simulate();
+        await render();
+
+        requestAnimationFrame(loop);
+    };
+
+    requestAnimationFrame(loop);
 });
+
+
 </script>
 
 
@@ -65,7 +73,7 @@ onMount(async () => {
 
 <Draggable onDrag={async ({movement}) => {
     orbit.move(movement);
-    await rerender();
+    // await rerender();
 }}>
     {#snippet dragTarget({onpointerdown})}
         <canvas

@@ -124,7 +124,7 @@ export const setupGpuPipelines = ({
                 binding: 0,
                 visibility: GPUShaderStage.COMPUTE,
                 buffer: {
-                    type: "storage",
+                    type: "read-only-storage",
                 },
             },
 
@@ -203,7 +203,8 @@ export const setupGpuPipelines = ({
         particleDataBuffer2,
         uniformsBuffer,
         uniformsBindGroup,
-        simulationStepStorageBindGroup: simulationStepStorageBindGroup1_2,
+        simulationStepStorageBindGroup1_2,
+        simulationStepStorageBindGroup2_1,
         renderPipeline,
         simulationStepPipeline,
     };
