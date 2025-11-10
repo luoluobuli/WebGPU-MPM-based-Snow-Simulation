@@ -3,6 +3,8 @@ import { onMount, tick } from "svelte";
 import { requestGpuDeviceAndContext } from "./gpu/requestGpuDeviceAndContext";
 import { setupGpuPipelines } from "./gpu/setupGpuPipelines";
 import { createGpuRenderer } from "./gpu/createGpuRenderer";
+    import { Camera } from "./Camera.svelte";
+    import { CameraOrbit } from "./CameraOrbit.svelte";
 
 let {
     onStatusChange,
@@ -37,15 +39,16 @@ const updateCanvasSizeAndRerender = async () => {
 };
 
 
+const orbit = new CameraOrbit();
+const camera = new Camera({controlScheme: orbit, screenDims: {width: () => width, height: () => height}});
 
 onMount(async () => {
-
     const response = await requestGpuDeviceAndContext({onStatusChange, onErr, canvas});
     if (response === null) return;
 
     const {device, context, format} = response;
-    const {particlePosBuffer, renderBindGroup, renderPipeline} = setupGpuPipelines({device, format, nParticles});
-    render = createGpuRenderer({device, context, nParticles, renderBindGroup, renderPipeline, particlePosBuffer });
+    const {particlePosBuffer, uniformsBuffer, renderBindGroup, renderPipeline} = setupGpuPipelines({device, format, nParticles});
+    render = createGpuRenderer({device, context, nParticles, renderBindGroup, renderPipeline, particlePosBuffer, uniformsBuffer, camera});
 
     updateCanvasSizeAndRerender();
 });

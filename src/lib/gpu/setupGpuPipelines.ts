@@ -1,4 +1,4 @@
-import headerModuleSrc from "./shader/_header.wgsl?raw";
+import commonModuleSrc from "./shader/_common.wgsl?raw";
 import vertexModuleSrc from "./shader/vertex.wgsl?raw";
 import fragmentModuleSrc from "./shader/fragment.wgsl?raw";
 
@@ -11,34 +11,54 @@ export const setupGpuPipelines = ({
     format: GPUTextureFormat,
     nParticles: number,
 }) => {
-    const particlePos = new Float32Array(nParticles * 4);
     const particlePosBuffer = device.createBuffer({
-        size: particlePos.byteLength,
+        size: nParticles * 4 * 4,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
     });
+    const particlePosArray = new Float32Array(nParticles * 4);
     for (let i = 0; i < nParticles; i++) {
-        particlePos[i * 4] = Math.random();
-        particlePos[i * 4 + 1] = Math.random();
-        particlePos[i * 4 + 2] = Math.random();
-        particlePos[i * 4 + 3] = 1;
+        particlePosArray[i * 4] = Math.random();
+        particlePosArray[i * 4 + 1] = Math.random();
+        particlePosArray[i * 4 + 2] = Math.random();
+        particlePosArray[i * 4 + 3] = 1;
     }
-    device.queue.writeBuffer(particlePosBuffer, 0, particlePos);
+    device.queue.writeBuffer(particlePosBuffer, 0, particlePosArray);
 
+
+    const uniformsBuffer = device.createBuffer({
+        size: 64,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+    });
 
     const renderBindGroupLayout = device.createBindGroupLayout({
-        entries: [],
+        entries: [
+            {
+                binding: 0,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+                buffer: {
+                    type: "uniform",
+                },
+            },
+        ],
     });
     const renderBindGroup = device.createBindGroup({
         layout: renderBindGroupLayout,
-        entries: [],
+        entries: [
+            {
+                binding: 0,
+                resource: {
+                    buffer: uniformsBuffer,
+                },
+            },
+        ],
     });
     const renderPipelineLayout = device.createPipelineLayout({
         bindGroupLayouts: [renderBindGroupLayout],
     });
 
 
-    const vertexModule = device.createShaderModule({code: headerModuleSrc + vertexModuleSrc});
-    const fragmentModule = device.createShaderModule({code: headerModuleSrc + fragmentModuleSrc});
+    const vertexModule = device.createShaderModule({code: commonModuleSrc + vertexModuleSrc});
+    const fragmentModule = device.createShaderModule({code: commonModuleSrc + fragmentModuleSrc});
     
     const renderPipeline = device.createRenderPipeline({
         vertex: {
@@ -76,5 +96,5 @@ export const setupGpuPipelines = ({
         layout: renderPipelineLayout,
     });
 
-    return {particlePosBuffer, renderBindGroup, renderPipeline};
+    return {particlePosBuffer, uniformsBuffer, renderBindGroup, renderPipeline};
 };

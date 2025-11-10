@@ -1,19 +1,31 @@
+import type { Camera } from "$lib/Camera.svelte";
+
 export const createGpuRenderer = ({
     device,
     context,
-    nParticles,
-    renderBindGroup,
     renderPipeline,
+    renderBindGroup,
+    
     particlePosBuffer,
+    uniformsBuffer,
+
+    nParticles,
+    camera,
 }: {
     device: GPUDevice,
     context: GPUCanvasContext,
-    nParticles: number,
     renderBindGroup: GPUBindGroup,
     renderPipeline: GPURenderPipeline,
+
     particlePosBuffer: GPUBuffer,
+    uniformsBuffer: GPUBuffer,
+
+    nParticles: number,
+    camera: Camera,
 }) => {
     return async () => {
+        device.queue.writeBuffer(uniformsBuffer, 0, camera.viewInvProj.buffer);
+        
         const commandEncoder = device.createCommandEncoder();
 
         const renderPassEncoder = commandEncoder.beginRenderPass({
