@@ -1,7 +1,7 @@
 import type { Camera } from "$lib/Camera.svelte";
 import { setupGpuPipelines } from "./setupGpuPipelines";
 
-const MAX_SIMULATION_DRIFT_MS = 1_000; 
+const MAX_SIMULATION_DRIFT_MS = 1_000;
 
 export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;
@@ -99,25 +99,27 @@ export class GpuSnowPipelineRunner {
     loop() {
         let handle = 0;
 
+        const simulationTimestepMs = this.simulationTimestepS * 1_000;
+
 
         let nSimulationStep = 0;
         let simulationStartTime = Date.now();
         const loop = async () => {
             // catch up the simulation to the current time
-            let currentSimulationTime = simulationStartTime + nSimulationStep * this.simulationTimestepS * 1_000;
+            let currentSimulationTime = simulationStartTime + nSimulationStep * simulationTimestepMs;
             let timeToSimulate = Date.now() - currentSimulationTime;
             if (timeToSimulate > MAX_SIMULATION_DRIFT_MS) {
                 // if drifting too much, drop simulation steps 
-                nSimulationStep += Math.ceil(timeToSimulate / (1_000 * this.simulationTimestepS));
+                nSimulationStep += Math.ceil(timeToSimulate / simulationTimestepMs);
 
-                currentSimulationTime = simulationStartTime + nSimulationStep * this.simulationTimestepS * 1_000;
+                currentSimulationTime = simulationStartTime + nSimulationStep * simulationTimestepMs;
                 timeToSimulate = Date.now() - currentSimulationTime;
             }
             while (timeToSimulate > 0) {
                 await this.doSimulationStep();
 
                 nSimulationStep++;
-                timeToSimulate -= this.simulationTimestepS * 1_000;
+                timeToSimulate -= simulationTimestepMs;
             }
 
 
