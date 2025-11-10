@@ -8,7 +8,7 @@ export const setupGpuPipelines = ({
     nParticles,
 }: {
     device: GPUDevice,
-    format: GPUCanvasFormat,
+    format: GPUTextureFormat,
     nParticles: number,
 }) => {
     const particlePos = new Float32Array(nParticles * 4);

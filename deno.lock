@@ -6,6 +6,7 @@
     "npm:@sveltejs/kit@^2.48.4": "2.48.4_@sveltejs+vite-plugin-svelte@6.2.1__svelte@5.43.5___acorn@8.15.0__vite@7.2.2___sass@1.93.3___picomatch@4.0.3__sass@1.93.3_svelte@5.43.5__acorn@8.15.0_vite@7.2.2__sass@1.93.3__picomatch@4.0.3_acorn@8.15.0_sass@1.93.3",
     "npm:@sveltejs/vite-plugin-svelte@^6.2.1": "6.2.1_svelte@5.43.5__acorn@8.15.0_vite@7.2.2__sass@1.93.3__picomatch@4.0.3_sass@1.93.3",
     "npm:@vitest/browser@^3.2.4": "3.2.4_playwright@1.56.1_vitest@3.2.4__@vitest+browser@3.2.4__playwright@1.56.1__vite@7.2.2___sass@1.93.3___picomatch@4.0.3__sass@1.93.3_@testing-library+dom@10.4.1_vite@7.2.2__sass@1.93.3__picomatch@4.0.3_sass@1.93.3",
+    "npm:@webgpu/types@~0.1.66": "0.1.66",
     "npm:playwright@^1.56.1": "1.56.1",
     "npm:sass@^1.93.3": "1.93.3",
     "npm:svelte-check@^4.3.3": "4.3.3_svelte@5.43.5__acorn@8.15.0_typescript@5.9.3",
@@ -569,6 +570,9 @@
         "tinyrainbow"
       ]
     },
+    "@webgpu/types@0.1.66": {
+      "integrity": "sha512-YA2hLrwLpDsRueNDXIMqN9NTzD6bCDkuXbOSe0heS+f8YE8usA6Gbv1prj81pzVHrbaAma7zObnIC+I6/sXJgA=="
+    },
     "acorn@8.15.0": {
       "integrity": "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==",
       "bin": true
@@ -1101,6 +1105,7 @@
         "npm:@sveltejs/kit@^2.48.4",
         "npm:@sveltejs/vite-plugin-svelte@^6.2.1",
         "npm:@vitest/browser@^3.2.4",
+        "npm:@webgpu/types@~0.1.66",
         "npm:playwright@^1.56.1",
         "npm:sass@^1.93.3",
         "npm:svelte-check@^4.3.3",

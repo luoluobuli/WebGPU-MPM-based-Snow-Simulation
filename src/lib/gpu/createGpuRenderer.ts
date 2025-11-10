@@ -7,7 +7,7 @@ export const createGpuRenderer = ({
     particlePosBuffer,
 }: {
     device: GPUDevice,
-    context: WebGPURenderingContext,
+    context: GPUCanvasContext,
     nParticles: number,
     renderBindGroup: GPUBindGroup,
     renderPipeline: GPURenderPipeline,
