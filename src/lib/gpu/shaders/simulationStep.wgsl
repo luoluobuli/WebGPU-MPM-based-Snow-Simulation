@@ -18,7 +18,7 @@ fn doSimulationStep(
 
     if (particle.pos.z < 0.0) {
         particle.pos.z = 0.0;
-        particle.vel.z *= -0.5;
+        particle.vel.z *= -0.9;
     }
 
     particleDataOut[threadIndex] = particle;

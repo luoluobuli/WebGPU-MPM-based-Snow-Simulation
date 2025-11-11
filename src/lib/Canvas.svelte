@@ -43,6 +43,8 @@ onMount(async () => {
 
     updateCanvasSize();
 
+    onStatusChange("off and racing");
+
     stopSimulation = runner.loop();
 });
 
@@ -52,28 +54,41 @@ onDestroy(() => {
 </script>
 
 
-<svelte:window onresize={() => updateCanvasSize()} />
+<!-- <svelte:window onresize={() => updateCanvasSize()} /> -->
 
-<Draggable onDrag={async ({movement, button, pointerEvent}) => {
-    switch (button) {
-        case 0:
-            orbit.turn(movement);
-            break;
+<section
+    bind:clientWidth={null, clientWidth => width = clientWidth!}
+    bind:clientHeight={null, clientHeight => height = clientHeight!}
+>
+    <Draggable onDrag={async ({movement, button, pointerEvent}) => {
+        switch (button) {
+            case 0:
+                orbit.turn(movement);
+                break;
 
-        case 1:
-            orbit.pan(movement);
-            break;
-    }
+            case 1:
+                orbit.pan(movement);
+                break;
+        }
 
-    pointerEvent.preventDefault();
-    // await rerender();
-}}>
-    {#snippet dragTarget({onpointerdown})}
-        <canvas
-            bind:this={canvas}
-            {width}
-            {height}
-            {onpointerdown}
-        ></canvas>
-    {/snippet}
-</Draggable>
+        pointerEvent.preventDefault();
+        // await rerender();
+    }}>
+        {#snippet dragTarget({onpointerdown})}
+            <canvas
+                bind:this={canvas}
+                {width}
+                {height}
+                {onpointerdown}
+            ></canvas>
+        {/snippet}
+    </Draggable>
+</section>
+
+
+<style lang="scss">
+section {
+    width: 100vw;
+    height: 100vh;
+}
+</style>
