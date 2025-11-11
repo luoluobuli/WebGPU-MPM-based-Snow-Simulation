@@ -1,12 +1,12 @@
-import type { GpuSnowUniformsManager } from "./GpuSnowUniformsManager";
-import commonModuleSrc from "./shader/_common.wgsl?raw";
-import vertexModuleSrc from "./shader/vertex.wgsl?raw";
-import fragmentModuleSrc from "./shader/fragment.wgsl?raw";
+import type { GpuUniformsBufferManager } from "../buffers/GpuUniformsBufferManager";
+import commonModuleSrc from "../shaders/_common.wgsl?raw";
+import vertexModuleSrc from "../shaders/vertex.wgsl?raw";
+import fragmentModuleSrc from "../shaders/fragment.wgsl?raw";
 
 export class GpuPointRenderPipelineManager {
     readonly renderPipeline: GPURenderPipeline;
 
-    readonly uniformsManager: GpuSnowUniformsManager;
+    readonly uniformsManager: GpuUniformsBufferManager;
 
     constructor({
         device,
@@ -15,7 +15,7 @@ export class GpuPointRenderPipelineManager {
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
-        uniformsManager: GpuSnowUniformsManager,
+        uniformsManager: GpuUniformsBufferManager,
     }) {
         const vertexModule = device.createShaderModule({
             label: "points vertex module",

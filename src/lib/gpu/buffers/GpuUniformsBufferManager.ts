@@ -1,6 +1,6 @@
 import type { Mat4 } from "wgpu-matrix";
 
-export class GpuSnowUniformsManager {
+export class GpuUniformsBufferManager {
     private readonly device: GPUDevice;
 
     readonly buffer: GPUBuffer;

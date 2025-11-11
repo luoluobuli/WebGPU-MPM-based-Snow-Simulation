@@ -1,8 +1,8 @@
 import type { Camera } from "$lib/Camera.svelte";
-import { GpuPointRenderPipelineManager } from "./GpuRenderPipelineManager";
-import { GpuSimulationStepPipelineManager } from "./GpuSimulationStepPipelineManager";
-import { GpuSnowUniformsManager } from "./GpuSnowUniformsManager";
-import { setupGpuPipelines } from "./setupGpuPipelines";
+import { GpuPointRenderPipelineManager } from "./pipelines/GpuRenderPipelineManager";
+import { GpuSimulationStepPipelineManager } from "./pipelines/GpuSimulationStepPipelineManager";
+import { GpuUniformsBufferManager } from "./buffers/GpuUniformsBufferManager";
+import { GpuMpmBufferManager } from "./buffers/GpuMpmBufferManager";
 
 const MAX_SIMULATION_DRIFT_MS = 1_000;
 
@@ -15,10 +15,10 @@ export class GpuSnowPipelineRunner {
 
     private buffer1IsSource = true;
 
-    private readonly uniformsManager: GpuSnowUniformsManager;
+    private readonly uniformsManager: GpuUniformsBufferManager;
+    private readonly mpmManager: GpuMpmBufferManager;
     private readonly simulationStepPipelineManager: GpuSimulationStepPipelineManager;
     private readonly pointsRenderPipelineManager: GpuPointRenderPipelineManager;
-    private readonly pipelineData: ReturnType<typeof setupGpuPipelines>;
 
     constructor({
         device,
@@ -44,15 +44,16 @@ export class GpuSnowPipelineRunner {
 
         this.camera = camera;
 
-        const uniformsManager = new GpuSnowUniformsManager({device});
+        const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
 
-        this.pipelineData = setupGpuPipelines({device, format, nParticles, gridResolution, uniformsManager});
+        const mpmManager = new GpuMpmBufferManager({device, nParticles, gridResolution});
+        this.mpmManager = mpmManager;
 
         const simulationStepPipelineManager = new GpuSimulationStepPipelineManager({
             device,
-            particleDataBuffer1: this.pipelineData.particleDataBuffer1,
-            particleDataBuffer2: this.pipelineData.particleDataBuffer2,
+            particleDataBuffer1: mpmManager.particleDataBuffer1,
+            particleDataBuffer2: mpmManager.particleDataBuffer2,
             uniformsManager,
         });
         this.simulationStepPipelineManager = simulationStepPipelineManager;
@@ -87,7 +88,7 @@ export class GpuSnowPipelineRunner {
         this.pointsRenderPipelineManager.addRenderPass({
             commandEncoder,
             context: this.context,
-            particleDataBuffer: this.particleDataBuffer,
+            particleDataBuffer: this.mpmManager.particleDataBufferCurrent(this.buffer1IsSource),
             nParticles: this.nParticles,
         });
         this.device.queue.submit([commandEncoder.finish()]);
@@ -131,17 +132,5 @@ export class GpuSnowPipelineRunner {
         return () => {
             cancelAnimationFrame(handle);
         };
-    }
-
-    private get simulationStepStorageBindGroup() {
-        return this.buffer1IsSource
-            ? this.simulationStepPipelineManager.storageBindGroup1_2
-            : this.simulationStepPipelineManager.storageBindGroup2_1;
-    }
-
-    private get particleDataBuffer() {
-        return this.buffer1IsSource
-            ? this.pipelineData.particleDataBuffer1
-            : this.pipelineData.particleDataBuffer2;
     }
 }

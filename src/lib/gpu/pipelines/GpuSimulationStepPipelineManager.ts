@@ -1,6 +1,6 @@
-import type { GpuSnowUniformsManager } from "./GpuSnowUniformsManager";
-import commonModuleSrc from "./shader/_common.wgsl?raw";
-import simulationStepModuleSrc from "./shader/simulationStep.wgsl?raw";
+import type { GpuUniformsBufferManager } from "../buffers/GpuUniformsBufferManager";
+import commonModuleSrc from "../shaders/_common.wgsl?raw";
+import simulationStepModuleSrc from "../shaders/simulationStep.wgsl?raw";
 
 export class GpuSimulationStepPipelineManager {
     readonly storageBindGroupLayout: GPUBindGroupLayout;
@@ -8,7 +8,7 @@ export class GpuSimulationStepPipelineManager {
     readonly storageBindGroup2_1: GPUBindGroup;
     readonly computePipeline: GPUComputePipeline;
 
-    private readonly uniformsManager: GpuSnowUniformsManager;
+    private readonly uniformsManager: GpuUniformsBufferManager;
 
     constructor({
         device,
@@ -19,7 +19,7 @@ export class GpuSimulationStepPipelineManager {
         device: GPUDevice,
         particleDataBuffer1: GPUBuffer,
         particleDataBuffer2: GPUBuffer,
-        uniformsManager: GpuSnowUniformsManager,
+        uniformsManager: GpuUniformsBufferManager,
     }) {
         const simulationStepStorageBindGroupLayout = device.createBindGroupLayout({
             label: "simulation step storage bind group layout",
