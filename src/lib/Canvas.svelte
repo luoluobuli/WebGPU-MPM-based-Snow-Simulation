@@ -88,6 +88,10 @@ onDestroy(() => {
                 {width}
                 {height}
                 {onpointerdown}
+                onwheel={event => {
+                    orbit.radius *= 2 ** (event.deltaY * 0.001);
+                    event.preventDefault();
+                }}
             ></canvas>
         {/snippet}
     </Draggable>
