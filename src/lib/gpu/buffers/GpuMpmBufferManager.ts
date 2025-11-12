@@ -20,29 +20,51 @@ export class GpuMpmBufferManager {
     }) {
         const particleDataBuffer1 = device.createBuffer({
             label: "particle data ping-pong buffer 1",
-            size: nParticles * 48,
+            size: nParticles * 80,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
         });
         const particleDataBuffer2 = device.createBuffer({
             label: "particle data ping-pong buffer 2",
-            size: nParticles * 48,
+            size: nParticles * 80,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
         });
-        const particleDataArray = new Float32Array(nParticles * 12);
+        const particleDataArray = new Float32Array(nParticles * 20);
         
         if (initialPositions !== null && initialPositions.length >= nParticles * 3) {
             for (let i = 0; i < nParticles; i++) {
-                particleDataArray[i * 12] = initialPositions[i * 3];
-                particleDataArray[i * 12 + 1] = initialPositions[i * 3 + 1];
-                particleDataArray[i * 12 + 2] = initialPositions[i * 3 + 2];
-                particleDataArray[i * 12 + 3] = 1;
+                const offset = i * 20;
+
+                particleDataArray.set(
+                    new Float32Array([
+                        // pos
+                        initialPositions[i * 3], initialPositions[i * 3 + 1], initialPositions[i * 3 + 2], 1,
+                        // vel
+                        0, 0, 0, 0,
+                        // deform
+                        1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, 1, 0,
+                    ]),
+                    offset,
+                );
             }
         } else {
             for (let i = 0; i < nParticles; i++) {
-                particleDataArray[i * 12] = Math.random() * 2;
-                particleDataArray[i * 12 + 1] = Math.random() * 2;
-                particleDataArray[i * 12 + 2] = Math.random() * 2;
-                particleDataArray[i * 12 + 3] = 1;
+                const offset = i * 20;
+
+                particleDataArray.set(
+                    new Float32Array([
+                        // pos
+                        Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, 1,
+                        // vel
+                        0, 0, 0, 0,
+                        // deform
+                        1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, 1, 0,
+                    ]),
+                    offset,
+                );
             }
         }
         device.queue.writeBuffer(particleDataBuffer1, 0, particleDataArray);
