@@ -11,8 +11,8 @@ fn doGridToParticle(
     let threadIndex = gid.x;
     if threadIndex >= arrayLength(&particleDataOut) { return; }
 
-    gridResolution = uniforms.gridResolution;
-    inv_dx = f32(gridResolution);
+    let gridResolution = uniforms.gridResolution;
+    let inv_dx = f32(gridResolution);
 
     var particle = particleDataOut[threadIndex];
 
@@ -40,7 +40,7 @@ fn doGridToParticle(
                 let idx = node.x + node.y * gridResolution + node.z * gridResolution * gridResolution;
 
                 let gx = f32(gridDataIn[idx].vx) / uniforms.fpScale;
-                let gy = f32(gridDataIn[idx].vx) / uniforms.fpScale;
+                let gy = f32(gridDataIn[idx].vy) / uniforms.fpScale;
                 let gz = f32(gridDataIn[idx].vz) / uniforms.fpScale;
                 let grid_mass = f32(gridDataIn[idx].mass) / uniforms.fpScale;
 
@@ -52,7 +52,7 @@ fn doGridToParticle(
     }
 
     particle.vel = new_vel;
-    particle.pos = new_vel * uniforms.simulationTimestep;
+    particle.pos += new_vel * uniforms.simulationTimestep;
 
-    particles[threadIndex] = particle;
+    particleDataOut[threadIndex] = particle;
 }
