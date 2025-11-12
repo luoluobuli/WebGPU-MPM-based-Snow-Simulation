@@ -51,8 +51,12 @@ export class GpuUniformsBufferManager {
         this.bindGroup = uniformsBindGroup;
     }
 
-    writeSimulationTimestepS(simulationTimestepS: number) {
-        this.device.queue.writeBuffer(this.buffer, 0, new Float32Array([simulationTimestepS]));
+    writeFloat(num: number) {
+        this.device.queue.writeBuffer(this.buffer, 0, new Float32Array([num]));
+    }
+
+    writeInteger(num: number) {
+        this.device.queue.writeBuffer(this.buffer, 0, new Int32Array([num]));
     }
 
     writeViewProjInvMat(viewProjInvMat: Mat4) {
