@@ -39,10 +39,10 @@ fn doGridToParticle(
                 }
                 let idx = node.x + node.y * gridResolution + node.z * gridResolution * gridResolution;
 
-                let gx = f32(gridDataIn[idx].vx) / uniforms.fpScale;
-                let gy = f32(gridDataIn[idx].vy) / uniforms.fpScale;
-                let gz = f32(gridDataIn[idx].vz) / uniforms.fpScale;
-                let grid_mass = f32(gridDataIn[idx].mass) / uniforms.fpScale;
+                let gx = f32(atomicLoad(&gridDataIn[idx].vx)) / uniforms.fpScale;
+                let gy = f32(atomicLoad(&gridDataIn[idx].vy)) / uniforms.fpScale;
+                let gz = f32(atomicLoad(&gridDataIn[idx].vz)) / uniforms.fpScale;
+                let grid_mass = f32(atomicLoad(&gridDataIn[idx].mass)) / uniforms.fpScale;
 
                 if (grid_mass <= 0.0) { continue; }
                 let grid_vel = vec3f(gx, gy, gz) / grid_mass;
