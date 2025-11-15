@@ -52,8 +52,9 @@ export class GpuSnowPipelineRunner {
         const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
 
-        const cellSize = 2 / (gridResolution - 1);
-        this.uniformsManager.writeGridParams(gridResolution, cellSize);
+        uniformsManager.writeSimulationTimestep(simulationTimestepS);
+        uniformsManager.writeGridResolution(gridResolution);
+        uniformsManager.writeFpScale(FP_SCALE);
 
         const mpmManager = new GpuMpmBufferManager({device, nParticles, gridResolution, initialPositions});
         this.mpmManager = mpmManager;
@@ -123,9 +124,6 @@ export class GpuSnowPipelineRunner {
     }
 
     async render() {
-        this.uniformsManager.writeFloat(this.simulationTimestepS);
-        this.uniformsManager.writeInteger(this.gridResolution);
-        this.uniformsManager.writeFloat(FP_SCALE);
         this.uniformsManager.writeViewProjInvMat(this.camera.viewInvProj);
         
         const commandEncoder = this.device.createCommandEncoder({

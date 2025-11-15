@@ -51,17 +51,16 @@ export class GpuUniformsBufferManager {
         this.bindGroup = uniformsBindGroup;
     }
 
-    writeFloat(num: number) {
-        this.device.queue.writeBuffer(this.buffer, 0, new Float32Array([num]));
+    writeSimulationTimestep(timestep: number) {
+        this.device.queue.writeBuffer(this.buffer, 0, new Float32Array([timestep]));
     }
 
-    writeInteger(num: number) {
-        this.device.queue.writeBuffer(this.buffer, 0, new Int32Array([num]));
+    writeGridResolution(gridResolution: number) {
+        this.device.queue.writeBuffer(this.buffer, 4, new Int32Array([gridResolution]));
     }
 
-    writeGridParams(gridResolution: number, cellSize: number) {
-        this.device.queue.writeBuffer(this.buffer, 4, new Uint32Array([gridResolution]));
-        this.device.queue.writeBuffer(this.buffer, 8, new Float32Array([cellSize, 1 / cellSize]));
+    writeFpScale(fpScale: number) {
+        this.device.queue.writeBuffer(this.buffer, 8, new Float32Array([fpScale]));
     }
 
     writeViewProjInvMat(viewProjInvMat: Mat4) {
