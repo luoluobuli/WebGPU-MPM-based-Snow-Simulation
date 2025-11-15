@@ -9,20 +9,18 @@ fn doGridToParticle(
     let threadIndex = gid.x;
     if threadIndex >= arrayLength(&particleDataOut) { return; }
 
-    let gridResolution = uniforms.gridResolution;
-    let inv_dx = f32(gridResolution);
+
 
     var particle = particleDataOut[threadIndex];
+
 
 
     // get the grid cell containing this particle
     let startCell = cellContainingPos(particle.pos);
 
-
     let fractionalPosFromCellMin = (particle.pos - startCell.minPos) / startCell.dims;
     let velocityWeightKernel = computeVelocityWeightsKernel(fractionalPosFromCellMin);
 
-    
 
 
     // enumerate the 3x3 neighborhood of cells around the cell that contains the particle

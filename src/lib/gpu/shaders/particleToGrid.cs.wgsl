@@ -6,43 +6,45 @@
 fn doParticleToGrid(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
-    // let threadIndex = gid.x;
-    // if threadIndex >= arrayLength(&particleDataIn) { return; }
+    let threadIndex = gid.x;
+    if threadIndex >= arrayLength(&particleDataIn) { return; }
 
-    // let gridResolution = uniforms.gridResolution;
-    // let inv_dx = f32(gridResolution);
-    // let dx = 1 / inv_dx;
+    let particle = particleDataIn[threadIndex];
 
-    // let particle = particleDataIn[threadIndex];
 
-    // let grid_base = vec3i(particle.pos * inv_dx - 0.5);
+    // get the grid cell containing this particle
+    let startCell = cellContainingPos(particle.pos);
 
-    // // fractional offset
-    // let fx = particle.pos * inv_dx - vec3f(grid_base);
+    let fractionalPosFromCellMin = (particle.pos - startCell.minPos) / startCell.dims;
+    let velocityWeightKernel = computeVelocityWeightsKernel(fractionalPosFromCellMin);
 
-    // // quadratic kernel weights
-    // var w: array<vec3f, 3>;
-    // w[0] = 0.5 * (1.5 - fx) * (1.5 - fx);
-    // w[1] = 0.75 - (fx - 1.0) * (fx - 1.0);
-    // w[2] = 0.5 * (fx - 0.5) * (fx - 0.5);
+    // enumerate the 3x3 neighborhood of cells around the cell that contains the particle
+    var newParticleVelocity = vec3f(0); // cumulatively keep track of the cell's velocities, weighted using our kernel above
+    for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
+        for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
+            for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
+                let cellNumber = startCell.number + vec3i(offsetX, offsetY, offsetZ);
 
-    // for (var i = 0u; i < 3u; i++) {
-    //     for (var j = 0u; j < 3u; j++) {
-    //         for (var k = 0u; k < 3u; k++) {
-    //             let weight = w[i].x * w[j].y * w[k].z;
-    //             let node = grid_base + vec3i(i32(i), i32(j), i32(k));
-    //             let nodeIndex = node.x + node.y * gridResolution + node.z * gridResolution * gridResolution;
+                if any(vec3i(0) > cellNumber) || any(cellNumber >= vec3i(uniforms.gridResolution)) { continue; }
 
-    //             let contribVx = weight * particle.vel.x * uniforms.fixedPointScale;
-    //             let contribVy = weight * particle.vel.y * uniforms.fixedPointScale;
-    //             let contribVz = weight * particle.vel.z * uniforms.fixedPointScale;
-    //             let contribMass = weight * particle.mass * uniforms.fixedPointScale;
+                let cellIndex = u32(cellNumber.x) + uniforms.gridResolution * (u32(cellNumber.y) + uniforms.gridResolution * u32(cellNumber.z));
+                
 
-    //             atomicAdd(&gridDataOut[nodeIndex].vx, i32(contribVx));
-    //             atomicAdd(&gridDataOut[nodeIndex].vy, i32(contribVy));
-    //             atomicAdd(&gridDataOut[nodeIndex].vz, i32(contribVz));
-    //             atomicAdd(&gridDataOut[nodeIndex].mass, i32(contribMass));
-    //         }
-    //     }
-    // }
+                
+                let cellWeight = velocityWeightKernel[u32(offsetX + 1)].x
+                    * velocityWeightKernel[u32(offsetY + 1)].y
+                    * velocityWeightKernel[u32(offsetZ + 1)].z;
+
+                let contribVx = cellWeight * particle.vel.x * particle.mass * uniforms.fixedPointScale;
+                let contribVy = cellWeight * particle.vel.y * particle.mass * uniforms.fixedPointScale;
+                let contribVz = cellWeight * particle.vel.z * particle.mass * uniforms.fixedPointScale;
+                let contribMass = cellWeight * particle.mass * uniforms.fixedPointScale;
+
+                atomicAdd(&gridDataOut[cellIndex].vx, i32(contribVx));
+                atomicAdd(&gridDataOut[cellIndex].vy, i32(contribVy));
+                atomicAdd(&gridDataOut[cellIndex].vz, i32(contribVz));
+                atomicAdd(&gridDataOut[cellIndex].mass, i32(contribMass));
+            }
+        }
+    }
 }

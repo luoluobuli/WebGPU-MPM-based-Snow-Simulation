@@ -10,18 +10,15 @@ fn doGridUpdate(
 
     let grid = &gridData[threadIndex];
 
-    let mass = f32(atomicLoad(&(*grid).mass)) / uniforms.fixedPointScale;
-    if (mass > 0.0) {
-        var vel = vec3f(
-            f32(atomicLoad(&(*grid).vx)) / uniforms.fixedPointScale,
-            f32(atomicLoad(&(*grid).vy)) / uniforms.fixedPointScale,
-            f32(atomicLoad(&(*grid).vz)) / uniforms.fixedPointScale,
-        ) / mass;
+    let cellMass = f32(atomicLoad(&(*grid).mass)) / uniforms.fixedPointScale;
+    if cellMass <= 0 { return; }
 
-        vel += vec3f(0.0, 0.0, -9.81) * uniforms.simulationTimestep;
 
-        atomicStore(&(*grid).vx, i32(vel.x * uniforms.fixedPointScale));
-        atomicStore(&(*grid).vy, i32(vel.y * uniforms.fixedPointScale));
-        atomicStore(&(*grid).vz, i32(vel.z * uniforms.fixedPointScale));
-    }
+    let cellForce = vec3f(0.0, 0.0, -9.81) * cellMass;
+    let cellMomentumChange = cellForce * uniforms.simulationTimestep;
+
+
+    atomicAdd(&(*grid).vx, i32(cellMomentumChange.x * uniforms.fixedPointScale));
+    atomicAdd(&(*grid).vy, i32(cellMomentumChange.y * uniforms.fixedPointScale));
+    atomicAdd(&(*grid).vz, i32(cellMomentumChange.z * uniforms.fixedPointScale));
 }
