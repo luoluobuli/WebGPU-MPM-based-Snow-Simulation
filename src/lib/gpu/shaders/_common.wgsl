@@ -8,7 +8,7 @@ struct Uniforms {
     // 0
 
     simulationTimestep: f32, // 4
-    gridResolution: i32, // 8
+    gridResolution: u32, // 8
     fixedPointScale: f32, // 12
     // 16
     gridMinCoords: vec3f, // 28

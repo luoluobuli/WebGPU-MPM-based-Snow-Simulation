@@ -56,7 +56,7 @@ export class GpuUniformsBufferManager {
     }
 
     writeGridResolution(gridResolution: number) {
-        this.device.queue.writeBuffer(this.buffer, 4, new Int32Array([gridResolution]));
+        this.device.queue.writeBuffer(this.buffer, 4, new Uint32Array([gridResolution]));
     }
 
     writeFixedPointScale(fixedPointScale: number) {
@@ -64,11 +64,11 @@ export class GpuUniformsBufferManager {
     }
 
     writeGridMinCoords(min: [number, number, number]) {
-        this.device.queue.writeBuffer(this.buffer, 16, new Int32Array(min));
+        this.device.queue.writeBuffer(this.buffer, 16, new Float32Array(min));
     }
 
     writeGridMaxCoords(max: [number, number, number]) {
-        this.device.queue.writeBuffer(this.buffer, 32, new Int32Array(max));
+        this.device.queue.writeBuffer(this.buffer, 32, new Float32Array(max));
     }
 
     writeViewProjInvMat(viewProjInvMat: Mat4) {

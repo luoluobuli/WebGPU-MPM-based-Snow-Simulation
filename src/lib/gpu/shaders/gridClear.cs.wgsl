@@ -15,5 +15,5 @@ fn doClearGrid(
     atomicStore(&(*grid).vx, 0);
     atomicStore(&(*grid).vy, 0);
     atomicStore(&(*grid).vz, 0);
-    atomicStore(&(*grid).mass, 0);
+    atomicStore(&(*grid).mass, i32(uniforms.fixedPointScale));
 }
