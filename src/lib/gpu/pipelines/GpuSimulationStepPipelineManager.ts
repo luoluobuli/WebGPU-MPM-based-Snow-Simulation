@@ -19,8 +19,8 @@ export class GpuSimulationStepPipelineManager {
 
     constructor({
         device,
-        particleDataBuffer: particleDataBuffer,
-        gridDataBuffer: gridDataBuffer,
+        particleDataBuffer,
+        gridDataBuffer,
         uniformsManager,
     }: {
         device: GPUDevice,
@@ -145,9 +145,7 @@ export class GpuSimulationStepPipelineManager {
     }: {
         computePassEncoder: GPUComputePassEncoder,
         numThreads: number,
-        buffer1IsSource: boolean,
         pipeline: GPUComputePipeline,
-        label: string
     }) {
         computePassEncoder.setPipeline(pipeline);
         computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);

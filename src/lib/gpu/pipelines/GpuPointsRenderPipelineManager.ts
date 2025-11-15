@@ -1,9 +1,9 @@
-import type { GpuUniformsBufferManager } from "../buffers/GpuUniformsBufferManager";
-import commonModuleSrc from "../shaders/_common.wgsl?raw";
-import vertexModuleSrc from "../shaders/vertex.wgsl?raw";
-import fragmentModuleSrc from "../shaders/fragment.wgsl?raw";
+import type { GpuUniformsBufferManager } from "$lib/gpu/buffers/GpuUniformsBufferManager";
+import commonModuleSrc from "$lib/gpu/shaders/_common.wgsl?raw";
+import pointsVertexModuleSrc from "$lib/gpu/shaders/pointsVertex.wgsl?raw";
+import pointsFragmentModuleSrc from "$lib/gpu/shaders/pointsFragment.wgsl?raw";
 
-export class GpuPointRenderPipelineManager {
+export class GpuPointsRenderPipelineManager {
     readonly renderPipeline: GPURenderPipeline;
 
     readonly uniformsManager: GpuUniformsBufferManager;
@@ -19,11 +19,11 @@ export class GpuPointRenderPipelineManager {
     }) {
         const vertexModule = device.createShaderModule({
             label: "points vertex module",
-            code: commonModuleSrc + vertexModuleSrc,
+            code: commonModuleSrc + pointsVertexModuleSrc,
         });
         const fragmentModule = device.createShaderModule({
             label: "points fragment module",
-            code: commonModuleSrc + fragmentModuleSrc,
+            code: commonModuleSrc + pointsFragmentModuleSrc,
         });
         
         const renderPipelineLayout = device.createPipelineLayout({

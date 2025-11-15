@@ -1,8 +1,9 @@
 import type { Camera } from "$lib/Camera.svelte";
-import { GpuPointRenderPipelineManager } from "./pipelines/GpuRenderPipelineManager";
+import { GpuPointsRenderPipelineManager } from "./pipelines/GpuPointsRenderPipelineManager";
 import { GpuSimulationStepPipelineManager } from "./pipelines/GpuSimulationStepPipelineManager";
 import { GpuUniformsBufferManager } from "./buffers/GpuUniformsBufferManager";
 import { GpuMpmBufferManager } from "./buffers/GpuMpmBufferManager";
+import { GpuRaymarchRenderPipelineManager } from "./pipelines/GpuRaymarchRenderPipelineManager";
 
 const MAX_SIMULATION_DRIFT_MS = 1_000;
 const FP_SCALE = 1024.0;
@@ -15,12 +16,11 @@ export class GpuSnowPipelineRunner {
     private readonly simulationTimestepS: number;
     private readonly camera: Camera;
 
-    private buffer1IsSource = true;
-
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly mpmManager: GpuMpmBufferManager;
     private readonly simulationStepPipelineManager: GpuSimulationStepPipelineManager;
-    private readonly pointsRenderPipelineManager: GpuPointRenderPipelineManager;
+    private readonly pointsRenderPipelineManager: GpuPointsRenderPipelineManager;
+    private readonly raymarchRenderPipelineManager: GpuRaymarchRenderPipelineManager;
 
     constructor({
         device,
@@ -69,9 +69,11 @@ export class GpuSnowPipelineRunner {
         });
         this.simulationStepPipelineManager = simulationStepPipelineManager;
 
-        const pointsRenderPipelineManager = new GpuPointRenderPipelineManager({device, format, uniformsManager});
+        const pointsRenderPipelineManager = new GpuPointsRenderPipelineManager({device, format, uniformsManager});
         this.pointsRenderPipelineManager = pointsRenderPipelineManager;
 
+        const raymarchRenderPipelineManager = new GpuRaymarchRenderPipelineManager({device, format, uniformsManager, mpmManager});
+        this.raymarchRenderPipelineManager = raymarchRenderPipelineManager;
     }
 
     async doSimulationSteps(nSteps: number) {
@@ -85,33 +87,25 @@ export class GpuSnowPipelineRunner {
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
                 numThreads: this.gridResolution ** 3,
-                buffer1IsSource: this.buffer1IsSource,
                 pipeline: this.simulationStepPipelineManager.gridClearComputePipeline,
-                label: "grid clear compute pipeline",
             });
             
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
                 numThreads: this.nParticles,
-                buffer1IsSource: this.buffer1IsSource,
                 pipeline: this.simulationStepPipelineManager.p2gComputePipeline,
-                label: "particle to grid compute pipeline",
             });
 
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
                 numThreads: this.gridResolution ** 3,
-                buffer1IsSource: this.buffer1IsSource,
                 pipeline: this.simulationStepPipelineManager.gridComputePipeline,
-                label: "grid update compute pipeline",
             });
 
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
                 numThreads: this.nParticles,
-                buffer1IsSource: this.buffer1IsSource,
                 pipeline: this.simulationStepPipelineManager.g2pComputePipeline,
-                label: "grid to particle compute pipeline",
             });
         }
 
@@ -119,22 +113,27 @@ export class GpuSnowPipelineRunner {
 
         this.device.queue.submit([commandEncoder.finish()]);
         await this.device.queue.onSubmittedWorkDone();
-
-        this.buffer1IsSource = !this.buffer1IsSource;
     }
 
     async render() {
-        this.uniformsManager.writeViewProjInvMat(this.camera.viewInvProj);
+        this.uniformsManager.writeViewInvProjMat(this.camera.viewInvProj);
+        this.uniformsManager.writeViewInvMat(this.camera.viewInv);
         
         const commandEncoder = this.device.createCommandEncoder({
             label: "render command encoder",
         });
-        this.pointsRenderPipelineManager.addRenderPass({
+        // this.pointsRenderPipelineManager.addRenderPass({
+        //     commandEncoder,
+        //     context: this.context,
+        //     particleDataBuffer: this.mpmManager.particleDataBuffer,
+        //     nParticles: this.nParticles,
+        // });
+
+        this.raymarchRenderPipelineManager.addRenderPass({
             commandEncoder,
             context: this.context,
-            particleDataBuffer: this.mpmManager.particleDataBuffer,
-            nParticles: this.nParticles,
         });
+
         this.device.queue.submit([commandEncoder.finish()]);
         await this.device.queue.onSubmittedWorkDone();
     }

@@ -1,7 +1,12 @@
-struct VertexOut {
+struct PointsVertexOut {
     @builtin(position) posBuiltin: vec4f,
     @location(0) pos: vec4f,
     @location(1) uv: vec2f,
+}
+
+struct RaymarchVertexOut {
+    @builtin(position) posBuiltin: vec4f,
+    @location(0) uvCentered: vec2f,
 }
 
 struct Uniforms {
@@ -16,6 +21,7 @@ struct Uniforms {
     gridMaxCoords: vec3f, // 44
     // 48
     viewInvProjMat: mat4x4f, // 112
+    viewInvMat: mat4x4f, // 176
 }
 
 struct ParticleData {

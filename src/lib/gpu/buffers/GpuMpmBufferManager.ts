@@ -17,7 +17,7 @@ export class GpuMpmBufferManager {
         initialPositions?: Float32Array | null,
     }) {
         const particleDataBuffer = device.createBuffer({
-            label: "particle data ping-pong buffer 1",
+            label: "particle data buffer",
             size: nParticles * 48,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
         });

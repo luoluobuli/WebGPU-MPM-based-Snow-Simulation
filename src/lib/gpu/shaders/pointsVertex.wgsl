@@ -1,8 +1,8 @@
 @vertex
 fn vert(
     @location(0) pos: vec4f,
-) -> VertexOut {
-    var out: VertexOut;
+) -> PointsVertexOut {
+    var out: PointsVertexOut;
 
     let frustumPos: vec4f = uniforms.viewInvProjMat * pos;
 
