@@ -12,18 +12,18 @@ fn doGridUpdate(
 
     let grid = &gridData[threadIndex];
 
-    let mass = bitcast<f32>(atomicLoad(&(*grid).mass));
+    let mass = f32(atomicLoad(&(*grid).mass)) / uniforms.fixedPointScale;
     if (mass > 0.0) {
         var vel = vec3f(
-            bitcast<f32>(atomicLoad(&(*grid).vx)),
-            bitcast<f32>(atomicLoad(&(*grid).vy)),
-            bitcast<f32>(atomicLoad(&(*grid).vz)),
+            f32(atomicLoad(&(*grid).vx)) / uniforms.fixedPointScale,
+            f32(atomicLoad(&(*grid).vy)) / uniforms.fixedPointScale,
+            f32(atomicLoad(&(*grid).vz)) / uniforms.fixedPointScale,
         ) / mass;
 
         vel += vec3f(0.0, 0.0, -9.81) * uniforms.simulationTimestep;
 
-        atomicStore(&(*grid).vx, bitcast<u32>(vel.x));
-        atomicStore(&(*grid).vy, bitcast<u32>(vel.y));
-        atomicStore(&(*grid).vz, bitcast<u32>(vel.z));
+        atomicStore(&(*grid).vx, i32(vel.x * uniforms.fixedPointScale));
+        atomicStore(&(*grid).vy, i32(vel.y * uniforms.fixedPointScale));
+        atomicStore(&(*grid).vz, i32(vel.z * uniforms.fixedPointScale));
     }
 }

@@ -82,13 +82,13 @@ export class GpuSnowPipelineRunner {
         const computePassEncoder = commandEncoder.beginComputePass();
         
         for (let i = 0; i < nSteps; i++) {
-            // this.simulationStepPipelineManager.addComputePass({
-            //     commandEncoder,
-            //     numThreads: this.nParticles,
-            //     buffer1IsSource: this.buffer1IsSource,
-            //     pipeline: this.simulationStepPipelineManager.computePipeline,
-            //     label: "simulation step compute pipeline",
-            // });
+            this.simulationStepPipelineManager.addDispatch({
+                computePassEncoder,
+                numThreads: this.gridResolution ** 3,
+                buffer1IsSource: this.buffer1IsSource,
+                pipeline: this.simulationStepPipelineManager.gridClearComputePipeline,
+                label: "grid clear compute pipeline",
+            });
             
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,

@@ -4,11 +4,13 @@ import simulationStepModuleSrc from "../shaders/simulationStep.wgsl?raw";
 import p2gModuleSrc from "../shaders/particleToGrid.cs.wgsl?raw";
 import gridUpdateModuleSrc from "../shaders/gridUpdate.cs.wgsl?raw";
 import g2pModuleSrc from "../shaders/gridToParticle.cs.wgsl?raw";
+import gridClearModuleSrc from "../shaders/gridClear.cs.wgsl?raw";
 
 export class GpuSimulationStepPipelineManager {
     readonly storageBindGroupLayout: GPUBindGroupLayout;
     readonly storageBindGroup: GPUBindGroup;
 
+    readonly gridClearComputePipeline: GPUComputePipeline;
     readonly p2gComputePipeline: GPUComputePipeline;
     readonly gridComputePipeline: GPUComputePipeline;
     readonly g2pComputePipeline: GPUComputePipeline;
@@ -75,6 +77,9 @@ export class GpuSimulationStepPipelineManager {
         });
 
 
+        const gridClearModule = device.createShaderModule({
+            code: commonModuleSrc + gridClearModuleSrc,
+        });
         const p2gModule = device.createShaderModule({
             code: commonModuleSrc + p2gModuleSrc,
         });
@@ -85,6 +90,16 @@ export class GpuSimulationStepPipelineManager {
             code: commonModuleSrc + g2pModuleSrc,
         });
         
+
+        this.gridClearComputePipeline = device.createComputePipeline({
+            label: "grid clear compute pipeline",
+            layout: simulationStepPipelineLayout,
+
+            compute: {
+                module: gridClearModule,
+                entryPoint: "doClearGrid",
+            },
+        });
 
         this.p2gComputePipeline = device.createComputePipeline({
             label: "particle to grid compute pipeline",

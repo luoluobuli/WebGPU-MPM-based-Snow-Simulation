@@ -37,12 +37,12 @@ fn doGridToParticle(
                 if (any(vec3f(node) < uniforms.gridMinCoords) || any(vec3f(node) >= uniforms.gridMaxCoords)) {
                     continue;
                 }
-                let idx = node.x + node.y * gridResolution + node.z * gridResolution * gridResolution;
+                let gridCellIndex = node.x + node.y * gridResolution + node.z * gridResolution * gridResolution;
 
-                let gx = bitcast<f32>(atomicLoad(&gridDataIn[idx].vx)) / uniforms.fixedPointScale;
-                let gy = bitcast<f32>(atomicLoad(&gridDataIn[idx].vy)) / uniforms.fixedPointScale;
-                let gz = bitcast<f32>(atomicLoad(&gridDataIn[idx].vz)) / uniforms.fixedPointScale;
-                let grid_mass = bitcast<f32>(atomicLoad(&gridDataIn[idx].mass)) / uniforms.fixedPointScale;
+                let gx = f32(atomicLoad(&gridDataIn[gridCellIndex].vx)) / uniforms.fixedPointScale;
+                let gy = f32(atomicLoad(&gridDataIn[gridCellIndex].vy)) / uniforms.fixedPointScale;
+                let gz = f32(atomicLoad(&gridDataIn[gridCellIndex].vz)) / uniforms.fixedPointScale;
+                let grid_mass = f32(atomicLoad(&gridDataIn[gridCellIndex].mass)) / uniforms.fixedPointScale;
 
                 if (grid_mass <= 0.0) { continue; }
                 let grid_vel = vec3f(gx, gy, gz) / grid_mass;
@@ -53,6 +53,9 @@ fn doGridToParticle(
 
     particle.vel = new_vel;
     particle.pos += new_vel * uniforms.simulationTimestep;
+
+    // particle.vel += vec3f(0, 0, -9.81) * uniforms.simulationTimestep;
+    // particle.pos += particle.vel * uniforms.simulationTimestep;
 
     particleDataOut[threadIndex] = particle;
 }

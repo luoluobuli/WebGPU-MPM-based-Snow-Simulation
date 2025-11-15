@@ -33,8 +33,8 @@ struct GridData {
 
     // vel: vec3f, // 12
     // mass: f32, // 16
-    vx: atomic<u32>, // 4
-    vy: atomic<u32>, // 8
-    vz: atomic<u32>, // 12
-    mass: atomic<u32>, // 16
+    vx: atomic<i32>, // 4
+    vy: atomic<i32>, // 8
+    vz: atomic<i32>, // 12
+    mass: atomic<i32>, // 16
 }
