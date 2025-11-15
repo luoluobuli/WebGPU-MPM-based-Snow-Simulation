@@ -38,3 +38,14 @@ struct GridData {
     vz: atomic<i32>, // 12
     mass: atomic<i32>, // 16
 }
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+fn cellNumberThatContainsPos(pos: vec3f) -> vec3i {
+    let gridCellSize = (uniforms.gridMaxCoords - uniforms.gridMinCoords) / f32(uniforms.gridResolution);
+    let posFromGridOrigin = pos - uniforms.gridMinCoords;
+    return vec3i(
+        i32(posFromGridOrigin.x / gridCellSize.x),
+        i32(posFromGridOrigin.y / gridCellSize.y),
+        i32(posFromGridOrigin.z / gridCellSize.z),
+    );
+}

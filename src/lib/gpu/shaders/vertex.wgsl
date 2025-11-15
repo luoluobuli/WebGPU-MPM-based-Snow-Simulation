@@ -1,5 +1,3 @@
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
 @vertex
 fn vert(
     @location(0) pos: vec4f,
