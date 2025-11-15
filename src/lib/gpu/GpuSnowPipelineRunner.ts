@@ -62,8 +62,8 @@ export class GpuSnowPipelineRunner {
             device,
             particleDataBuffer1: mpmManager.particleDataBuffer1,
             particleDataBuffer2: mpmManager.particleDataBuffer2,
-            gridDataBuffer1: mpmManager.gridDataBuffer1,
-            gridDataBuffer2: mpmManager.gridDataBuffer2,
+            gridDataBuffer1: mpmManager.gridDataBuffer,
+            gridDataBuffer2: mpmManager.gridDataBuffer,
             uniformsManager,
         });
         this.simulationStepPipelineManager = simulationStepPipelineManager;

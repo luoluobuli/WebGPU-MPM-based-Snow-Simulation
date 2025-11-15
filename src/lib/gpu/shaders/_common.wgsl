@@ -20,7 +20,8 @@ struct ParticleData {
     _hom: f32, // 16; vertex shader expects a vec4
     vel: vec3f, // 28
     // 32
-    deform: mat3x3f, // 80
+    affine: vec3f, // 44
+    mass: f32, // 48
 }
 
 struct GridData {

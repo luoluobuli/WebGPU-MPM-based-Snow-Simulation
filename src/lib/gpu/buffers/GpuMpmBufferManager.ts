@@ -19,19 +19,19 @@ export class GpuMpmBufferManager {
     }) {
         const particleDataBuffer1 = device.createBuffer({
             label: "particle data ping-pong buffer 1",
-            size: nParticles * 80,
+            size: nParticles * 48,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
         });
         const particleDataBuffer2 = device.createBuffer({
             label: "particle data ping-pong buffer 2",
-            size: nParticles * 80,
+            size: nParticles * 48,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
         });
-        const particleDataArray = new Float32Array(nParticles * 20);
+        const particleDataArray = new Float32Array(nParticles * 12);
         
         if (initialPositions !== null && initialPositions.length >= nParticles * 3) {
             for (let i = 0; i < nParticles; i++) {
-                const offset = i * 20;
+                const offset = i * 12;
 
                 particleDataArray.set(
                     new Float32Array([
@@ -39,17 +39,15 @@ export class GpuMpmBufferManager {
                         initialPositions[i * 3], initialPositions[i * 3 + 1], initialPositions[i * 3 + 2], 1,
                         // vel
                         0, 0, 0, 0,
-                        // deform
-                        1, 0, 0, 0,
-                        0, 1, 0, 0,
-                        0, 0, 1, 0,
+                        // affine + mass
+                        0, 0, 0, 1,
                     ]),
                     offset,
                 );
             }
         } else {
             for (let i = 0; i < nParticles; i++) {
-                const offset = i * 20;
+                const offset = i * 12;
 
                 particleDataArray.set(
                     new Float32Array([
@@ -57,10 +55,8 @@ export class GpuMpmBufferManager {
                         Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, 1,
                         // vel
                         0, 0, 0, 0,
-                        // deform
-                        1, 0, 0, 0,
-                        0, 1, 0, 0,
-                        0, 0, 1, 0,
+                        // affine + mass
+                        0, 0, 0, 1,
                     ]),
                     offset,
                 );

@@ -47,7 +47,7 @@ export class GpuPointRenderPipelineManager {
                                 format: "float32x4",
                             },
                         ],
-                        arrayStride: 80,
+                        arrayStride: 48,
                         stepMode: "vertex",
                     },
                 ],
