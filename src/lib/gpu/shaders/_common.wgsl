@@ -54,8 +54,13 @@ struct MpmParticleCellInfo {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 
+fn calculateCellDims() -> vec3f {
+    return (uniforms.gridMaxCoords - uniforms.gridMinCoords) / f32(uniforms.gridResolution);
+}
+
+
 fn calculateMpmParticleCellInfo(pos: vec3f) -> MpmParticleCellInfo {
-    let cellDims = (uniforms.gridMaxCoords - uniforms.gridMinCoords) / f32(uniforms.gridResolution);
+    let cellDims = calculateCellDims();
     let posFromGridMin = pos - uniforms.gridMinCoords;
 
     let cellNumber = vec3i(
