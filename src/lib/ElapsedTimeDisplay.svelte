@@ -1,24 +1,28 @@
 <script lang="ts">
 const {
-    value,
+    ns,
+    showMsFractionalPart = true,
 }: {
-    value: bigint,
+    ns: bigint,
+    showMsFractionalPart?: boolean,
 } = $props();
 
-const msWhole = $derived(value / 1_000_000n);
-const usWhole = $derived(value / 1_000n - msWhole * 1_000n);
-const nsWhole = $derived(value - usWhole * 1_000n - msWhole * 1_000_000n);
+const msWhole = $derived(ns / 1_000_000n);
+const usWhole = $derived(ns / 1_000n - msWhole * 1_000n);
+const nsWhole = $derived(ns - usWhole * 1_000n - msWhole * 1_000_000n);
 
-const framesPerSecondWhole = $derived(value === 0n ? null : 1_000_000_000n / value)
-const mframesPerSecondWhole = $derived(framesPerSecondWhole === null ? null : 1_000_000_000_000n / value - framesPerSecondWhole * 1_000n);
+const framesPerSecondWhole = $derived(ns === 0n ? null : 1_000_000_000n / ns)
+const mframesPerSecondWhole = $derived(framesPerSecondWhole === null ? null : 1_000_000_000_000n / ns - framesPerSecondWhole * 1_000n);
 </script>
 
 <elapsed-time-display>
     <elapsed-time-measurement>
         <integral-part>{msWhole}</integral-part>
-        <radix-point>.</radix-point>
-        <fractional-part>{usWhole.toString().padStart(3, "0")}</fractional-part>
-        <fractional-part>{nsWhole.toString().padStart(3, "0")}</fractional-part>
+        {#if showMsFractionalPart}
+            <radix-point>.</radix-point>
+            <fractional-part>{usWhole.toString().padStart(3, "0")}</fractional-part>
+            <fractional-part>{nsWhole.toString().padStart(3, "0")}</fractional-part>
+        {/if}
 
         <units-label>ms</units-label>
     </elapsed-time-measurement>

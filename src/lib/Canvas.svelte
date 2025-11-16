@@ -8,18 +8,18 @@ import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
 import { loadGltfScene } from "./loadScene";
     import { samplePointsInMeshVolume } from "./samplePointsInMesh";
     import type { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
-    import type { GpuElapsedTime } from "./GpuElapsedTime.svelte";
+    import type { ElapsedTime } from "./ElapsedTime.svelte";
 
 let {
     onStatusChange,
     onErr,
     renderMethodType,
-    gpuElapsedTime,
+    elapsedTime,
 }: {
     onStatusChange: (text: string) => void,
     onErr: (text: string) => void,
     renderMethodType: GpuRenderMethodType,
-    gpuElapsedTime: GpuElapsedTime,
+    elapsedTime: ElapsedTime,
 } = $props();
 
 
@@ -71,8 +71,8 @@ onMount(async () => {
     onStatusChange("off and racing");
 
     stopSimulation = runner.loop({
-        onGpuElapsedComputeTimeUpdate: gpuElapsedTimeNs => gpuElapsedTime.computePassNs = gpuElapsedTimeNs,
-        onGpuElapsedRenderTimeUpdate: gpuElapsedTimeNs => gpuElapsedTime.renderPassNs = gpuElapsedTimeNs,
+        onAnimationFrameTimeUpdate: ms => elapsedTime.animationFrameTimeNs = BigInt(ms) * 1_000_000n,
+        onGpuTimeUpdate: ns => elapsedTime.gpuTimeNs = ns,
     });
 });
 

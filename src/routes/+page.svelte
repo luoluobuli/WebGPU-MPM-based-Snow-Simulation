@@ -2,7 +2,7 @@
 import Canvas from "$lib/Canvas.svelte";
     import Separator from "$lib/components/Separator.svelte";
     import { GpuRenderMethodType } from "$lib/gpu/pipelines/GpuRenderMethod";
-    import { GpuElapsedTime } from "$lib/GpuElapsedTime.svelte";
+    import { ElapsedTime } from "$lib/ElapsedTime.svelte";
     import ElapsedTimeDisplay from "$lib/ElapsedTimeDisplay.svelte";
 
 let status = $state("");
@@ -10,7 +10,7 @@ let err = $state<string | null>(null);
 
 let renderMethodType = $state(GpuRenderMethodType.Raymarch);
 
-const gpuElapsedTime = new GpuElapsedTime();
+const elapsedTime = new ElapsedTime();
 </script>
 
 <main>
@@ -18,7 +18,7 @@ const gpuElapsedTime = new GpuElapsedTime();
         onStatusChange={text => status = text}
         onErr={text => err = text}
         {renderMethodType}
-        {gpuElapsedTime}
+        elapsedTime={elapsedTime}
     />
 
     <overlays-panel>
@@ -53,22 +53,27 @@ const gpuElapsedTime = new GpuElapsedTime();
 
         <Separator />
 
-        <h3>GPU elapsed time</h3>
+        <h3>Elapsed time</h3>
 
         <dl>
-            <dt>Compute pass</dt>
+            <dt>Time spent in GPU (sample)</dt>
             <dd>
-                <ElapsedTimeDisplay value={gpuElapsedTime.computePassNs} />
+                <ElapsedTimeDisplay
+                    ns={elapsedTime.gpuTimeNs}
+                />
             </dd>
 
-            <dt>Render pass</dt>
+            <dt>Total animation frame time</dt>
             <dd>
-                <ElapsedTimeDisplay value={gpuElapsedTime.renderPassNs} />
+                <ElapsedTimeDisplay
+                    ns={elapsedTime.animationFrameTimeNs}
+                    showMsFractionalPart={false}
+                />
             </dd>
         </dl>
     </overlays-panel>
 </main>
-
+ns
 <style lang="scss">
 main {
     width: 100vw;

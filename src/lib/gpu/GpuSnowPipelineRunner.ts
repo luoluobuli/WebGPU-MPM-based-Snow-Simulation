@@ -23,6 +23,7 @@ export class GpuSnowPipelineRunner {
     private readonly simulationStepPipelineManager: GpuSimulationStepPipelineManager;
     private readonly pointsRenderPipelineManager: GpuPointsRenderPipelineManager;
     private readonly raymarchRenderPipelineManager: GpuRaymarchRenderPipelineManager;
+    private readonly measurePerf: boolean;
 
     private readonly getRenderMethodType: () => GpuRenderMethodType;
 
@@ -88,16 +89,15 @@ export class GpuSnowPipelineRunner {
             ? new GpuPerformanceMeasurementBufferManager({device})
             : null;
 
+        this.measurePerf = measurePerf;
     }
 
     private async addSimulationStepsComputePass({
         commandEncoder,
         nSteps,
-        onGpuElapsedComputeTimeUpdate,
     }: {
         commandEncoder: GPUCommandEncoder,
         nSteps: number,
-        onGpuElapsedComputeTimeUpdate?: (gpuElapsedTimeNs: bigint) => void,
     }) {
         const computePassEncoder = commandEncoder.beginComputePass({
             label: "simulation step compute pass",
@@ -137,10 +137,6 @@ export class GpuSnowPipelineRunner {
         }
 
         computePassEncoder.end();
-
-        if (this.performanceMeasurementManager !== null) {
-            this.performanceMeasurementManager.addComputeResolve(commandEncoder);
-        }
     }
 
     async addRenderPass(commandEncoder: GPUCommandEncoder) {
@@ -175,18 +171,14 @@ export class GpuSnowPipelineRunner {
         this.selectRenderPipelineManager().addDraw(renderPassEncoder);
 
         renderPassEncoder.end();
-
-        if (this.performanceMeasurementManager !== null) {
-            this.performanceMeasurementManager.addRenderResolve(commandEncoder);
-        }
     }
 
     loop({
-        onGpuElapsedComputeTimeUpdate,
-        onGpuElapsedRenderTimeUpdate,
+        onGpuTimeUpdate,
+        onAnimationFrameTimeUpdate,
     }: {
-        onGpuElapsedComputeTimeUpdate?: (gpuElapsedTimeNs: bigint) => void,
-        onGpuElapsedRenderTimeUpdate?: (gpuElapsedTimeNs: bigint) => void,
+        onGpuTimeUpdate?: (ns: bigint) => void,
+        onAnimationFrameTimeUpdate?: (ms: number) => void,
     } = {}) {
         let handle = 0;
         let canceled = false;
@@ -196,7 +188,19 @@ export class GpuSnowPipelineRunner {
 
         let nSimulationStep = 0;
         let simulationStartTime = Date.now();
+        
+        let lastFrameTime = 0;
+        if (this.measurePerf) {
+            lastFrameTime = performance.now();
+        }
+
         const loop = async () => {
+            if (this.measurePerf) {
+                const newFrameTime = performance.now();
+                onAnimationFrameTimeUpdate?.(newFrameTime - lastFrameTime);
+                lastFrameTime = newFrameTime;
+            }
+
             const commandEncoder = this.device.createCommandEncoder({
                 label: "loop command encoder",
             });
@@ -211,7 +215,6 @@ export class GpuSnowPipelineRunner {
                 this.addSimulationStepsComputePass({
                     commandEncoder,
                     nSteps,
-                    onGpuElapsedComputeTimeUpdate,
                 });
             }
             nSimulationStep += nSteps;
@@ -219,20 +222,18 @@ export class GpuSnowPipelineRunner {
 
             this.addRenderPass(commandEncoder);
 
+            if (this.performanceMeasurementManager !== null) {
+                this.performanceMeasurementManager.addResolve(commandEncoder);
+            }
+
             this.device.queue.submit([commandEncoder.finish()]);
             // await this.device.queue.onSubmittedWorkDone();
 
             if (this.performanceMeasurementManager !== null) {
-                this.performanceMeasurementManager.mapGpuElapsedComputeTimeNs()
+                this.performanceMeasurementManager.mapTime()
                     .then(elapsedTimeNs => {
                         if (elapsedTimeNs === null) return;
-                        onGpuElapsedComputeTimeUpdate?.(elapsedTimeNs);
-                    });
-
-                this.performanceMeasurementManager.mapGpuElapsedRenderTimeNs()
-                    .then(elapsedTimeNs => {
-                        if (elapsedTimeNs === null) return;
-                        onGpuElapsedRenderTimeUpdate?.(elapsedTimeNs);
+                        onGpuTimeUpdate?.(elapsedTimeNs);
                     });
             }
 
