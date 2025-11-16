@@ -4,6 +4,7 @@ import { GpuSimulationStepPipelineManager } from "./pipelines/GpuSimulationStepP
 import { GpuUniformsBufferManager } from "./buffers/GpuUniformsBufferManager";
 import { GpuMpmBufferManager } from "./buffers/GpuMpmBufferManager";
 import { GpuRaymarchRenderPipelineManager } from "./pipelines/GpuRaymarchRenderPipelineManager";
+import { GpuRenderMethodType, type GpuRenderMethod } from "./pipelines/GpuRenderMethod";
 
 const MAX_SIMULATION_DRIFT_MS = 1_000;
 const FP_SCALE = 1024.0;
@@ -17,10 +18,11 @@ export class GpuSnowPipelineRunner {
     private readonly camera: Camera;
 
     private readonly uniformsManager: GpuUniformsBufferManager;
-    private readonly mpmManager: GpuMpmBufferManager;
     private readonly simulationStepPipelineManager: GpuSimulationStepPipelineManager;
     private readonly pointsRenderPipelineManager: GpuPointsRenderPipelineManager;
     private readonly raymarchRenderPipelineManager: GpuRaymarchRenderPipelineManager;
+
+    private readonly getRenderMethodType: () => GpuRenderMethodType;
 
     constructor({
         device,
@@ -31,6 +33,7 @@ export class GpuSnowPipelineRunner {
         simulationTimestepS,
         camera,
         initialPositions,
+        getRenderMethodType,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
@@ -40,6 +43,7 @@ export class GpuSnowPipelineRunner {
         simulationTimestepS: number,
         camera: Camera,
         initialPositions?: Float32Array,
+        getRenderMethodType: () => GpuRenderMethodType,
     }) {
         this.device = device;
         this.context = context;
@@ -59,7 +63,6 @@ export class GpuSnowPipelineRunner {
         uniformsManager.writeGridMaxCoords([2, 2, 4]);
 
         const mpmManager = new GpuMpmBufferManager({device, nParticles, gridResolution, initialPositions});
-        this.mpmManager = mpmManager;
 
         const simulationStepPipelineManager = new GpuSimulationStepPipelineManager({
             device,
@@ -69,11 +72,13 @@ export class GpuSnowPipelineRunner {
         });
         this.simulationStepPipelineManager = simulationStepPipelineManager;
 
-        const pointsRenderPipelineManager = new GpuPointsRenderPipelineManager({device, format, uniformsManager});
+        const pointsRenderPipelineManager = new GpuPointsRenderPipelineManager({device, format, uniformsManager, mpmManager});
         this.pointsRenderPipelineManager = pointsRenderPipelineManager;
 
         const raymarchRenderPipelineManager = new GpuRaymarchRenderPipelineManager({device, format, uniformsManager, mpmManager});
         this.raymarchRenderPipelineManager = raymarchRenderPipelineManager;
+
+        this.getRenderMethodType = getRenderMethodType;
     }
 
     async doSimulationSteps(nSteps: number) {
@@ -81,7 +86,9 @@ export class GpuSnowPipelineRunner {
             label: "simulation step command encoder",
         });
 
-        const computePassEncoder = commandEncoder.beginComputePass();
+        const computePassEncoder = commandEncoder.beginComputePass({
+            label: "simulation step compute pass",
+        });
         
         for (let i = 0; i < nSteps; i++) {
             this.simulationStepPipelineManager.addDispatch({
@@ -122,17 +129,28 @@ export class GpuSnowPipelineRunner {
         const commandEncoder = this.device.createCommandEncoder({
             label: "render command encoder",
         });
-        // this.pointsRenderPipelineManager.addRenderPass({
-        //     commandEncoder,
-        //     context: this.context,
-        //     particleDataBuffer: this.mpmManager.particleDataBuffer,
-        //     nParticles: this.nParticles,
-        // });
 
-        this.raymarchRenderPipelineManager.addRenderPass({
-            commandEncoder,
-            context: this.context,
+        const renderPassEncoder = commandEncoder.beginRenderPass({
+            label: "render pass",
+            colorAttachments: [
+                {
+                    clearValue: {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                        a: 1,
+                    },
+
+                    loadOp: "clear",
+                    storeOp: "store",
+                    view: this.context.getCurrentTexture().createView(),
+                },
+            ],
         });
+
+        this.selectRenderPipelineManager().addDraw(renderPassEncoder);
+
+        renderPassEncoder.end();
 
         this.device.queue.submit([commandEncoder.finish()]);
         await this.device.queue.onSubmittedWorkDone();
@@ -172,5 +190,15 @@ export class GpuSnowPipelineRunner {
             cancelAnimationFrame(handle);
             canceled = true;
         };
+    }
+
+    private selectRenderPipelineManager() {
+        switch (this.getRenderMethodType()) {
+            case GpuRenderMethodType.Points:
+                return this.pointsRenderPipelineManager;
+            
+            case GpuRenderMethodType.Raymarch:
+                return this.raymarchRenderPipelineManager;
+        }
     }
 }

@@ -1,4 +1,4 @@
-# Unnamed snow sim
+# WebGPU snow sim
 
 
 ## Local development

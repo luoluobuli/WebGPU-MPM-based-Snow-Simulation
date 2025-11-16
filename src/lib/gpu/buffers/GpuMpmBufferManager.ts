@@ -3,6 +3,7 @@
 export class GpuMpmBufferManager {
     readonly particleDataBuffer: GPUBuffer;
     readonly gridDataBuffer: GPUBuffer;
+    readonly nParticles: number;
 
 
     constructor({
@@ -67,7 +68,7 @@ export class GpuMpmBufferManager {
 
 
         this.particleDataBuffer = particleDataBuffer;
-
         this.gridDataBuffer = gridDataBuffer;
+        this.nParticles = nParticles;
     }
 }

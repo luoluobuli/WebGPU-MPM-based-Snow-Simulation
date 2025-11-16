@@ -1,7 +1,8 @@
 import { mat4, type Mat4 } from "wgpu-matrix";
 
 export interface CameraControlScheme {
-    viewTransform(): Mat4,
+    viewMat(): Mat4;
+    viewInvMat(): Mat4;
 }
 
 export interface CameraScreenDims {
@@ -20,8 +21,8 @@ export class Camera {
     readonly aspect = $derived.by(() => this.screenDims.width() / this.screenDims.height());
 
     readonly proj = $derived.by(() => mat4.perspective(this.fov, this.aspect, this.zNear, this.zFar));
-    readonly viewInv = $derived.by(() => this.controlScheme.viewTransform());
-    readonly viewInvProj = $derived.by(() => mat4.mul(this.proj, this.viewInv));
+    readonly viewInv = $derived.by(() => this.controlScheme.viewInvMat());
+    readonly viewInvProj = $derived.by(() => mat4.mul(this.proj, this.controlScheme.viewMat()));
 
     constructor({
         controlScheme,

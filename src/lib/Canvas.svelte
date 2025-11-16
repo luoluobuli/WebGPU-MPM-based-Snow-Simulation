@@ -7,13 +7,16 @@ import Draggable, {type Point} from "./Draggable.svelte";
 import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
 import { loadGltfScene } from "./loadScene";
     import { samplePointsInMeshVolume } from "./samplePointsInMesh";
+    import type { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
 
 let {
     onStatusChange,
     onErr,
+    renderMethodType,
 }: {
     onStatusChange: (text: string) => void,
     onErr: (text: string) => void,
+    renderMethodType: GpuRenderMethodType,
 } = $props();
 
 
@@ -22,7 +25,7 @@ let canvas: HTMLCanvasElement;
 let width = $state(300);
 let height = $state(150);
 
-let nParticles = $state(1_000);
+let nParticles = $state(250);
 let gridResolution = $state(8);
 let simulationTimestepS = $state(1 / 144);
 
@@ -47,7 +50,17 @@ onMount(async () => {
     
     const initialPositions = samplePointsInMeshVolume(vertices, nParticles);
     
-    const runner = new GpuSnowPipelineRunner({device, format, context, nParticles, gridResolution, simulationTimestepS, camera, initialPositions});
+    const runner = new GpuSnowPipelineRunner({
+        device,
+        format,
+        context,
+        nParticles,
+        gridResolution,
+        simulationTimestepS,
+        camera,
+        initialPositions,
+        getRenderMethodType: () => renderMethodType,
+    });
 
     updateCanvasSize();
 

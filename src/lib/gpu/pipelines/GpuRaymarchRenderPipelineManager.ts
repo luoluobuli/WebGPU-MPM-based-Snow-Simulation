@@ -3,8 +3,9 @@ import commonModuleSrc from "$lib/gpu/shaders/_common.wgsl?raw";
 import raymarchVertexModuleSrc from "$lib/gpu/shaders/raymarchVertex.wgsl?raw";
 import raymarchFragmentModuleSrc from "$lib/gpu/shaders/raymarchFragment.wgsl?raw";
 import type { GpuMpmBufferManager } from "../buffers/GpuMpmBufferManager";
+import type { GpuRenderMethod } from "./GpuRenderMethod";
 
-export class GpuRaymarchRenderPipelineManager {
+export class GpuRaymarchRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;
     readonly raymarchStorageBindGroup: GPUBindGroup;
     readonly fullscreenBuffer: GPUBuffer;
@@ -125,35 +126,11 @@ export class GpuRaymarchRenderPipelineManager {
         this.raymarchStorageBindGroup = raymarchStorageBindGroup;
     }
 
-    addRenderPass({
-        commandEncoder,
-        context,
-    }: {
-        commandEncoder: GPUCommandEncoder,
-        context: GPUCanvasContext,
-    }) {
-        const renderPassEncoder = commandEncoder.beginRenderPass({
-            label: "points render pass",
-            colorAttachments: [
-                {
-                    clearValue: {
-                        r: 0,
-                        g: 0,
-                        b: 0,
-                        a: 1,
-                    },
-
-                    loadOp: "clear",
-                    storeOp: "store",
-                    view: context.getCurrentTexture().createView(),
-                },
-            ],
-        });
+    addDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
         renderPassEncoder.setBindGroup(1, this.raymarchStorageBindGroup);
         renderPassEncoder.setVertexBuffer(0, this.fullscreenBuffer);
         renderPassEncoder.setPipeline(this.renderPipeline);
         renderPassEncoder.draw(4);
-        renderPassEncoder.end();
     }
 }

@@ -2,20 +2,25 @@ import type { GpuUniformsBufferManager } from "$lib/gpu/buffers/GpuUniformsBuffe
 import commonModuleSrc from "$lib/gpu/shaders/_common.wgsl?raw";
 import pointsVertexModuleSrc from "$lib/gpu/shaders/pointsVertex.wgsl?raw";
 import pointsFragmentModuleSrc from "$lib/gpu/shaders/pointsFragment.wgsl?raw";
+import type { GpuMpmBufferManager } from "../buffers/GpuMpmBufferManager";
+import type { GpuRenderMethod } from "./GpuRenderMethod";
 
-export class GpuPointsRenderPipelineManager {
+export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;
 
     readonly uniformsManager: GpuUniformsBufferManager;
+    readonly mpmManager: GpuMpmBufferManager;
 
     constructor({
         device,
         format,
         uniformsManager,
+        mpmManager,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
         uniformsManager: GpuUniformsBufferManager,
+        mpmManager: GpuMpmBufferManager,
     }) {
         const vertexModule = device.createShaderModule({
             label: "points vertex module",
@@ -69,40 +74,13 @@ export class GpuPointsRenderPipelineManager {
         });
 
         this.uniformsManager = uniformsManager;
+        this.mpmManager = mpmManager;
     }
 
-    addRenderPass({
-        commandEncoder,
-        context,
-        particleDataBuffer,
-        nParticles,
-    }: {
-        commandEncoder: GPUCommandEncoder,
-        context: GPUCanvasContext,
-        particleDataBuffer: GPUBuffer,
-        nParticles: number,
-    }) {
-        const renderPassEncoder = commandEncoder.beginRenderPass({
-            label: "points render pass",
-            colorAttachments: [
-                {
-                    clearValue: {
-                        r: 0,
-                        g: 0,
-                        b: 0,
-                        a: 1,
-                    },
-
-                    loadOp: "clear",
-                    storeOp: "store",
-                    view: context.getCurrentTexture().createView(),
-                },
-            ],
-        });
+    addDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
-        renderPassEncoder.setVertexBuffer(0, particleDataBuffer);
+        renderPassEncoder.setVertexBuffer(0, this.mpmManager.particleDataBuffer);
         renderPassEncoder.setPipeline(this.renderPipeline);
-        renderPassEncoder.draw(nParticles);
-        renderPassEncoder.end();
+        renderPassEncoder.draw(this.mpmManager.nParticles);
     }
 }
