@@ -25,10 +25,11 @@ export class CameraOrbit implements CameraControlScheme {
     ));
     readonly rot = $derived(this.orientation);
 
-    readonly view = $derived(mat4.inverse(mat4.mul(mat4.translation(this.pos), this.rot)));
+    readonly viewInv = $derived(mat4.mul(mat4.translation(this.pos), this.rot));
+    readonly view = $derived(mat4.inverse(this.viewInv));
 
     viewTransform(): Mat4 {
-        return this.view;
+        return this.viewInv;
     }
 
     pan(movement: Point) {

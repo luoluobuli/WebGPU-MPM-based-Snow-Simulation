@@ -22,7 +22,7 @@ fn doParticleToGrid(
         for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
             for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
                 let cellNumber = particleInfo.startCellNumber + vec3i(offsetX, offsetY, offsetZ);
-                if any(vec3i(0) > cellNumber) || any(cellNumber >= vec3i(uniforms.gridResolution)) { continue; }
+                if any(vec3i(0) > cellNumber) || any(cellNumber >= vec3i(i32(uniforms.gridResolution))) { continue; }
 
 
 

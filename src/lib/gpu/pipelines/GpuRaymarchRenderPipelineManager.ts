@@ -63,7 +63,10 @@ export class GpuRaymarchRenderPipelineManager {
         
         const renderPipelineLayout = device.createPipelineLayout({
             label: "raymarch render pipeline",
-            bindGroupLayouts: [uniformsManager.bindGroupLayout],
+            bindGroupLayouts: [
+                uniformsManager.bindGroupLayout,
+                raymarchStorageBindGroupLayout,
+            ],
         });
 
         const fullscreenBuffer = device.createBuffer({
