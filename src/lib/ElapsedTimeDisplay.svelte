@@ -2,9 +2,11 @@
 const {
     ns,
     showMsFractionalPart = true,
+    inverseLabel = "fps",
 }: {
     ns: bigint,
     showMsFractionalPart?: boolean,
+    inverseLabel?: string,
 } = $props();
 
 const msWhole = $derived(ns / 1_000_000n);
@@ -32,7 +34,7 @@ const mframesPerSecondWhole = $derived(framesPerSecondWhole === null ? null : 1_
         <radix-point>.</radix-point>
         <fractional-part>{mframesPerSecondWhole?.toString().padStart(3, "0") ?? "---"}</fractional-part>
 
-        <units-label>fps</units-label>
+        <units-label>{inverseLabel}</units-label>
     </elapsed-time-measurement>
 </elapsed-time-display>
 
@@ -60,10 +62,17 @@ integral-part {
     font-size: 1.25rem;
 }
 
+fractional-part {
+    font-size: 1rem;
+}
+
 integral-part,
 radix-point,
-fractional-part,
 fractional-part {
     font-family: monospace;
+}
+
+units-label {
+    opacity: 0.5;
 }
 </style>

@@ -1,6 +1,6 @@
 @group(1) @binding(0) var<storage, read> particleData: array<ParticleData>;
 
-const SPHERE_RADIUS = 0.025;
+const SPHERE_RADIUS = 0.02;
 const SMOOTHNESS = 1 / f32(2 << 4);
 
 fn smoothMin(a: f32, b: f32) -> f32 {
@@ -52,7 +52,7 @@ fn frag(
 
     var found = false;
     const MAX_N_STEPS = 100u;
-    const COLLISION_DIST = 1e-4;
+    const COLLISION_DIST = 1e-3;
     const MAX_DIST = 100;
 
     for (var nStep = 0u; nStep < MAX_N_STEPS; nStep++) {

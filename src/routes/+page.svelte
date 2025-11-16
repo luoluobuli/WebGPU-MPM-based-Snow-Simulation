@@ -60,6 +60,7 @@ const elapsedTime = new ElapsedTime();
             <dd>
                 <ElapsedTimeDisplay
                     ns={elapsedTime.gpuTimeNs}
+                    inverseLabel="commands / s"
                 />
             </dd>
 
