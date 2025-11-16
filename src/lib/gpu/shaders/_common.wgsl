@@ -20,8 +20,8 @@ struct Uniforms {
     // 32
     gridMaxCoords: vec3f, // 44
     // 48
-    viewInvProjMat: mat4x4f, // 112
-    viewInvMat: mat4x4f, // 176
+    viewProjMat: mat4x4f, // 112
+    viewProjInvMat: mat4x4f, // 176
 }
 
 struct ParticleData {

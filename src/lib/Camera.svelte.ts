@@ -21,8 +21,10 @@ export class Camera {
     readonly aspect = $derived.by(() => this.screenDims.width() / this.screenDims.height());
 
     readonly proj = $derived.by(() => mat4.perspective(this.fov, this.aspect, this.zNear, this.zFar));
-    readonly viewInv = $derived.by(() => this.controlScheme.viewInvMat());
-    readonly viewInvProj = $derived.by(() => mat4.mul(this.proj, this.controlScheme.viewMat()));
+    readonly viewMat = $derived.by(() => this.controlScheme.viewMat());
+    readonly viewInvMat = $derived.by(() => this.controlScheme.viewInvMat());
+    readonly viewProjMat = $derived.by(() => mat4.mul(this.proj, this.viewMat));
+    readonly viewProjInvMat = $derived.by(() => mat4.inverse(this.viewProjMat));
 
     constructor({
         controlScheme,

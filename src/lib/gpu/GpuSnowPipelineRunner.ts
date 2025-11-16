@@ -123,8 +123,8 @@ export class GpuSnowPipelineRunner {
     }
 
     async render() {
-        this.uniformsManager.writeViewInvProjMat(this.camera.viewInvProj);
-        this.uniformsManager.writeViewInvMat(this.camera.viewInv);
+        this.uniformsManager.writeViewProjMat(this.camera.viewProjMat);
+        this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
         
         const commandEncoder = this.device.createCommandEncoder({
             label: "render command encoder",

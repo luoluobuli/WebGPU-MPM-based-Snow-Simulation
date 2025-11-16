@@ -6,9 +6,17 @@ fn frag(
 ) -> @location(0) vec4f {
     if arrayLength(&particleData) == 0 { return vec4f(0, 0, 0, 1); }
 
-    let rayDir = normalize((uniforms.viewInvMat * vec4f(vec3f(in.uvCentered, -1), 0)).xyz);
+    // use inverse view-projection to get ray direction that respects FOV and aspect ratio
+    let nearPointHom = uniforms.viewProjInvMat * vec4f(in.uvCentered, 0, 1);
+    let farPointHom = uniforms.viewProjInvMat * vec4f(in.uvCentered, 1, 1);
     
-    var rayPos = (uniforms.viewInvMat * vec4f(0, 0, 0, 1)).xyz;
+    let nearPoint = nearPointHom.xyz / nearPointHom.w;
+    let farPoint = farPointHom.xyz / farPointHom.w;
+    
+
+
+    let rayDir = normalize(farPoint - nearPoint);
+    var rayPos = nearPoint;
 
 
     var found = false;

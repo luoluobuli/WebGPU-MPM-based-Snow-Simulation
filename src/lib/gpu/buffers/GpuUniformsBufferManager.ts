@@ -71,11 +71,11 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 32, new Float32Array(max));
     }
 
-    writeViewInvProjMat(viewInvProjMat: Mat4) {
-        this.device.queue.writeBuffer(this.buffer, 48, viewInvProjMat.buffer);
+    writeViewProjMat(viewProjMat: Mat4) {
+        this.device.queue.writeBuffer(this.buffer, 48, viewProjMat.buffer);
     }
 
-    writeViewInvMat(viewInvMat: Mat4) {
-        this.device.queue.writeBuffer(this.buffer, 112, viewInvMat.buffer);
+    writeViewProjInvMat(viewProjInvMat: Mat4) {
+        this.device.queue.writeBuffer(this.buffer, 112, viewProjInvMat.buffer);
     }
 }

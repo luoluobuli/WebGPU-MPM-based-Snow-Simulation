@@ -4,7 +4,7 @@ fn vert(
 ) -> PointsVertexOut {
     var out: PointsVertexOut;
 
-    let frustumPos: vec4f = uniforms.viewInvProjMat * pos;
+    let frustumPos: vec4f = uniforms.viewProjMat * pos;
 
     out.posBuiltin = frustumPos;
 
