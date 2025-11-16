@@ -6,6 +6,8 @@ import { GpuMpmBufferManager } from "./buffers/GpuMpmBufferManager";
 import { GpuRaymarchRenderPipelineManager } from "./pipelines/GpuRaymarchRenderPipelineManager";
 import { GpuRenderMethodType, type GpuRenderMethod } from "./pipelines/GpuRenderMethod";
 import { GpuPerformanceMeasurementBufferManager } from "./buffers/GpuPerformanceMeasurementBufferManager";
+import { GpuMeshBufferManager } from "./buffers/GpuMeshBufferManager";
+import { GpuParticleInitPipelineManager as GpuParticleScatterPipelineManager } from "./pipelines/GpuParticleScatterPipelineManager";
 
 const MAX_SIMULATION_DRIFT_MS = 1_000;
 const FP_SCALE = 1024.0;
@@ -23,6 +25,7 @@ export class GpuSnowPipelineRunner {
     private readonly simulationStepPipelineManager: GpuSimulationStepPipelineManager;
     private readonly pointsRenderPipelineManager: GpuPointsRenderPipelineManager;
     private readonly raymarchRenderPipelineManager: GpuRaymarchRenderPipelineManager;
+    private readonly particleScatterPipelineManager: GpuParticleScatterPipelineManager;
     private readonly measurePerf: boolean;
 
     private readonly getRenderMethodType: () => GpuRenderMethodType;
@@ -35,7 +38,7 @@ export class GpuSnowPipelineRunner {
         gridResolution,
         simulationTimestepS,
         camera,
-        initialPositions,
+        meshVertices,
         getRenderMethodType,
         measurePerf,
     }: {
@@ -46,7 +49,7 @@ export class GpuSnowPipelineRunner {
         gridResolution: number,
         simulationTimestepS: number,
         camera: Camera,
-        initialPositions?: Float32Array,
+        meshVertices: number[][],
         getRenderMethodType: () => GpuRenderMethodType,
         measurePerf: boolean,
     }) {
@@ -67,7 +70,24 @@ export class GpuSnowPipelineRunner {
         uniformsManager.writeGridMinCoords([-2, -2, 0]);
         uniformsManager.writeGridMaxCoords([2, 2, 4]);
 
-        const mpmManager = new GpuMpmBufferManager({device, nParticles, gridResolution, initialPositions});
+        const mpmManager = new GpuMpmBufferManager({
+            device,
+            nParticles,
+            gridResolution,
+        });
+
+
+        const meshManager = new GpuMeshBufferManager({device, vertices: meshVertices});
+        uniformsManager.writeMeshMinCoords(meshManager.minCoords);
+        uniformsManager.writeMeshMaxCoords(meshManager.maxCoords);
+        
+        const particleScatterPipelineManager = new GpuParticleScatterPipelineManager({
+            device,
+            particleDataBuffer: mpmManager.particleDataBuffer,
+            meshVerticesBuffer: meshManager.meshVerticesBuffer,
+            uniformsManager,
+        });
+        this.particleScatterPipelineManager = particleScatterPipelineManager;
 
         const simulationStepPipelineManager = new GpuSimulationStepPipelineManager({
             device,
@@ -92,6 +112,19 @@ export class GpuSnowPipelineRunner {
         this.measurePerf = measurePerf;
     }
 
+    scatterParticlesInMeshVolume() {
+        const commandEncoder = this.device.createCommandEncoder({
+            label: "particle scatter command encoder",
+        });
+
+        this.particleScatterPipelineManager.addDispatch({
+            commandEncoder,
+            nParticles: this.nParticles,
+        });
+
+        this.device.queue.submit([commandEncoder.finish()]);
+    }
+
     private async addSimulationStepsComputePass({
         commandEncoder,
         nSteps,
@@ -101,13 +134,6 @@ export class GpuSnowPipelineRunner {
     }) {
         const computePassEncoder = commandEncoder.beginComputePass({
             label: "simulation step compute pass",
-            // timestampWrites: this.performanceMeasurementManager !== null
-            //     ? {
-            //         querySet: this.performanceMeasurementManager.querySet,
-            //         beginningOfPassWriteIndex: 0,
-            //         endOfPassWriteIndex: 1,
-            //     }
-            //     : undefined,
         });
         
         for (let i = 0; i < nSteps; i++) {

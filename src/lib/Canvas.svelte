@@ -6,8 +6,7 @@ import { CameraOrbit } from "./CameraOrbit.svelte";
 import Draggable, {type Point} from "./Draggable.svelte";
 import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
 import { loadGltfScene } from "./loadScene";
-    import { samplePointsInMeshVolume } from "./samplePointsInMesh";
-    import type { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
+import type { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
     import type { ElapsedTime } from "./ElapsedTime.svelte";
 
 let {
@@ -51,8 +50,6 @@ onMount(async () => {
     onStatusChange("loading geometry...");
     const {vertices} = await loadGltfScene("/monkey.glb");
     
-    const initialPositions = samplePointsInMeshVolume(vertices, nParticles);
-    
     const runner = new GpuSnowPipelineRunner({
         device,
         format,
@@ -61,7 +58,7 @@ onMount(async () => {
         gridResolution,
         simulationTimestepS,
         camera,
-        initialPositions,
+        meshVertices: vertices,
         getRenderMethodType: () => renderMethodType,
         measurePerf: supportsTimestamp,
     });
@@ -69,6 +66,8 @@ onMount(async () => {
     updateCanvasSize();
 
     onStatusChange("off and racing");
+
+    runner.scatterParticlesInMeshVolume();
 
     stopSimulation = runner.loop({
         onAnimationFrameTimeUpdate: ms => elapsedTime.animationFrameTimeNs = BigInt(ms) * 1_000_000n,
