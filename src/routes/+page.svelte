@@ -8,7 +8,7 @@ import Canvas from "$lib/Canvas.svelte";
 let status = $state("");
 let err = $state<string | null>(null);
 
-let renderMethodType = $state(GpuRenderMethodType.Raymarch);
+let renderMethodType = $state(GpuRenderMethodType.Points);
 
 const elapsedTime = new ElapsedTime();
 </script>
