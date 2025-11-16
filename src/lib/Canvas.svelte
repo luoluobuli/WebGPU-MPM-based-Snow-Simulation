@@ -8,15 +8,18 @@ import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
 import { loadGltfScene } from "./loadScene";
     import { samplePointsInMeshVolume } from "./samplePointsInMesh";
     import type { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
+    import type { GpuElapsedTime } from "./GpuElapsedTime.svelte";
 
 let {
     onStatusChange,
     onErr,
     renderMethodType,
+    gpuElapsedTime,
 }: {
     onStatusChange: (text: string) => void,
     onErr: (text: string) => void,
     renderMethodType: GpuRenderMethodType,
+    gpuElapsedTime: GpuElapsedTime,
 } = $props();
 
 
@@ -43,7 +46,7 @@ const camera = new Camera({controlScheme: orbit, screenDims: {width: () => width
 onMount(async () => {
     const response = await requestGpuDeviceAndContext({onStatusChange, onErr, canvas});
     if (response === null) return;
-    const {device, context, format} = response;
+    const {device, context, format, supportsTimestamp} = response;
     
     onStatusChange("loading geometry...");
     const {vertices} = await loadGltfScene("/monkey.glb");
@@ -60,13 +63,17 @@ onMount(async () => {
         camera,
         initialPositions,
         getRenderMethodType: () => renderMethodType,
+        measurePerf: supportsTimestamp,
     });
 
     updateCanvasSize();
 
     onStatusChange("off and racing");
 
-    stopSimulation = runner.loop();
+    stopSimulation = runner.loop({
+        onGpuElapsedComputeTimeUpdate: gpuElapsedTimeNs => gpuElapsedTime.computePassNs = gpuElapsedTimeNs,
+        onGpuElapsedRenderTimeUpdate: gpuElapsedTimeNs => gpuElapsedTime.renderPassNs = gpuElapsedTimeNs,
+    });
 });
 
 onDestroy(() => {

@@ -2,11 +2,15 @@
 import Canvas from "$lib/Canvas.svelte";
     import Separator from "$lib/components/Separator.svelte";
     import { GpuRenderMethodType } from "$lib/gpu/pipelines/GpuRenderMethod";
+    import { GpuElapsedTime } from "$lib/GpuElapsedTime.svelte";
+    import ElapsedTimeDisplay from "$lib/ElapsedTimeDisplay.svelte";
 
 let status = $state("");
 let err = $state<string | null>(null);
 
-let renderMethodType = $state(GpuRenderMethodType.Points);
+let renderMethodType = $state(GpuRenderMethodType.Raymarch);
+
+const gpuElapsedTime = new GpuElapsedTime();
 </script>
 
 <main>
@@ -14,6 +18,7 @@ let renderMethodType = $state(GpuRenderMethodType.Points);
         onStatusChange={text => status = text}
         onErr={text => err = text}
         {renderMethodType}
+        {gpuElapsedTime}
     />
 
     <overlays-panel>
@@ -45,6 +50,22 @@ let renderMethodType = $state(GpuRenderMethodType.Points);
             />
             <label for="render-method-type_raymarch">Raymarch</label>
         </div>
+
+        <Separator />
+
+        <h3>GPU elapsed time</h3>
+
+        <dl>
+            <dt>Compute pass</dt>
+            <dd>
+                <ElapsedTimeDisplay value={gpuElapsedTime.computePassNs} />
+            </dd>
+
+            <dt>Render pass</dt>
+            <dd>
+                <ElapsedTimeDisplay value={gpuElapsedTime.renderPassNs} />
+            </dd>
+        </dl>
     </overlays-panel>
 </main>
 

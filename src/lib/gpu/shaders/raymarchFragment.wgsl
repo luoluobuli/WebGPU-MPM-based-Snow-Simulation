@@ -1,6 +1,6 @@
 @group(1) @binding(0) var<storage, read> particleData: array<ParticleData>;
 
-const SPHERE_RADIUS = 0.05;
+const SPHERE_RADIUS = 0.025;
 const SMOOTHNESS = 1 / f32(2 << 4);
 
 fn smoothMin(a: f32, b: f32) -> f32 {

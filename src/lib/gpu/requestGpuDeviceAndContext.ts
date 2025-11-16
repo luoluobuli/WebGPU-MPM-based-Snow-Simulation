@@ -19,11 +19,15 @@ export const requestGpuDeviceAndContext = async ({
         return null;
     }
 
+    const supportsTimestamp = adapter.features.has("timestamp-query");
+    const requiredFeatures: GPUFeatureName[] = [];
+    if (supportsTimestamp) {
+        requiredFeatures.push("timestamp-query");
+    }
+
     onStatusChange("accessing gpu device");
     const device = await adapter.requestDevice({
-        requiredLimits: {
-
-        },
+        requiredFeatures,
     });
     if (device === null) {
         onErr("could not get device");
@@ -49,5 +53,10 @@ export const requestGpuDeviceAndContext = async ({
     });
 
 
-    return {device, context, format};
+    return {
+        device,
+        context,
+        format,
+        supportsTimestamp,
+    };
 };
