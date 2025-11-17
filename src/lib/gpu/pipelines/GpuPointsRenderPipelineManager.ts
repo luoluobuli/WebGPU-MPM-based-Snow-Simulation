@@ -52,7 +52,7 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
                                 format: "float32x4",
                             },
                         ],
-                        arrayStride: 48,
+                        arrayStride: 96,
                         stepMode: "vertex",
                     },
                 ],

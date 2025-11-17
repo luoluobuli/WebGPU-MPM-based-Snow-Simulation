@@ -36,6 +36,7 @@ struct ParticleData {
     // 32
     affine: vec3f, // 44
     mass: f32, // 48
+    deformation: mat3x3f, //96
 }
 
 struct CellData {
