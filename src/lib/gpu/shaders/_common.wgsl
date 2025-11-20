@@ -51,11 +51,6 @@ struct CellData {
 }
 
 
-struct MpmParticleCellInfo {
-    startCellNumber: vec3i,
-    velocityWeightsKernel: array<vec3f, 3>,
-}
-
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 
@@ -63,32 +58,40 @@ fn calculateCellDims() -> vec3f {
     return (uniforms.gridMaxCoords - uniforms.gridMinCoords) / f32(uniforms.gridResolution);
 }
 
-
-fn calculateMpmParticleCellInfo(pos: vec3f) -> MpmParticleCellInfo {
-    let cellDims = calculateCellDims();
+fn calculateCellNumber(pos: vec3f, cellDims: vec3f) -> vec3i {
     let posFromGridMin = pos - uniforms.gridMinCoords;
 
-    let cellNumber = vec3i(
+    return vec3i(
         i32(posFromGridMin.x / cellDims.x),
         i32(posFromGridMin.y / cellDims.y),
         i32(posFromGridMin.z / cellDims.z),
     );
+}
 
+fn calculateFractionalPosFromCellMin(pos: vec3f, cellDims: vec3f, cellNumber: vec3i) -> vec3f {
     let minPos = uniforms.gridMinCoords + cellDims * vec3f(cellNumber);
-    let fractionalPosFromCellMin = (pos - minPos) / cellDims;
+    return (pos - minPos) / cellDims;
+}
 
 
+fn calculateQuadraticBSplineCellWeights(fractionalPosFromCellMin: vec3f) -> array<vec3f, 3> {
+    var weights: array<vec3f, 3>;
 
-    var particleInfo: MpmParticleCellInfo;
+    weights[0] = 0.5 * (0.5 - fractionalPosFromCellMin) * (0.5 - fractionalPosFromCellMin);
+    weights[1] = 0.75 - fractionalPosFromCellMin * fractionalPosFromCellMin;
+    weights[2] = 0.5 * (0.5 + fractionalPosFromCellMin) * (0.5 + fractionalPosFromCellMin);
 
-    particleInfo.startCellNumber = cellNumber;
+    return weights;
+}
 
-    // values from quadratic B-spline weighting
-    particleInfo.velocityWeightsKernel[0] = 0.5 * (1.5 - fractionalPosFromCellMin) * (1.5 - fractionalPosFromCellMin);
-    particleInfo.velocityWeightsKernel[1] = 0.75 - (fractionalPosFromCellMin - 1.0) * (fractionalPosFromCellMin - 1.0);
-    particleInfo.velocityWeightsKernel[2] = 0.5 * (fractionalPosFromCellMin - 0.5) * (fractionalPosFromCellMin - 0.5);
+fn calculateQuadraticBSplineCellWeightDerivatives(fractionalPosFromCellMin: vec3f) -> array<vec3f, 3> {
+    var derivatives: array<vec3f, 3>;
 
-    return particleInfo;
+    derivatives[0] = fractionalPosFromCellMin - 0.5;
+    derivatives[1] = -2 * fractionalPosFromCellMin;
+    derivatives[2] = fractionalPosFromCellMin + 0.5;
+
+    return derivatives;
 }
 
 // https://github.com/Cyan4973/xxHash

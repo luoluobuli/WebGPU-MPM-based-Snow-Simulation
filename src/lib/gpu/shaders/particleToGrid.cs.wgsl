@@ -12,7 +12,11 @@ fn doParticleToGrid(
 
 
     let particle = particleDataIn[threadIndex];
-    let particleInfo = calculateMpmParticleCellInfo(particle.pos);
+
+    let cellDims = calculateCellDims();
+    let startCellNumber = calculateCellNumber(particle.pos, cellDims);
+    let cellFracPos = calculateFractionalPosFromCellMin(particle.pos, cellDims, startCellNumber);
+    let cellWeights = calculateQuadraticBSplineCellWeights(cellFracPos);
 
 
 
@@ -21,7 +25,7 @@ fn doParticleToGrid(
     for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
         for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
             for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
-                let cellNumber = particleInfo.startCellNumber + vec3i(offsetX, offsetY, offsetZ);
+                let cellNumber = startCellNumber + vec3i(offsetX, offsetY, offsetZ);
                 if any(vec3i(0) > cellNumber) || any(cellNumber >= vec3i(i32(uniforms.gridResolution))) { continue; }
 
 
@@ -30,9 +34,9 @@ fn doParticleToGrid(
                 
 
                 
-                let cellWeight = particleInfo.velocityWeightsKernel[u32(offsetX + 1)].x
-                    * particleInfo.velocityWeightsKernel[u32(offsetY + 1)].y
-                    * particleInfo.velocityWeightsKernel[u32(offsetZ + 1)].z;
+                let cellWeight = cellWeights[u32(offsetX + 1)].x
+                    * cellWeights[u32(offsetY + 1)].y
+                    * cellWeights[u32(offsetZ + 1)].z;
 
                 let contribVx = cellWeight * particle.vel.x * particle.mass * uniforms.fixedPointScale;
                 let contribVy = cellWeight * particle.vel.y * particle.mass * uniforms.fixedPointScale;

@@ -1,6 +1,3 @@
-// Particle initialization compute shader
-// Scatters particles inside mesh volume using rejection sampling
-
 @group(1) @binding(0) var<storage, read_write> particles: array<ParticleData>;
 @group(1) @binding(1) var<storage, read> meshVertices: array<vec3f>;
 
@@ -51,7 +48,7 @@ fn rayIntersectsTriangle(
     return t > EPSILON;
 }
 
-fn isPointInsideMesh(point: vec3f, numTriangles: u32) -> bool {
+fn pointInsideMesh(point: vec3f, numTriangles: u32) -> bool {
     // even-odd check in +x direction
 
     let rayDir = vec3f(1, 0, 0);
@@ -88,7 +85,7 @@ fn scatterParticles(
 
     for (var nAttempt = 0u; nAttempt < REJECTION_SAMPLING_N_MAX_ATTEMPTS; nAttempt++) {
         candidatePos = randVec3(&seed, uniforms.meshMinCoords, uniforms.meshMaxCoords);
-        if isPointInsideMesh(candidatePos, nTriangles) { break; }
+        if pointInsideMesh(candidatePos, nTriangles) { break; }
     }
     
 
@@ -97,4 +94,9 @@ fn scatterParticles(
     particles[threadIndex].vel = vec3f(0);
     particles[threadIndex].affine = vec3f(0);
     particles[threadIndex].mass = 1;
+    particles[threadIndex].deformation = mat3x3f(
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1,
+    );
 }
