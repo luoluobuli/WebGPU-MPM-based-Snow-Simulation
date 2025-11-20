@@ -18,34 +18,37 @@ fn randVec3(seed: ptr<function, u32>, minCoords: vec3f, maxCoords: vec3f) -> vec
 fn rayIntersectsTriangle(
     rayOrigin: vec3f,
     rayDir: vec3f,
-    v0: vec3f,
-    v1: vec3f,
-    v2: vec3f,
+    vert0: vec3f,
+    vert1: vec3f,
+    vert2: vec3f,
 ) -> bool {
+    // Möller-Trumbore
+
     let EPSILON = 1e-6;
     
-    let edge1 = v1 - v0;
-    let edge2 = v2 - v0;
-    let h = cross(rayDir, edge2);
-    let a = dot(edge1, h);
+    let edge1 = vert1 - vert0;
+    let edge2 = vert2 - vert0;
     
-    // parallel chcek
-    if abs(a) < EPSILON { return false; }
+    let rayDirCrossEdge2 = cross(rayDir, edge2);
+    let det = dot(edge1, rayDirCrossEdge2);
     
-    let f = 1 / a;
-    let s = rayOrigin - v0;
-    let u = f * dot(s, h);
+    // ray nearly parallel to triangle
+    if abs(det) < EPSILON { return false; }
     
-    if u < 0 || u > 1 { return false; }
+    let detInv = 1 / det;
+    let originToVert0 = rayOrigin - vert0;
+
+
+    let bary0 = dot(originToVert0, rayDirCrossEdge2) * detInv;
+    if 0 > bary0 || bary0 > 1 { return false; }
     
-    let q = cross(s, edge1);
-    let v = f * dot(rayDir, q);
+    let originToVert0CrossEdge1 = cross(originToVert0, edge1);
+    let bary1 = dot(rayDir, originToVert0CrossEdge1) * detInv;
     
-    if v < 0 || u + v > 1 { return false; }
+    if 0 > bary1 || bary1 > 1 || bary0 + bary1 > 1 { return false; }
     
-    let t = f * dot(edge2, q);
-    
-    return t > EPSILON;
+    let intersectionDist = dot(edge2, originToVert0CrossEdge1) * detInv;
+    return intersectionDist > EPSILON;
 }
 
 fn pointInsideMesh(point: vec3f, numTriangles: u32) -> bool {

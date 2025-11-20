@@ -5,7 +5,7 @@ import Canvas from "$lib/Canvas.svelte";
     import { ElapsedTime } from "$lib/ElapsedTime.svelte";
     import ElapsedTimeDisplay from "$lib/ElapsedTimeDisplay.svelte";
 
-let status = $state("");
+let status = $state("loading javascript");
 let err = $state<string | null>(null);
 
 let renderMethodType = $state(GpuRenderMethodType.Points);
