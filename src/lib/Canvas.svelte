@@ -27,7 +27,7 @@ let canvas: HTMLCanvasElement;
 let width = $state(300);
 let height = $state(150);
 
-let nParticles = $state(50_000);
+let nParticles = $state(5_000);
 let gridResolution = $state(8);
 let simulationTimestepS = $state(1 / 144);
 

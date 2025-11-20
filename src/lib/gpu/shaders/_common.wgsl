@@ -33,10 +33,9 @@ struct ParticleData {
     pos: vec3f, // 12
     _hom: f32, // 16; vertex shader expects a vec4
     vel: vec3f, // 28
-    // 32
-    affine: vec3f, // 44
-    mass: f32, // 48
-    deformation: mat3x3f, //96
+    mass: f32, // 32
+    deformationElastic: mat3x3f, // 80
+    deformationPlastic: mat3x3f, // 128
 }
 
 struct CellData {

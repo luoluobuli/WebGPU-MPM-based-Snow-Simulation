@@ -92,11 +92,15 @@ fn scatterParticles(
     particles[threadIndex].pos = candidatePos;
     particles[threadIndex]._hom = 1;
     particles[threadIndex].vel = vec3f(0);
-    particles[threadIndex].affine = vec3f(0);
     particles[threadIndex].mass = 1;
-    particles[threadIndex].deformation = mat3x3f(
+    particles[threadIndex].deformationElastic = mat3x3f(
         1, 0, 0,
         0, 1, 0,
         0, 0, 1,
+    );
+    particles[threadIndex].deformationPlastic = mat3x3f(
+        0, 0, 0,
+        0, 0, 0,
+        0, 0, 0,
     );
 }

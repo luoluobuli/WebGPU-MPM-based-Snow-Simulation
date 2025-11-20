@@ -17,7 +17,7 @@ export class GpuMpmBufferManager {
     }) {
         const particleDataBuffer = device.createBuffer({
             label: "particle data buffer",
-            size: nParticles * 96,
+            size: nParticles * 128,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
         });
 

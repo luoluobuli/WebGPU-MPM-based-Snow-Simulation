@@ -17,11 +17,13 @@ fn doGridToParticle(
     let startCellNumber = calculateCellNumber(particle.pos, cellDims);
     let cellFracPos = calculateFractionalPosFromCellMin(particle.pos, cellDims, startCellNumber);
     let cellWeights = calculateQuadraticBSplineCellWeights(cellFracPos);
+    let cellWeightsDeriv = calculateQuadraticBSplineCellWeightDerivatives(cellFracPos);
 
 
 
     // enumerate the 3x3 neighborhood of cells around the cell that contains the particle
     var newParticleVelocity = vec3f(0); // cumulatively keep track of the cell's velocities, weighted using our kernel above
+    var totalVelocityGradient = mat3x3f();
     for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
         for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
             for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
@@ -48,6 +50,20 @@ fn doGridToParticle(
                     * cellWeights[u32(offsetZ + 1)].z;
                     
                 newParticleVelocity += cellWeight * cellVelocity;
+
+
+
+                let cellWeightGradient = vec3f(
+                    cellWeightsDeriv[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
+                    cellWeights[u32(offsetX + 1)].x * cellWeightsDeriv[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
+                    cellWeights[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeightsDeriv[u32(offsetZ + 1)].z,
+                );
+
+                totalVelocityGradient += mat3x3f(
+                    cellWeightGradient.x * cellVelocity,
+                    cellWeightGradient.y * cellVelocity,
+                    cellWeightGradient.z * cellVelocity,
+                );
             }
         }
     }
@@ -56,6 +72,7 @@ fn doGridToParticle(
 
     particle.vel = newParticleVelocity;
     particle.pos += newParticleVelocity * uniforms.simulationTimestep;
+    particle.deformationElastic += totalVelocityGradient * uniforms.simulationTimestep;
 
 
 
@@ -85,6 +102,8 @@ fn doGridToParticle(
         particle.vel.z *= -0.5;
         particle.pos.z = uniforms.gridMaxCoords.z;
     }
+
+
 
 
     particleDataOut[threadIndex] = particle;
