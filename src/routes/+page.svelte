@@ -88,7 +88,7 @@ main {
 }
 
 overlays-panel {
-    width: 20%;
+    width: 16rem;
     padding: 0.5rem;
 
     color: oklch(1 0 0);

@@ -137,3 +137,73 @@ fn hash4(p: vec4u) -> u32 {
 
     return h32 ^ (h32 >> 16);
 }
+
+
+
+fn mat3x3Inverse(matrix: mat3x3f) -> mat3x3f {
+    let det = determinant(matrix);
+    if det == 0 {
+        return mat3x3f(
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1,
+        );
+    }
+    
+    return mat3x3f(
+        matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1],
+        matrix[0][2] * matrix[2][1] - matrix[0][1] * matrix[2][2],
+        matrix[0][1] * matrix[1][2] - matrix[0][2] * matrix[1][1],
+        
+        matrix[1][2] * matrix[2][0] - matrix[1][0] * matrix[2][2],
+        matrix[0][0] * matrix[2][2] - matrix[0][2] * matrix[2][0],
+        matrix[0][2] * matrix[1][0] - matrix[0][0] * matrix[1][2],
+        
+        matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0],
+        matrix[0][1] * matrix[2][0] - matrix[0][0] * matrix[2][1],
+        matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0],
+    ) * (1 / det);
+}
+
+
+// iterative polar decomposition approximates pure rotation R from F where F = RS
+fn calculatePolarDecompositionRotation(deformation: mat3x3f) -> mat3x3f {
+    var rotationGuess = deformation;
+    
+    const N_POLAR_DECOMPOSITION_ITERATIONS = 4;
+    for (var i = 0u; i < N_POLAR_DECOMPOSITION_ITERATIONS; i++) {
+        let rotationGuessInverseTranspose = transpose(mat3x3Inverse(rotationGuess));
+        rotationGuess = 0.5 * (rotationGuess + rotationGuessInverseTranspose);
+    }
+    
+    return rotationGuess;
+}
+
+// first Piola-Kirchhoff stress tensor
+fn calculateStressFirstPiolaKirchhoff( // P
+    deformation: mat3x3f, // F
+    shearModulus: f32, // μ
+    bulkModulus: f32, // λ
+) -> mat3x3f {
+    let volumeScaleFac = determinant(deformation); // J
+
+    // corotation to separate out rotation from scaling
+    let rotation = calculatePolarDecompositionRotation(deformation); // R
+    
+    // P = 2 μ (F - R) + λ (J - 1) J (F⁻¹)ᵀ
+    return 2 * shearModulus * (deformation - rotation)
+        + bulkModulus * (volumeScaleFac - 1) * volumeScaleFac * transpose(mat3x3Inverse(deformation));
+}
+
+// Neo-Hookean constitutive model
+fn calculateStressNeoHookean(
+    deformation: mat3x3f, // F
+    shearModulus: f32, // μ
+    bulkModulus: f32, // λ
+) -> mat3x3f {
+    let volumeScaleFac = determinant(deformation); // J
+    let deformationInverseTranspose = transpose(mat3x3Inverse(deformation));
+    
+    // P = μ (F - (F⁻¹)ᵀ) + λ log(J) (F⁻¹)ᵀ
+    return shearModulus * (deformation - deformationInverseTranspose) + bulkModulus * log(volumeScaleFac) * deformationInverseTranspose;
+}
