@@ -28,11 +28,11 @@ fn doGridToParticle(
         for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
             for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
                 let cellNumber = startCellNumber + vec3i(offsetX, offsetY, offsetZ);
-                if any(vec3i(0) > cellNumber) || any(cellNumber >= vec3i(i32(uniforms.gridResolution))) { continue; }
+                if !cellNumberInGridRange(cellNumber) { continue; }
 
 
 
-                let cellIndex = u32(cellNumber.x) + uniforms.gridResolution * (u32(cellNumber.y) + uniforms.gridResolution * u32(cellNumber.z));
+                let cellIndex = linearizeCellIndex(cellNumber);
                 
                 let cellMass = f32(atomicLoad(&gridDataIn[cellIndex].mass)) / uniforms.fixedPointScale;
                 if cellMass <= 0 { continue; }

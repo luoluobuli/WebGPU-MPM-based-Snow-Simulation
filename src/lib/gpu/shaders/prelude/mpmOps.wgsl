@@ -36,6 +36,14 @@ fn calculateCellNumber(pos: vec3f, cellDims: vec3f) -> vec3i {
     );
 }
 
+fn cellNumberInGridRange(cellNumber: vec3i) -> bool {
+    return all(vec3i(0) <= cellNumber) && all(cellNumber < vec3i(i32(uniforms.gridResolution)));
+}
+
+fn linearizeCellIndex(cellNumber: vec3i) -> u32 {
+    return u32(cellNumber.x) + uniforms.gridResolution * (u32(cellNumber.y) + uniforms.gridResolution * u32(cellNumber.z));
+}
+
 fn calculateFractionalPosFromCellMin(pos: vec3f, cellDims: vec3f, cellNumber: vec3i) -> vec3f {
     let minPos = uniforms.gridMinCoords + cellDims * vec3f(cellNumber);
     return (pos - minPos) / cellDims;
