@@ -74,6 +74,10 @@ fn doGridToParticle(
     particle.pos += newParticleVelocity * uniforms.simulationTimestep;
     particle.deformationElastic += totalVelocityGradient * uniforms.simulationTimestep;
 
+    
+    applyPlasticity(&particle.deformationElastic, &particle.deformationPlastic);
+    
+
 
 
     if particle.pos.x < uniforms.gridMinCoords.x {
