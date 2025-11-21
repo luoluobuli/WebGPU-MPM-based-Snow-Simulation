@@ -99,14 +99,6 @@ fn scatterParticles(
     (*particle)._hom = 1;
     (*particle).vel = vec3f(5, 0, 5);
     (*particle).mass = 10;
-    (*particle).deformationElastic = mat3x3f(
-        1, 0, 0,
-        0, 1, 0,
-        0, 0, 1,
-    );
-    (*particle).deformationPlastic = mat3x3f(
-        1, 0, 0,
-        0, 1, 0,
-        0, 0, 1,
-    );
+    (*particle).deformationElastic = mat3x3Identity();
+    (*particle).deformationPlastic = mat3x3Identity();
 }

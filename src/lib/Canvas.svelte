@@ -27,9 +27,9 @@ let canvas: HTMLCanvasElement;
 let width = $state(300);
 let height = $state(150);
 
-let nParticles = $state(10_000);
+let nParticles = $state(50_000);
 let gridResolution = $state(15);
-let simulationTimestepS = $state(1 / 200);
+let simulationTimestepS = $state(1 / 600);
 
 const updateCanvasSize = async () => {
     width = innerWidth;

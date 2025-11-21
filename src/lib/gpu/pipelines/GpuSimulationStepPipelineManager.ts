@@ -1,10 +1,9 @@
 import type { GpuUniformsBufferManager } from "../buffers/GpuUniformsBufferManager";
-import commonModuleSrc from "../shaders/_common.wgsl?raw";
-import simulationStepModuleSrc from "../shaders/simulationStep.wgsl?raw";
 import p2gModuleSrc from "../shaders/particleToGrid.cs.wgsl?raw";
 import gridUpdateModuleSrc from "../shaders/gridUpdate.cs.wgsl?raw";
 import g2pModuleSrc from "../shaders/gridToParticle.cs.wgsl?raw";
 import gridClearModuleSrc from "../shaders/gridClear.cs.wgsl?raw";
+import { attachPrelude } from "../shaders/prelude";
 
 export class GpuSimulationStepPipelineManager {
     readonly storageBindGroupLayout: GPUBindGroupLayout;
@@ -78,16 +77,16 @@ export class GpuSimulationStepPipelineManager {
 
 
         const gridClearModule = device.createShaderModule({
-            code: commonModuleSrc + gridClearModuleSrc,
+            code: attachPrelude(gridClearModuleSrc),
         });
         const p2gModule = device.createShaderModule({
-            code: commonModuleSrc + p2gModuleSrc,
+            code: attachPrelude(p2gModuleSrc),
         });
         const gridUpdateModule = device.createShaderModule({
-            code: commonModuleSrc + gridUpdateModuleSrc,
+            code: attachPrelude(gridUpdateModuleSrc),
         });
         const g2pModule = device.createShaderModule({
-            code: commonModuleSrc + g2pModuleSrc,
+            code: attachPrelude(g2pModuleSrc),
         });
         
 
