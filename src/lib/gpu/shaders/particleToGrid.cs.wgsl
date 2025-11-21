@@ -20,13 +20,10 @@ fn doParticleToGrid(
     let cellWeightsDeriv = calculateQuadraticBSplineCellWeightDerivatives(cellFracPos);
 
 
-    const YOUNGS_MODULUS_PA = 1.4e5;
-    const POISSONS_RATIO = 0.2;
-    
-    // Lamé parameters
-    let shearModulus = YOUNGS_MODULUS_PA / (2 * (1 + POISSONS_RATIO));
-    let bulkModulus = YOUNGS_MODULUS_PA * POISSONS_RATIO / ((1 + POISSONS_RATIO) * (1 - 2 * POISSONS_RATIO));
-    let stress = calculateStressFirstPiolaKirchhoff(particle.deformationElastic, shearModulus, bulkModulus); // P
+    var shearResistance = SHEAR_RESISTANCE; // μ
+    var volumetricResistance = VOLUME_RESISTANCE; // λ
+    hardenLameParameters(particle.deformationPlastic, &shearResistance, &volumetricResistance);
+    let stress = calculateStressFirstPiolaKirchhoff(particle.deformationElastic, shearResistance, volumetricResistance); // P
     let stressTranspose = transpose(stress);
 
     const DENSITY_KG_PER_M3 = 400.;
@@ -40,11 +37,11 @@ fn doParticleToGrid(
         for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
             for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
                 let cellNumber = startCellNumber + vec3i(offsetX, offsetY, offsetZ);
-                if any(vec3i(0) > cellNumber) || any(cellNumber >= vec3i(i32(uniforms.gridResolution))) { continue; }
+                if !cellNumberInGridRange(cellNumber) { continue; }
 
 
 
-                let cellIndex = u32(cellNumber.x) + uniforms.gridResolution * (u32(cellNumber.y) + uniforms.gridResolution * u32(cellNumber.z));
+                let cellIndex = linearizeCellIndex(cellNumber);
                 
                 // w
                 let cellWeight = cellWeights[u32(offsetX + 1)].x
