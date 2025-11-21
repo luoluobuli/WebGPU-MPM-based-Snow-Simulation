@@ -70,7 +70,7 @@ onMount(async () => {
     runner.scatterParticlesInMeshVolume();
 
     stopSimulation = runner.loop({
-        onAnimationFrameTimeUpdate: ms => elapsedTime.animationFrameTimeNs = BigInt(ms) * 1_000_000n,
+        onAnimationFrameTimeUpdate: ms => elapsedTime.animationFrameTimeNs = BigInt(Math.round(ms * 1_000_000)),
         onGpuTimeUpdate: ns => elapsedTime.gpuTimeNs = ns,
     });
 });
