@@ -69,7 +69,6 @@ fn doParticleToGrid(
                 let stressMomentum = stressForce * uniforms.simulationTimestep;
                 
 
-                // why is only the current momentum multiplied by cell weight?
                 let momentum = cellWeight * particleCurrentMomentum + stressMomentum;
 
 

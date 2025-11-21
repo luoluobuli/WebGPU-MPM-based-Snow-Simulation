@@ -1,6 +1,6 @@
 import type { GpuUniformsBufferManager } from "../buffers/GpuUniformsBufferManager";
-import commonModuleSrc from "../shaders/_common.wgsl?raw";
 import particleScatterModuleSrc from "../shaders/particleScatter.cs.wgsl?raw";
+import { attachPrelude } from "../shaders/prelude";
 
 export class GpuParticleInitPipelineManager {
     readonly storageBindGroupLayout: GPUBindGroupLayout;
@@ -68,7 +68,7 @@ export class GpuParticleInitPipelineManager {
         });
 
         const shaderModule = device.createShaderModule({
-            code: commonModuleSrc + particleScatterModuleSrc,
+            code: attachPrelude(particleScatterModuleSrc),
         });
 
         this.computePipeline = device.createComputePipeline({
