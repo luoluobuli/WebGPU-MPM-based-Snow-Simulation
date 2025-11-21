@@ -40,12 +40,12 @@ fn rayIntersectsTriangle(
 
 
     let bary0 = dot(originToVert0, rayDirCrossEdge2) * detInv;
-    if 0 > bary0 || bary0 > 1 { return false; }
+    if bary0 < 0 || 1 < bary0 { return false; }
     
     let originToVert0CrossEdge1 = cross(originToVert0, edge1);
     let bary1 = dot(rayDir, originToVert0CrossEdge1) * detInv;
     
-    if 0 > bary1 || bary1 > 1 || bary0 + bary1 > 1 { return false; }
+    if bary1 < 0 || 1 < bary1 || bary0 + bary1 > 1 { return false; }
     
     let intersectionDist = dot(edge2, originToVert0CrossEdge1) * detInv;
     return intersectionDist > EPSILON;
@@ -90,20 +90,23 @@ fn scatterParticles(
         candidatePos = randVec3(&seed, uniforms.meshMinCoords, uniforms.meshMaxCoords);
         if pointInsideMesh(candidatePos, nTriangles) { break; }
     }
+
+
+    let particle = &particles[threadIndex];
     
 
-    particles[threadIndex].pos = candidatePos;
-    particles[threadIndex]._hom = 1;
-    particles[threadIndex].vel = vec3f(0);
-    particles[threadIndex].mass = 1;
-    particles[threadIndex].deformationElastic = mat3x3f(
+    (*particle).pos = candidatePos;
+    (*particle)._hom = 1;
+    (*particle).vel = vec3f(5, 0, 5);
+    (*particle).mass = 10;
+    (*particle).deformationElastic = mat3x3f(
         1, 0, 0,
         0, 1, 0,
         0, 0, 1,
     );
-    particles[threadIndex].deformationPlastic = mat3x3f(
-        0, 0, 0,
-        0, 0, 0,
-        0, 0, 0,
+    (*particle).deformationPlastic = mat3x3f(
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1,
     );
 }

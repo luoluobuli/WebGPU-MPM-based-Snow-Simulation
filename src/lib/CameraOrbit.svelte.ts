@@ -8,11 +8,11 @@ type Point = { x: number; y: number };
 const ORBIT_CONTROL_SCALE = 0.005;
 
 export class CameraOrbit implements CameraControlScheme {
-    radius = $state(4);
+    radius = $state(3);
     lat = $state(PI / 6);
-    long = $state(11 * PI / 8);
+    long = $state(7 * PI / 8);
     
-    offset = $state(vec3.zero());
+    offset = $state(vec3.fromValues(1, 0, 1.5));
 
     readonly orientation = $derived(mat4.mul(
         mat4.rotationZ(-this.long),

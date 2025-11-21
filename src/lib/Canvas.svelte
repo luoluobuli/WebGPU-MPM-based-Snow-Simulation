@@ -65,9 +65,13 @@ onMount(async () => {
 
     updateCanvasSize();
 
-    onStatusChange("off and racing");
-
     runner.scatterParticlesInMeshVolume();
+
+    onStatusChange("initializing particles");
+
+    await device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
+
+    onStatusChange("off and racing");
 
     stopSimulation = runner.loop({
         onAnimationFrameTimeUpdate: ms => elapsedTime.animationFrameTimeNs = BigInt(Math.round(ms * 1_000_000)),
