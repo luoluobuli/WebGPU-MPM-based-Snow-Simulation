@@ -41,8 +41,8 @@ fn doGridUpdate(
     
     // ----------- Collision ------------
     // Temp cube
-    let minB = uniforms.gridMinCoords * 0.3;
-    let maxB = uniforms.gridMaxCoords * 0.3;
+    let minB = vec3f(1.0, 0.0, 1.0);
+    let maxB = vec3f(2.0, 1.0, 2.0);
 
     // Get grid world pos
     let N = uniforms.gridResolution;
