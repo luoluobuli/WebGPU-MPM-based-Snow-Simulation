@@ -2,7 +2,7 @@
 This project contains a snow simulation engine using the **material point method** (**MPM**) algorithm.
 
 ## Code
-This is a SvelteKit project with a simulation powered by WebGPU, so you can view this demo online at [pending] so long as your browser supports WebGPU.
+This is a SvelteKit project with a simulation powered by WebGPU, so you can [view this demo online](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/) so long as your browser supports WebGPU!
 
 ### Local development
 After cloning this repository:
