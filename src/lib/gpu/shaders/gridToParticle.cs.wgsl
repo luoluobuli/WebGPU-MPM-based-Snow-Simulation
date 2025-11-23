@@ -75,7 +75,7 @@ fn doGridToParticle(
     particle.deformationElastic += totalVelocityGradient * uniforms.simulationTimestep;
 
     
-    applyPlasticity(&particle.deformationElastic, &particle.deformationPlastic);
+    applyPlasticity(&particle);
     
 
 
