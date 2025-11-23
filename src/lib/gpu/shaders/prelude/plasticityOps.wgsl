@@ -5,13 +5,14 @@
  * deformation matrices are updated to use a clamped amount of stretching in that direction.
  */
 fn applyPlasticity(
-    deformationElastic: ptr<function, mat3x3f>, // F_e
-    deformationPlastic: ptr<function, mat3x3f>, // F_p
+    p: ptr<function, ParticleData>
 ) {
+    var dE = (*p).deformationElastic; // F_e
+    var dP = (*p).deformationPlastic; // F_p
     // extract rotation and scale from the elastic deformation
-    let rotation = calculatePolarDecompositionRotation(*deformationElastic); // R
+    let rotation = calculatePolarDecompositionRotation(dE); // R
     // S = Rᵀ F_e  (<=  F_e = R S) 
-    let scale = transpose(rotation) * (*deformationElastic); // S
+    let scale = transpose(rotation) * (dE); // S
     
     // thresholds of compression/stretching until yielding
     const MIN_STRETCH_FAC = 1 - 2.5e-2; // θ_c
@@ -39,9 +40,9 @@ fn applyPlasticity(
     
     // assuming the overall deformaton stays the same, we can also derive the new plastic deformation
     let newDeformationElasticInv = mat3x3Inverse(newDeformationElastic);
-    let deformation = (*deformationElastic) * (*deformationPlastic);
+    let deformation = (dE) * (dP);
     
-    *deformationElastic = newDeformationElastic;
+    (*p).deformationElastic = newDeformationElastic;
     // F_p = (F_e)⁻¹ F  (<=  F = F_e F_p)  
-    *deformationPlastic = newDeformationElasticInv * deformation;
+    (*p).deformationPlastic = newDeformationElasticInv * deformation;
 }
