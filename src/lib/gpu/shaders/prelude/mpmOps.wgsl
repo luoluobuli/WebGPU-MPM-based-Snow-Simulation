@@ -53,9 +53,9 @@ fn calculateFractionalPosFromCellMin(pos: vec3f, cellDims: vec3f, cellNumber: ve
 fn calculateQuadraticBSplineCellWeights(fractionalPosFromCellMin: vec3f) -> array<vec3f, 3> {
     var weights: array<vec3f, 3>;
 
-    weights[0] = 0.5 * (0.5 - fractionalPosFromCellMin) * (0.5 - fractionalPosFromCellMin);
-    weights[1] = 0.75 - fractionalPosFromCellMin * fractionalPosFromCellMin;
-    weights[2] = 0.5 * (0.5 + fractionalPosFromCellMin) * (0.5 + fractionalPosFromCellMin);
+    weights[0] = 0.5 * (1 - fractionalPosFromCellMin) * (1 - fractionalPosFromCellMin);
+    weights[1] = 0.75 - (fractionalPosFromCellMin - 0.5) * (fractionalPosFromCellMin - 0.5);
+    weights[2] = 0.5 * fractionalPosFromCellMin * fractionalPosFromCellMin;
 
     return weights;
 }
@@ -64,9 +64,9 @@ fn calculateQuadraticBSplineCellWeightDerivatives(fractionalPosFromCellMin: vec3
     var derivatives: array<vec3f, 3>;
 
     // derivative of B-spline weights wrt fractional pos
-    derivatives[0] = fractionalPosFromCellMin - 0.5;
-    derivatives[1] = -2 * fractionalPosFromCellMin;
-    derivatives[2] = fractionalPosFromCellMin + 0.5;
+    derivatives[0] = 1 - fractionalPosFromCellMin;
+    derivatives[1] = -2 * (fractionalPosFromCellMin - 0.5);
+    derivatives[2] = fractionalPosFromCellMin;
 
     return derivatives;
 }
