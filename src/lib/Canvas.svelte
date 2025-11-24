@@ -34,7 +34,8 @@ const updateCanvasSize = async () => {
     height = innerHeight;
 };
 
-let stopSimulation: (() => void) | null;
+let stopSimulation: (() => void) | null = null;
+let runner: GpuSnowPipelineRunner | null = $state(null);
 
 const orbit = new CameraOrbit();
 const camera = new Camera({
@@ -92,7 +93,7 @@ onMount(async () => {
         4, 1, 0
     ]);
 
-    const runner = new GpuSnowPipelineRunner({
+    runner = new GpuSnowPipelineRunner({
         device,
         format,
         context,
@@ -125,6 +126,15 @@ onMount(async () => {
         onGpuTimeUpdate: (ns) => (elapsedTime.gpuTimeNs = ns),
     });
 });
+
+
+
+$effect(() => {
+    if (runner !== null) {
+        runner.resizeTextures(width, height);
+    }
+});
+
 
 onDestroy(() => {
     stopSimulation?.();

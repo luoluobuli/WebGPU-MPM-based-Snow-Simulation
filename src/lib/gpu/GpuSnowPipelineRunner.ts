@@ -21,7 +21,7 @@ export class GpuSnowPipelineRunner {
     private readonly gridResolution: number;
     private readonly simulationTimestepS: number;
     private readonly camera: Camera;
-    private readonly depthTextureView: GPUTextureView;
+    private depthTextureView: GPUTextureView;
 
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
@@ -141,6 +141,15 @@ export class GpuSnowPipelineRunner {
             : null;
 
         this.measurePerf = measurePerf;
+    }
+
+    resizeTextures(width: number, height: number) {
+        const depthTexture = this.device.createTexture({
+            size: [width, height],
+            format: "depth24plus",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+        this.depthTextureView = depthTexture.createView();
     }
 
     scatterParticlesInMeshVolume() {
