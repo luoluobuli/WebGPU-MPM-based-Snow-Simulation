@@ -3,11 +3,11 @@ import { onDestroy, onMount, tick } from "svelte";
 import { requestGpuDeviceAndContext } from "./gpu/requestGpuDeviceAndContext";
 import { Camera } from "./Camera.svelte";
 import { CameraOrbit } from "./CameraOrbit.svelte";
-import Draggable, {type Point} from "./Draggable.svelte";
+import Draggable, { type Point } from "./Draggable.svelte";
 import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
 import { loadGltfScene } from "./loadScene";
 import type { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
-    import type { ElapsedTime } from "./ElapsedTime.svelte";
+import type { ElapsedTime } from "./ElapsedTime.svelte";
 
 let {
     onStatusChange,
@@ -15,21 +15,19 @@ let {
     renderMethodType,
     elapsedTime,
 }: {
-    onStatusChange: (text: string) => void,
-    onErr: (text: string) => void,
-    renderMethodType: GpuRenderMethodType,
-    elapsedTime: ElapsedTime,
+    onStatusChange: (text: string) => void;
+    onErr: (text: string) => void;
+    renderMethodType: GpuRenderMethodType;
+    elapsedTime: ElapsedTime;
 } = $props();
-
-
 
 let canvas: HTMLCanvasElement;
 let width = $state(300);
 let height = $state(150);
 
 let nParticles = $state(50_000);
-let gridResolution = $state(15);
-let simulationTimestepS = $state(1 / 600);
+let gridResolution = $state(16);
+let simulationTimestepS = $state(1 / 240);
 
 const updateCanvasSize = async () => {
     width = innerWidth;
@@ -38,18 +36,24 @@ const updateCanvasSize = async () => {
 
 let stopSimulation: (() => void) | null;
 
-
 const orbit = new CameraOrbit();
-const camera = new Camera({controlScheme: orbit, screenDims: {width: () => width, height: () => height}});
+const camera = new Camera({
+    controlScheme: orbit,
+    screenDims: { width: () => width, height: () => height },
+});
 
 onMount(async () => {
-    const response = await requestGpuDeviceAndContext({onStatusChange, onErr, canvas});
+    const response = await requestGpuDeviceAndContext({
+        onStatusChange,
+        onErr,
+        canvas,
+    });
     if (response === null) return;
-    const {device, context, format, supportsTimestamp} = response;
-    
+    const { device, context, format, supportsTimestamp } = response;
+
     onStatusChange("loading geometry...");
-    const {vertices} = await loadGltfScene("/monkey.glb");
-    
+    const { vertices } = await loadGltfScene("/monkey.glb");
+
     const runner = new GpuSnowPipelineRunner({
         device,
         format,
@@ -74,8 +78,11 @@ onMount(async () => {
     onStatusChange("off and racing");
 
     stopSimulation = runner.loop({
-        onAnimationFrameTimeUpdate: ms => elapsedTime.animationFrameTimeNs = BigInt(Math.round(ms * 1_000_000)),
-        onGpuTimeUpdate: ns => elapsedTime.gpuTimeNs = ns,
+        onAnimationFrameTimeUpdate: (ms) =>
+            (elapsedTime.animationFrameTimeNs = BigInt(
+                Math.round(ms * 1_000_000),
+            )),
+        onGpuTimeUpdate: (ns) => (elapsedTime.gpuTimeNs = ns),
     });
 });
 
@@ -84,34 +91,35 @@ onDestroy(() => {
 });
 </script>
 
-
 <!-- <svelte:window onresize={() => updateCanvasSize()} /> -->
 
 <section
-    bind:clientWidth={null, clientWidth => width = clientWidth!}
-    bind:clientHeight={null, clientHeight => height = clientHeight!}
+    bind:clientWidth={null, (clientWidth) => (width = clientWidth!)}
+    bind:clientHeight={null, (clientHeight) => (height = clientHeight!)}
 >
-    <Draggable onDrag={async ({movement, button, pointerEvent}) => {
-        switch (button) {
-            case 0:
-                orbit.turn(movement);
-                break;
+    <Draggable
+        onDrag={async ({ movement, button, pointerEvent }) => {
+            switch (button) {
+                case 0:
+                    orbit.turn(movement);
+                    break;
 
-            case 1:
-                orbit.pan(movement);
-                break;
-        }
+                case 1:
+                    orbit.pan(movement);
+                    break;
+            }
 
-        pointerEvent.preventDefault();
-        // await rerender();
-    }}>
-        {#snippet dragTarget({onpointerdown})}
+            pointerEvent.preventDefault();
+            // await rerender();
+        }}
+    >
+        {#snippet dragTarget({ onpointerdown })}
             <canvas
                 bind:this={canvas}
                 {width}
                 {height}
                 {onpointerdown}
-                onwheel={event => {
+                onwheel={(event) => {
                     orbit.radius *= 2 ** (event.deltaY * 0.001);
                     event.preventDefault();
                 }}
@@ -120,10 +128,9 @@ onDestroy(() => {
     </Draggable>
 </section>
 
-
 <style lang="scss">
-section {
-    width: 100vw;
-    height: 100vh;
-}
+    section {
+        width: 100vw;
+        height: 100vh;
+    }
 </style>
