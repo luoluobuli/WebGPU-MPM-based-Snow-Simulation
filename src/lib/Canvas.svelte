@@ -54,6 +54,44 @@ onMount(async () => {
     onStatusChange("loading geometry...");
     const { vertices } = await loadGltfScene("/monkey.glb");
 
+    const colliderVertices = new Float32Array([
+        1, 0, 1,   // 0
+        2, 0, 1,   // 1
+        2, 1, 1,   // 2
+        1, 1, 1,   // 3
+
+        1, 0, 2,   // 4
+        2, 0, 2,   // 5
+        2, 1, 2,   // 6
+        1, 1, 2    // 7
+    ]);
+
+    const colliderIndices = new Uint32Array([
+        // Front
+        0, 1, 2,
+        0, 2, 3,
+
+        // Back
+        5, 4, 7,
+        5, 7, 6,
+
+        // Left
+        4, 0, 3,
+        4, 3, 7,
+
+        // Right
+        1, 5, 6,
+        1, 6, 2,
+
+        // Top
+        3, 2, 6,
+        3, 6, 7,
+
+        // Bottom
+        4, 5, 1,
+        4, 1, 0
+    ]);
+
     const runner = new GpuSnowPipelineRunner({
         device,
         format,
@@ -63,6 +101,8 @@ onMount(async () => {
         simulationTimestepS,
         camera,
         meshVertices: vertices,
+        colliderVertices: colliderVertices,
+        colliderIndices: colliderIndices,
         getRenderMethodType: () => renderMethodType,
         measurePerf: supportsTimestamp,
     });
