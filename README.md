@@ -1,8 +1,28 @@
 # WebGPU snow sim
 This project contains a snow simulation engine using the **material point method** (**MPM**) algorithm.
 
+You can [view this demo online](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/) so long as your browser supports WebGPU!
+
+[![suzanne made of snow being thrown against a wall and a box collider](./docs/mpm-high-grid-size.gif)](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/)
+
+## Features
+1. **Explicit MPM** for cohesion, alongside:
+    1. **Elastic deformation and stress forces** to simulate soft materials
+        |![elastic deformation with a high grid size](./docs/elastic-high-grid.gif)|
+        |-|
+    1. **Plastic deformation** to simulate fracture and tearing
+        |![plastic deformation with a high grid size](./docs/plastic-high-grid.gif)|
+        |-|
+    1. **Hardening** to simulate snow better
+2. **Rigid colliders** for particles to interact with a more interesting scene
+    |![snow suzanne with collider rendered](./docs/collider-wire.gif)|![suzanne deforming plastically against the collider](./docs/collider-low-grid.gif)|
+    |-|-|
+3. **Raymarching** for smoother particle rendering
+    |![raymarched blob with collider](./docs/raymarch-sample-1.png)|![raymarched suzanne](./docs/raymarch-sample-2.png)|![raymarched blob with collider from another angle](./docs/raymarch-sample-3.png)|
+    |-|-|-|
+
 ## Code
-This is a SvelteKit project with a simulation powered by WebGPU, so you can [view this demo online](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/) so long as your browser supports WebGPU!
+This is a SvelteKit project with a simulation powered by WebGPU.
 
 ### Local development
 After cloning this repository:
@@ -25,6 +45,10 @@ Let's walk through the implementation of the simulation from the ground up.
 ### Particles and external forces
 We'll start with a simple particle simulation. We'll spawn a certain number of particles making up our material. They each have their own position $\mathbf x$ in meters $\text m$, velocity $\mathbf v$ in meters per second $\dfrac {\text m}{\text s}$, and mass $m$ in kilograms $\text{kg}$.
 ```wgsl
+struct Uniforms {
+    simulation_timestep: f32,
+}
+
 struct ParticleData {
     position: vec3f,
     velocity: vec3f,
@@ -178,11 +202,11 @@ And that's it!
 ```wgsl
 let cell = &cell_data[thread_index];
 
-let mass = atomicLoad(&(*cell).mass) / uniforms.fixed_point_scale;
+let mass = atomicLoad(&(*cell).mass) / grid_uniforms.fixed_point_scale;
 
 
 let force = vec3f(0, 0, -9.81) * mass;
-let momentum_contrib = force * uniforms.simulation_timestep * uniforms.fixed_point_scale;
+let momentum_contrib = force * uniforms.simulation_timestep * grid_uniforms.fixed_point_scale;
 
 atomicAdd(&(*cell).momentum_x, i32(momentum_contrib.x));
 atomicAdd(&(*cell).momentum_y, i32(momentum_contrib.y));
@@ -275,7 +299,7 @@ struct ParticleData {
 
 When initializing our particles, we'll want to set this to the identity matrix $\mathbf I$, representing no deformation. Over time, deformation will accumulate in this matrix as the material deforms at that point.
 
-The first thing we'll do is *modify the particle-to-grid step* to calculate the current change in deformation (wrt time) $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$ at each particle. One way to think about this change in deformation is to consider how much the material's velocity $\mathbf v_\text{material}$ varies on opposite sides of the particle.
+The first thing we'll do is *modify the particle-to-grid step* to calculate the current change in deformation $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$ with respect to time at each particle. One way to think about this change in deformation is to consider how much the material's velocity $\mathbf v_\text{material}$ varies on opposite sides of the particle.
 
 ![velocity field of antiparallel vectors that results in a shear](./docs/deformation-velocity-field.png)
 
@@ -308,16 +332,16 @@ $$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}
     0.25 & 0
 \end{bmatrix}$$
 
-We can probably intuit now that this change in deformation is somehow dependent on *how the velocity vector varies wrt position along each axis*. In calculus terms, we might say we want to take the derivative of the velocity field $\mathbf v_\text{material}$ with respect to the position $\mathbf x$. We'll call the result of this the **velocity gradient**. It turns out that the tool for differentiating a vector with respect to another vector is the **Jacobian matrix** $\mathbf J$, which is simply a matrix such that $\mathbf J_{i,j} = \dfrac{\partial\mathbf v_{\text{material},i}}{\partial\mathbf x_j}$ represents the derivative of the $i\text{th}$ component of $\mathbf v_\text{material}$ with respect to the $j\text{th}$ component of $\mathbf x$. For our 2D case:
+We can probably intuit now that this change in deformation is somehow dependent on how the material's velocity vector varies with respect to position along each axis. In calculus terms, we might say we want to take the derivative of the material's velocity field $\mathbf v_\text{material}$ with respect to the position $\mathbf x$. We'll call the result of this the **velocity gradient** $\dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x}$. It turns out that the tool for differentiating a vector with respect to another vector is the **Jacobian matrix** $\mathbf J$, which is simply a matrix such that $\mathbf J_{i,j} = \dfrac{\partial\mathbf v_{\text{material},i}}{\partial\mathbf x_j}$ represents the derivative of the $i\text{th}$ component of $\mathbf v_\text{material}$ with respect to the $j\text{th}$ component of $\mathbf x$. For our 2D case:
 
 $$\frac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x} = \begin{bmatrix}
     \dfrac{\partial\mathbf v_{\text{material},x}}{\partial\mathbf x_x} & \dfrac{\partial\mathbf v_{\text{material},x}}{\partial\mathbf x_y}\\
     \dfrac{\partial\mathbf v_{\text{material},y}}{\partial\mathbf x_x} & \dfrac{\partial\mathbf v_{\text{material},y}}{\partial\mathbf x_y}
 \end{bmatrix}$$
 
-...which, for both of the examples above, gives us exactly the values we had written for $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$!
+...which, for both of the examples above, gives us exactly the values we had written for $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$! So now we have a way to calculate the change in deformation given a velocity field, $\dfrac{\mathrm d\mathbf F}{\mathrm dt} = \dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x}$.
 
-Great! We now know how to calculate the change in deformation given a velocity field, $\dfrac{\mathrm d\mathbf F}{\mathrm dt} = \dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x}$. One little problem, though: we don't exactly have a continuous velocity field to differentiate, but a set of discrete velocities at the center of each grid cell. We need some way to interpolate those grid cell velocities into a continuous field.
+One problem, though: we don't exactly have a continuous velocity field to differentiate, but a set of discrete velocities at the center of each grid cell. We need some way to interpolate those grid cell velocities into a continuous field.
 
 Let's return to our 3D simulation and try writing out the velocity field $\mathbf v_\text{material}(\mathbf x)$ as a function of $\mathbf x$ so we know what we should be trying to differentiate. Recall that, in the grid-to-particle step, we analyzed how much velocity each single cell contributed to our particle's velocity. Also keep in mind that our material points represent samples of a continuous material's velocity and deformation; by definition, the material's velocity $\mathbf v_\text{material}(\mathbf x)$ at any particle's position is just the velocity of that particle.
 
@@ -329,9 +353,9 @@ let weight = weights[u32(offset_x + 1)].x
 
 // ...
 
-new_particle_velocity += grid_velocity * weight;
+new_particle_velocity += grid_velocity * weight; // grid_velocity = grid_momentum / grid_mass
 ```
-Think about what's going on here: given a specific configuration of grid momentums and masses, a particle's velocity is going to be entirely determined by where it is in the grid. That means the `grid_velocity * weight` ($=: w \cdot \mathbf v_\text{cell}$) calculation we're doing, summed altogether across all 27 neighbor cells, is what we're defining as the material's velocity $\mathbf v_\text{material}(\mathbf x)$ at any given position $\mathbf x$. So we have a way to express the velocity field as a big sum of 27 cell contributions, and by the addition rule of derivatives, the derivative is just each sum of all the derivatives of all 27 addends.
+Think about what's going on here: given a specific configuration of grid momentums and masses, a particle's velocity is going to be entirely determined by where it is in the grid. That means the `grid_velocity * weight` ($=: w \cdot \mathbf v_\text{cell}$) calculation we're doing, summed altogether across all 27 neighbor cells, is what we're defining as the material's velocity $\mathbf v_\text{material}(\mathbf x)$ at any given position $\mathbf x$. So we have a way to express the velocity field as a big sum of 27 cell contributions, and by the addition rule of derivatives, the derivative is just each sum of all the derivatives of all 27 addends. (Let $\mathbf v_\text{cell}$ be the velocity stored in a cell.)
 
 $$\begin{align*}
     \mathbf v_\text{material}
@@ -343,7 +367,7 @@ $$\begin{align*}
 
 The B-spline functions we used to compute the weights, it turns out, additionally has the purpose of interpolating our velocities here in a smooth way. This makes our function easy to differentiate with respect to position, and we can even get cheap, exact values for the derivatives since the functions are all simple quadratics.
 
-Our B-spline functions were piecewise, so their derivatives are also piecewise. Let's differentiate the 3 weight formulas analytically with respect to the fractional position in each axis $\mathbf x_a$:
+Our B-spline functions were piecewise, so their derivatives are also piecewise. Let's differentiate the 3 pieces analytically with respect to the fractional position in each axis $\mathbf x_a$:
 
 $$\frac{\mathrm d}{\mathrm d\mathbf x_a}\begin{bmatrix}
     0.5 \cdot (1 - \mathbf x_a)^2 \\
@@ -357,7 +381,7 @@ $$\frac{\mathrm d}{\mathrm d\mathbf x_a}\begin{bmatrix}
 
 Just as we selected which weight $w_x, w_y, w_z$ to use for each plane of cells based on the position of that plane from a particle, we'll select which weight derivative in the same manner.
 
-Now back to the overall weight for a cell. After we multiplied the three weights $w = w_x \cdot w_y \cdot w_z$, we were able to calculate its final velocity contribution $w \cdot \mathbf v_\text{cell}$ to each particle. $\mathbf v_\text{cell}$ for a given cell is constant during the entire grid-to-particle step, so we'll mainly need to worry about differentiating $w$ with respect to position, giving us what we'll call the **weight gradient**. We'll need some more Jacobians for this:
+Now back to the overall weight for a cell. After we multiplied the three weights $w = w_x \cdot w_y \cdot w_z$, we were able to calculate its final velocity contribution $w \cdot \mathbf v_\text{cell}$ to each particle. $\mathbf v_\text{cell}$ for a given cell is constant during the entire grid-to-particle step, so we'll mainly need to worry about differentiating $w$ with respect to position, giving us what we'll call the **weight gradient** $\dfrac{\mathrm dw}{\mathrm d\mathbf x}$. We'll need some more Jacobians for this:
 
 $$\begin{align*}
     \frac{\mathrm dw}{\mathrm d\mathbf x} &= \begin{bmatrix}
