@@ -26,7 +26,7 @@ let width = $state(300);
 let height = $state(150);
 
 let nParticles = $state(500_000);
-let gridResolution = $state(16);
+let gridResolution = $state(192);
 let simulationTimestepS = $state(1 / 144);
 
 const updateCanvasSize = async () => {
