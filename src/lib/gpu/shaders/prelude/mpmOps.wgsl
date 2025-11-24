@@ -64,7 +64,7 @@ fn calculateQuadraticBSplineCellWeightDerivatives(fractionalPosFromCellMin: vec3
     var derivatives: array<vec3f, 3>;
 
     // derivative of B-spline weights wrt fractional pos
-    derivatives[0] = 1 - fractionalPosFromCellMin;
+    derivatives[0] = fractionalPosFromCellMin - 1;
     derivatives[1] = -2 * (fractionalPosFromCellMin - 0.5);
     derivatives[2] = fractionalPosFromCellMin;
 
