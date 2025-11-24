@@ -8,6 +8,7 @@ import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
 import { loadGltfScene } from "./loadScene";
 import type { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
 import type { ElapsedTime } from "./ElapsedTime.svelte";
+import modelUrl from "$lib/assets/models/monkey.glb?url";
 
 let {
     onStatusChange,
@@ -52,7 +53,7 @@ onMount(async () => {
     const { device, context, format, supportsTimestamp } = response;
 
     onStatusChange("loading geometry...");
-    const { vertices } = await loadGltfScene("/monkey.glb");
+    const { vertices } = await loadGltfScene(modelUrl);
 
     const runner = new GpuSnowPipelineRunner({
         device,
