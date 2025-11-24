@@ -282,14 +282,14 @@ The first thing we'll do is **modify the particle-to-grid step** to calculate th
 
 We can tell that the velocity field above results in a shearing effect, where the area above the particle is moving rightward and the area below is moving leftward. To get our desired change in deformation, we can write the particle's basis vectors for the diagram on the right side, and then take their difference with the basis vectors on the left side:
 
-$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}1 & 1\\0 & 1\end{bmatrix} - \begin{bmatrix}1 & 0\\0 & 1\end{bmatrix} = \begin{bmatrix}0 & 1\\0 & 0\end{bmatrix}$$
+$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}1 & 1 \\ 0 & 1\end{bmatrix} - \begin{bmatrix}1 & 0 \\ 0 & 1\end{bmatrix} = \begin{bmatrix}0 & 1 \\ 0 & 0\end{bmatrix}$$
 
 Also note that $\mathbf F$ is not a homogeneous transformation matrix, so it doesn't encode translation. Therefore, even if the velocity vectors result in a net displacement, we only encode the stretching, shearing, and rotation in the deformation matrix:
 
 
 ![velocity field of non-antiparallel vectors that results in a shear](./docs/deformation-velocity-field-nonantiparallel.png)
 
-$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}1 & 0\\0.25 & 1\end{bmatrix} - \begin{bmatrix}1 & 0\\0 & 1\end{bmatrix} = \begin{bmatrix}0 & 0\\0.25 & 0\end{bmatrix}$$
+$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}1 & 0 \\ 0.25 & 1\end{bmatrix} - \begin{bmatrix}1 & 0 \\ 0 & 1\end{bmatrix} = \begin{bmatrix}0 & 0 \\ 0.25 & 0\end{bmatrix}$$
 
 We can probably intuit now that this change in deformation is somehow dependent on *how the velocity vector varies wrt position along each axis*. In calculus terms, we might say we want to take the derivative of the velocity field $\mathbf v_\text{material}$ with respect to the position $\mathbf x$. We'll call the result of this the **velocity gradient**. It turns out that the tool for differentiating a vector with respect to another vector is the **Jacobian matrix** $\mathbf J$, which is simply a matrix such that $\mathbf J_{i,j} = \dfrac{\partial\mathbf v_{\text{material},i}}{\partial\mathbf x_j}$ represents the derivative of the $i$th component of $\mathbf v_\text{material}$ with respect to the $j$th component of $\mathbf x$. For our 2D case:
 
@@ -361,6 +361,8 @@ $$\frac{\mathrm d}{\mathrm d\mathbf x_a}\begin{bmatrix}
 \end{bmatrix}$$
 
 And at last, we now have all the pieces we need to calculate the change in the deformation gradient!
+
+$$\mathbf F_\text{next} := \mathbf F + \frac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x} \cdot \Delta t$$
 
 ```wgsl
 let weights = calculateQuadraticBSplineCellWeights(fractional_pos); // see above
