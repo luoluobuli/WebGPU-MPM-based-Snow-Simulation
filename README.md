@@ -200,8 +200,11 @@ let mass = (*particle).mass;
 let momentum = (*particle).vel * mass;
 let pos = (*particle).pos;
 
-let cell_number = vec3i((pos - grid_uniforms.grid_min_coords) / grid_uniforms.grid_cell_dims);
-let fractional_pos = pos - grid_uniforms.grid_min_coords - vec3f(cell_number) * grid_uniforms.grid_cell_dims;
+let pos_from_grid_min = pos - grid_uniforms.grid_min_coords;
+let cell_number = vec3i(pos_from_grid_min / grid_uniforms.grid_cell_dims);
+let fractional_pos = pos_from_grid_min - vec3f(cell_number) * grid_uniforms.grid_cell_dims;
+
+let weights = calculateQuadraticBSplineCellWeights(fractional_pos); // see above
 
 var new_particle_velocity = vec3f(0);
 for (var offset_z = -1i; offset_z <= 1i; offset_z++) {
@@ -210,8 +213,9 @@ for (var offset_z = -1i; offset_z <= 1i; offset_z++) {
             let cell_index = linearizeCellIndex(cell_number + vec3i(offset_x, offset_y, offset_z));
             let cell = &grid_data[cell_index];
 
-            let weights = calculateQuadraticBSplineCellWeights(fractional_pos); // see above
-            let weight = weights[u32(offset_x + 1)].x * weights[u32(offset_y + 1)].y * weights[u32(offset_z + 1)].z;
+            let weight = weights[u32(offset_x + 1)].x
+                * weights[u32(offset_y + 1)].y
+                * weights[u32(offset_z + 1)].z;
 
             let grid_momentum = vec3f(
                 atomicLoad(&(*cell).momentum_x),
@@ -251,10 +255,14 @@ At this point, though, we've only modeled external forces. In fact, if we only h
 
 Let's make things more interesting with some *internal forces*!
 
-### Internal forces and stress
+### Internal forces
 Recall how our *material points* represent samples of how a continuous material is moving or deformed at each of our particles' positions. It turns out that deformation is the key to adding internal forces!
 
-The **deformation matrix** $\mathbf F$ represents the *local transformation* of the material at a given material point. By using a matrix, we have the ability to represent shearing and stretching of the material.
+#### Deformation
+The **deformation matrix** $\mathbf F$ represents the *local transformation* of the material at a given material point. By using a matrix, we have the ability to represent shearing, stretching, and rotation of the material.
+
+> [!note]
+> It'll be helpful here to know how matrices represent linear transformations! In the diagrams below, we're going to draw the deformation matrix as how it transforms the basis vectors of a coordinate system.
 
 Deformation is a property of our particles, so let's update our `ParticleData` struct:
 ```wgsl
@@ -265,10 +273,144 @@ struct ParticleData {
     deformation: mat3x3f; // !! NEW
 }
 ```
+
+When initializing our particles, we'll want to set this to the identity matrix $\mathbf I$, representing no deformation. Over time, deformation will accumulate in this matrix as the material deforms at that point.
+
+The first thing we'll do is **modify the particle-to-grid step** to calculate the current change in deformation (wrt time) $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$ at each particle. One way to think about this change in deformation is to consider how much the material's velocity $\mathbf v_\text{material}$ varies on opposite sides of the particle.
+
+![velocity field of antiparallel vectors that results in a shear](./docs/deformation-velocity-field.png)
+
+We can tell that the velocity field above results in a shearing effect, where the area above the particle is moving rightward and the area below is moving leftward. To get our desired change in deformation, we can write the particle's basis vectors for the diagram on the right side, and then take their difference with the basis vectors on the left side:
+
+$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}1 & 1\\0 & 1\end{bmatrix} - \begin{bmatrix}1 & 0\\0 & 1\end{bmatrix} = \begin{bmatrix}0 & 1\\0 & 0\end{bmatrix}$$
+
+Also note that $\mathbf F$ is not a homogeneous transformation matrix, so it doesn't encode translation. Therefore, even if the velocity vectors result in a net displacement, we only encode the stretching, shearing, and rotation in the deformation matrix:
+
+
+![velocity field of non-antiparallel vectors that results in a shear](./docs/deformation-velocity-field-nonantiparallel.png)
+
+$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}1 & 0\\0.25 & 1\end{bmatrix} - \begin{bmatrix}1 & 0\\0 & 1\end{bmatrix} = \begin{bmatrix}0 & 0\\0.25 & 0\end{bmatrix}$$
+
+We can probably intuit now that this change in deformation is somehow dependent on *how the velocity vector varies wrt position along each axis*. In calculus terms, we might say we want to take the derivative of the velocity field $\mathbf v_\text{material}$ with respect to the position $\mathbf x$. We'll call the result of this the **velocity gradient**. It turns out that the tool for differentiating a vector with respect to another vector is the **Jacobian matrix** $\mathbf J$, which is simply a matrix such that $\mathbf J_{i,j} = \dfrac{\partial\mathbf v_{\text{material},i}}{\partial\mathbf x_j}$ represents the derivative of the $i$th component of $\mathbf v_\text{material}$ with respect to the $j$th component of $\mathbf x$. For our 2D case:
+
+$$\frac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x} = \begin{bmatrix}
+    \dfrac{\partial\mathbf v_{\text{material},x}}{\partial\mathbf x_x} & \dfrac{\partial\mathbf v_{\text{material},x}}{\partial\mathbf x_y}\\
+    \dfrac{\partial\mathbf v_{\text{material},y}}{\partial\mathbf x_x} & \dfrac{\partial\mathbf v_{\text{material},y}}{\partial\mathbf x_y}
+\end{bmatrix}$$
+
+...which, for both of the examples above, gives us exactly the values we had written for $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$!
+
+Great! We now know how to calculate the change in deformation given a velocity field, $\dfrac{\mathrm d\mathbf F}{\mathrm dt} = \dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x}$. One little problem, though: we don't exactly have a continuous velocity field to differentiate, but a set of discrete velocities at the center of each grid cell. We need some way to interpolate those velocities into a continuous field.
+
+Let's return to our 3D simulation and try writing out the velocity field $\mathbf v_\text{material}(\mathbf x)$ as a function of $\mathbf x$ so we know what we should be trying to differentiate. Recall that, in the grid-to-particle step, we analyzed how much velocity each single cell contributed to our particle's velocity. Also keep in mind that our particles are *material points* representing *samples* of a continuous material's velocity and deformation; by definition, the material's velocity $\mathbf v_\text{material}(\mathbf x)$ at any particle's position is just the velocity of that particle.
+
+So, let's take another look at how we calculated each particle's velocity. Recall the code we used to get the weight $w$ for a specific cell and then have the cell contribute velocity to the particle:
+```wgsl
+let weight = weights[u32(offset_x + 1)].x
+    * weights[u32(offset_y + 1)].y
+    * weights[u32(offset_z + 1)].z;
+
+// ...
+
+new_particle_velocity += grid_velocity * weight;
+```
+Notably, the B-spline functions we used in the `weights` array are continuous, differentiable functions of position. And since the overall velocity is just the sum of 27 cells' contributions, any particle's resulting velocity is *also* going to be a differentiable function of position! So we can write our velocity field as a big sum of 27 cells' contributions. The derivative of that velocity field wrt position, therefore, is a big sum of 27 cells' contributions' derivatives wrt position.
+
+As we see above, a single cell's contribution to the particle's velocity is $w \cdot \mathbf v_\text{cell}$, where $\mathbf v_\text{cell}$ is the velocity of the cell. $\mathbf v_\text{cell}$ for a given cell is constant during the entire grid-to-particle step, so we'll mainly need to worry about differentiating $w$ with respect to position. We'll need some more Jacobians for this:
+
+$$\begin{align*}
+    \frac{\mathrm dw}{\mathrm d\mathbf x} &= \begin{bmatrix}
+        \dfrac{\partial w}{\partial \mathbf x_x}&
+        \dfrac{\partial w}{\partial \mathbf x_y}&
+        \dfrac{\partial w}{\partial \mathbf x_z}
+    \end{bmatrix}
+    \\
+    \frac{\mathrm d[w \cdot \mathbf v_\text{cell}]}{\mathrm d\mathbf x} &= \begin{bmatrix}
+        \dfrac{\partial w}{\partial \mathbf x_x}\cdot \mathbf v_\text{cell}&
+        \dfrac{\partial w}{\partial \mathbf x_y}\cdot \mathbf v_\text{cell}&
+        \dfrac{\partial w}{\partial \mathbf x_z}\cdot \mathbf v_\text{cell}
+    \end{bmatrix}
+\end{align*}$$
+
+Let's split $w = w_x \cdot w_y \cdot w_z$ into the 3 different weights $w_x, w_y, w_z$ we multiplied to calculate it. Note that only $w_x$ will vary with $\mathbf x_x$, only $w_y$ will vary with $\mathbf x_y$, and only $w_z$ will vary with $\mathbf x_z$. So we can further rewrite our Jacobian as:
+
+$$\begin{align*}
+    \frac{\mathrm dw}{\mathrm d\mathbf x} &= \begin{bmatrix}
+        \dfrac{\partial w_x}{\partial \mathbf x_x} \cdot w_y \cdot w_z &
+        w_x \cdot \dfrac{\partial w_y}{\partial \mathbf x_y} \cdot w_z &
+        w_x \cdot w_y \cdot \dfrac{\partial w_z}{\partial \mathbf x_z}
+    \end{bmatrix}
+    \\
+    \frac{\mathrm d[w \cdot \mathbf v_\text{cell}]}{\mathrm d\mathbf x} &= \begin{bmatrix}
+        \dfrac{\partial w_x}{\partial \mathbf x_x} \cdot w_y \cdot w_z \cdot \mathbf v_\text{cell}&
+        w_x \cdot \dfrac{\partial w_y}{\partial \mathbf x_y} \cdot w_z \cdot \mathbf v_\text{cell}&
+        w_x \cdot w_y \cdot \dfrac{\partial w_z}{\partial \mathbf x_z} \cdot \mathbf v_\text{cell}
+    \end{bmatrix}
+\end{align*}$$
+
+Our B-spline functions were piecewise, so their derivatives are also piecewise. Let's differentiate the 3 weight formulas we used above (with respect to position in each axis $\mathbf x_a$):
+
+$$\frac{\mathrm d}{\mathrm d\mathbf x_a}\begin{bmatrix}
+    0.5 \cdot (1 - \mathbf x_a)^2 \\
+    0.75 - (\mathbf x_a - 0.5)^2 \\
+    0.5 \cdot (\mathbf x_a)^2
+\end{bmatrix} = \begin{bmatrix}
+    \mathbf x_a - 1 \\
+    -2 \cdot (\mathbf x_a - 0.5) \\
+    \mathbf x_a
+\end{bmatrix}$$
+
+And at last, we now have all the pieces we need to calculate the change in the deformation gradient!
+
+```wgsl
+let weights = calculateQuadraticBSplineCellWeights(fractional_pos); // see above
+let weight_derivs = calculateQuadraticBSplineCellWeightDerivatives(fractional_pos); // see above
+
+var total_velocity_gradient = mat3x3f();
+for (var offset_z = -1i; offset_z <= 1i; offset_z++) {
+    for (var offset_y = -1i; offset_y <= 1i; offset_y++) {
+        for (var offset_x = -1i; offset_x <= 1i; offset_x++) {
+            let cell_index = linearizeCellIndex(cell_number + vec3i(offset_x, offset_y, offset_z));
+            let cell = &grid_data[cell_index];
+
+            let weight = weights[u32(offset_x + 1)].x
+                * weights[u32(offset_y + 1)].y
+                * weights[u32(offset_z + 1)].z;
+
+            // ...
+
+            let grid_velocity = grid_momentum / grid_mass;
+
+            let velocity_gradient_contrib = vec3f(
+                weight_derivs[u32(offset_x + 1)].x * weight[u32(offset_y + 1)].y * weight[u32(offset_z + 1)].z,
+                weight[u32(offset_x + 1)].x * weight_derivs[u32(offset_y + 1)].y * weight[u32(offset_z + 1)].z,
+                weight[u32(offset_x + 1)].x * weight[u32(offset_y + 1)].y * weight_derivs[u32(offset_z + 1)].z,
+            );
+
+            total_velocity_gradient += mat3x3f(
+                velocity_gradient_contrib.x * grid_velocity,
+                velocity_gradient_contrib.y * grid_velocity,
+                velocity_gradient_contrib.z * grid_velocity,
+            );
+        }
+    }
+}
+
+(*particle).deformation += total_velocity_gradient * uniforms.simulation_timestep;
+```
+
+Even after all that, though, our deformation isn't actually doing anything to the simulation. Let's visualize the fruits of our labor by adding a force that comes as a direct result of deformation.
+
+#### Elasticity and stress force
+We noted before that all of our particles, with only a gravity force, are going to sink through the material, all the way to the bottom of the grid. The **stress** force will counteract this by attempting to restore the material's deformation to the original, undeformed state.
 > [!note]
 > TBD
 
 #### Plasticity
+> [!note]
+> TBD
+
+#### Hardening
 > [!note]
 > TBD
 
