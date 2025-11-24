@@ -17,12 +17,16 @@ fn cubeSDF(p: vec3<f32>, minB: vec3<f32>, maxB: vec3<f32>) -> f32 {
 }
 
 @compute
-@workgroup_size(256)
+@workgroup_size(8, 8, 4)
 fn doGridUpdate(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
-    let threadIndex = gid.x;
-    if threadIndex >= arrayLength(&gridData) { return; }
+    if (gid.x >= uniforms.gridResolution || gid.y >= uniforms.gridResolution || gid.z >= uniforms.gridResolution) {
+        return;
+    }
+
+    let threadIndex = gid.x + uniforms.gridResolution * (gid.y + uniforms.gridResolution * gid.z);
+    if (threadIndex >= arrayLength(&gridData)) { return; }
 
     let grid = &gridData[threadIndex];
 
@@ -45,12 +49,7 @@ fn doGridUpdate(
     let maxB = vec3f(2.0, 1.0, 2.0);
 
     // Get grid world pos
-    let N = uniforms.gridResolution;
-    let cellIdx3d = vec3<u32>(
-        threadIndex % N,
-        (threadIndex / N) % N,
-        threadIndex / (N * N),
-    );
+    let cellIdx3d = vec3<u32>(gid.x, gid.y, gid.z);
 
     let cellDims = calculateCellDims();
     let cellWorldPos = uniforms.gridMinCoords + (vec3<f32>(cellIdx3d) + vec3<f32>(0.5, 0.5, 0.5)) * cellDims;

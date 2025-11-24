@@ -139,16 +139,20 @@ export class GpuSimulationStepPipelineManager {
 
     addDispatch({
         computePassEncoder,
-        numThreads,
         pipeline,
+        dispatchX,
+        dispatchY,
+        dispatchZ,
     }: {
         computePassEncoder: GPUComputePassEncoder,
-        numThreads: number,
         pipeline: GPUComputePipeline,
+        dispatchX : number,
+        dispatchY? : number,
+        dispatchZ? : number,
     }) {
         computePassEncoder.setPipeline(pipeline);
         computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
         computePassEncoder.setBindGroup(1, this.storageBindGroup);
-        computePassEncoder.dispatchWorkgroups(Math.ceil(numThreads / 256));
+        computePassEncoder.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ);
     }
 }
