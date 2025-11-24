@@ -139,25 +139,29 @@ export class GpuSnowPipelineRunner {
         for (let i = 0; i < nSteps; i++) {
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
-                numThreads: this.gridResolution ** 3,
                 pipeline: this.simulationStepPipelineManager.gridClearComputePipeline,
+                dispatchX: Math.ceil(this.gridResolution / 8),
+                dispatchY: Math.ceil(this.gridResolution / 8),
+                dispatchZ: Math.ceil(this.gridResolution / 4),
             });
             
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
-                numThreads: this.nParticles,
+                dispatchX: Math.ceil(this.nParticles / 256),
                 pipeline: this.simulationStepPipelineManager.p2gComputePipeline,
             });
 
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
-                numThreads: this.gridResolution ** 3,
                 pipeline: this.simulationStepPipelineManager.gridComputePipeline,
+                dispatchX: Math.ceil(this.gridResolution / 8),
+                dispatchY: Math.ceil(this.gridResolution / 8),
+                dispatchZ: Math.ceil(this.gridResolution / 4),
             });
 
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
-                numThreads: this.nParticles,
+                dispatchX: Math.ceil(this.nParticles / 256),
                 pipeline: this.simulationStepPipelineManager.g2pComputePipeline,
             });
         }

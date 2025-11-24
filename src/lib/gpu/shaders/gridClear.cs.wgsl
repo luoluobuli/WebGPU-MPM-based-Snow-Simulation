@@ -1,12 +1,16 @@
 @group(1) @binding(1) var<storage, read_write> gridData: array<CellData>;
 
 @compute
-@workgroup_size(256)
+@workgroup_size(8, 8, 4)
 fn doClearGrid(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
-    let threadIndex = gid.x;
-    if threadIndex >= arrayLength(&gridData) { return; }
+    if (gid.x >= uniforms.gridResolution || gid.y >= uniforms.gridResolution || gid.z >= uniforms.gridResolution) {
+        return;
+    }
+
+    let threadIndex = gid.x + uniforms.gridResolution * (gid.y + gid.z * uniforms.gridResolution);
+    if (threadIndex >= arrayLength(&gridData)) { return; }
 
     let grid = &gridData[threadIndex];
 

@@ -28,6 +28,9 @@ export const requestGpuDeviceAndContext = async ({
     onStatusChange("accessing gpu device");
     const device = await adapter.requestDevice({
         requiredFeatures,
+        requiredLimits: {
+            maxStorageBufferBindingSize: Math.min(536_870_912, adapter.limits.maxStorageBufferBindingSize),
+        },
     });
     if (device === null) {
         onErr("could not get device");
