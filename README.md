@@ -191,7 +191,7 @@ atomicAdd(&(*cell).momentum_z, i32(momentum_contrib.z));
 #### Grid-to-particle
 In this step, we're going to accumulate the new momentums onto the particles based on the grid cells, and then we'll update the particle's position based on that momentum.
 
-To do this, we're going to use our B-spline weights from before as well as the grid loop to determine the influence each *grid cell* now has on the current *particle*. After we've added up the velocity contributions from all the grid cells, we can then update the position!
+To do this, we're going to use our B-spline weights from before as well as the grid loop to determine the influence each *grid cell* now has on the current *particle*. After we've added up the velocity contributions from all the grid cells, we can then update the position.
 
 ```wgsl
 let particle = &particle_data[thread_index];
@@ -251,12 +251,10 @@ atomicStore(&(*cell).mass, 0);
 #### Next steps
 After running the 4 steps repeatedly in a simulation loop, our MPM implementation is complete! Notably, if you add forces other than gravity, you can start to notice the particles bunching up. The velocities of particles will influence nearby particles, making the material look more cohesive, with a goopy or stringy look, especially if you add forces other than gravity.
 
-At this point, though, we've only modeled external forces. In fact, if we only have gravity, then we'll just see all the particles fall straght down through the material, which isn't very interesting and doesn't really model any material all that well.
-
-Let's make things more interesting with some *internal forces*!
+At this point, though, we've only modeled external forces. In fact, if we only have gravity, then we'll just see all the particles fall straght down through the material, which isn't very interesting and doesn't really model any material all that well. Let's make things more interesting!
 
 ### Internal forces
-Recall how our *material points* represent samples of how a continuous material is moving or deformed at each of our particles' positions. It turns out that deformation is the key to adding internal forces!
+Recall how our material points represent samples of how a continuous material is moving or deformed at each of our particles' positions. It turns out that deformation is the key to adding internal forces!
 
 #### Deformation
 The **deformation matrix** $\mathbf F$ represents the *local transformation* of the material at a given material point. By using a matrix, we have the ability to represent shearing, stretching, and rotation of the material.
@@ -276,7 +274,7 @@ struct ParticleData {
 
 When initializing our particles, we'll want to set this to the identity matrix $\mathbf I$, representing no deformation. Over time, deformation will accumulate in this matrix as the material deforms at that point.
 
-The first thing we'll do is **modify the particle-to-grid step** to calculate the current change in deformation (wrt time) $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$ at each particle. One way to think about this change in deformation is to consider how much the material's velocity $\mathbf v_\text{material}$ varies on opposite sides of the particle.
+The first thing we'll do is *modify the particle-to-grid step* to calculate the current change in deformation (wrt time) $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$ at each particle. One way to think about this change in deformation is to consider how much the material's velocity $\mathbf v_\text{material}$ varies on opposite sides of the particle.
 
 ![velocity field of antiparallel vectors that results in a shear](./docs/deformation-velocity-field.png)
 
@@ -447,10 +445,12 @@ We noted before that all of our particles, with only a gravity force, are going 
 > TBD
 
 ## Resources
+1. ***[A Material Point Method For Snow Simulation](https://disneyanimation.com/publications/a-material-point-method-for-snow-simulation/)*.** The 2013 Disney paper proposing MPM for simulating snow.
 1. **[Breakpoint](https://github.com/danieljgerhardt/Breakpoint).** A DirectX implementation of 3D PBMPM with mixed material types, along with a mesh shading renderer.
 1. **[GPUMPM](https://github.com/kuiwuchn/GPUMPM).** A CUDA implemenation of MPM, associated with the 2019 paper ***[GPU optimization of material point methods](https://dl.acm.org/doi/10.1145/3272127.3275044)***.
 1. **[PB-MPM](https://github.com/electronicarts/pbmpm).** The original WebGPU proof-of-concept implementation of 2D PBMPM with various material types, associated with the original 2024 paper introducing PBMPM, ***[A Position Based Material Point Method](https://media.contentapi.ea.com/content/dam/ea/seed/presentations/seed-siggraph2024-pbmpm-paper.pdf)***. *(although internal forces seem to be broken at the moment, as of 2025-11-21...)*
 1. ***[Principles towards Real-Time Simulation of Material Point Method on Modern GPUs](https://arxiv.org/pdf/2111.00699)*.** A 2021 paper covering GPU optimizations of MPM.
+1. ***[The Material Point Method for Simulating Continuum Materials](https://alexey.stomakhin.com/research/siggraph2016_mpm.pdf)*.** A 2016 paper introducing MPM.
 
 [Project presentation slides](https://docs.google.com/presentation/d/1KzaJZwBxE9-vjqXS8KjHvptEbJPF9yljNl7gesTuuB4/edit?usp=sharing)
 
