@@ -19,11 +19,13 @@ export class GpuRaymarchRenderPipelineManager implements GpuRenderMethod {
         format,
         uniformsManager,
         mpmManager,
+        depthFormat,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
         uniformsManager: GpuUniformsBufferManager,
         mpmManager: GpuMpmBufferManager, 
+        depthFormat: GPUTextureFormat,
     }) {
         const raymarchStorageBindGroupLayout = device.createBindGroupLayout({
             label: "raymarch storage bind group layout",
@@ -120,6 +122,12 @@ export class GpuRaymarchRenderPipelineManager implements GpuRenderMethod {
 
             primitive: {
                 topology: "triangle-strip",
+            },
+
+            depthStencil: {
+                depthWriteEnabled: true,
+                depthCompare: "less",
+                format: depthFormat,
             },
         });
 
