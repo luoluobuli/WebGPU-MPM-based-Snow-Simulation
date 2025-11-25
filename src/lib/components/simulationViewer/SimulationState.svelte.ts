@@ -54,12 +54,14 @@ export class SimulationState {
         if (this.runner === null || this.device === null) return;
 
         this.stopSimulation?.();
+        this.stopSimulation = null;
         
         this.runner.scatterParticlesInMeshVolume();
 
         this.onStatusChange?.("initializing particles");
 
         await this.device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
+        if (this.stopSimulation !== null) return;
 
         this.onStatusChange?.("off and racing");
 

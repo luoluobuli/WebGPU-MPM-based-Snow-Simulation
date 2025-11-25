@@ -26,16 +26,6 @@ onMount(() => {
 
 </script>
 
-<svelte:window
-    onkeydown={event => {
-        switch (event.key) {
-            case "r":
-                simulationState.reset();
-                break;
-        }
-    }}
-/>
-
 <main>
     <Canvas
         {simulationState}
@@ -100,6 +90,7 @@ onMount(() => {
 
         <Hotkey
             key="r"
+            onKeyUp={() => simulationState.reset()}
         >
             {#snippet pressTarget({keyHeld})}
                 <Button

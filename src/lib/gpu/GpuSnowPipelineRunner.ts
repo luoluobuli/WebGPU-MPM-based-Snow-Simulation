@@ -10,6 +10,7 @@ import { GpuMeshBufferManager } from "./buffers/GpuMeshBufferManager";
 import { GpuColliderBufferManager } from "./buffers/GpuColliderBufferManager";
 import { GpuParticleInitPipelineManager as GpuParticleScatterPipelineManager } from "./pipelines/GpuParticleScatterPipelineManager";
 import { GpuRasterizeRenderPipelineManager } from "./pipelines/GpuRasterizeRenderPipelineManager";
+import { GpuMpmGridRenderPipelineManager } from "./pipelines/GpuMpmGridRenderPipelineMager";
 
 const MAX_SIMULATION_DRIFT_MS = 1_000;
 const FP_SCALE = 1024.0;
@@ -29,6 +30,7 @@ export class GpuSnowPipelineRunner {
     private readonly pointsRenderPipelineManager: GpuPointsRenderPipelineManager;
     private readonly raymarchRenderPipelineManager: GpuRaymarchRenderPipelineManager;
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
+    private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
     private readonly particleScatterPipelineManager: GpuParticleScatterPipelineManager;
     private readonly measurePerf: boolean;
 
@@ -140,6 +142,15 @@ export class GpuSnowPipelineRunner {
         const raymarchRenderPipelineManager = new GpuRaymarchRenderPipelineManager({device, format, uniformsManager, mpmManager});
         this.raymarchRenderPipelineManager = raymarchRenderPipelineManager;
 
+        const mpmGridRenderPipelineManager = new GpuMpmGridRenderPipelineManager({
+            device,
+            format,
+            depthFormat: "depth24plus",
+            uniformsManager,
+            mpmManager,
+        });
+        this.mpmGridRenderPipelineManager = mpmGridRenderPipelineManager;
+
         this.getRenderMethodType = getRenderMethodType;
 
         this.performanceMeasurementManager = measurePerf
@@ -230,6 +241,12 @@ export class GpuSnowPipelineRunner {
                         view: this.context.getCurrentTexture().createView(),
                     },
                 ],
+                depthStencilAttachment: {
+                    view: this.depthTextureView,
+                    depthLoadOp: 'clear',
+                    depthStoreOp: 'store',
+                    depthClearValue: 1.0,
+                },
                 timestampWrites: this.performanceMeasurementManager !== null
                     ? {
                         querySet: this.performanceMeasurementManager.querySet,
@@ -240,35 +257,8 @@ export class GpuSnowPipelineRunner {
             });
 
             this.selectRenderPipelineManager().addDraw(renderPassEncoder);
-            renderPassEncoder.end();
-        }
-
-        {
-            const renderPassEncoder = commandEncoder.beginRenderPass({
-                label: "collider render pass",
-                colorAttachments: [
-                    {
-                        clearValue: {
-                            r: 0,
-                            g: 0,
-                            b: 0,
-                            a: 1,
-                        },
-
-                        loadOp: "load",
-                        storeOp: "store",
-                        view: this.context.getCurrentTexture().createView(),
-                    },
-                ],
-                depthStencilAttachment: {
-                    view: this.depthTextureView,
-                    depthLoadOp: 'clear',
-                    depthStoreOp: 'store',
-                    depthClearValue: 1.0,
-                },
-            });
-
             this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
+            this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
             renderPassEncoder.end();
         }
     }

@@ -1,16 +1,16 @@
-import type { GpuUniformsBufferManager } from "$lib/gpu/buffers/GpuUniformsBufferManager";
-import pointsVertexModuleSrc from "$lib/gpu/shaders/pointsVertex.wgsl?raw";
-import pointsFragmentModuleSrc from "$lib/gpu/shaders/pointsFragment.wgsl?raw";
-import type { GpuMpmBufferManager } from "../buffers/GpuMpmBufferManager";
-import type { GpuRenderMethod } from "./GpuRenderMethod";
+import cuboidVertexModuleSrc from "../shaders/cuboidVertex.wgsl?raw";
+import cuboidFragmentModuleSrc from "../shaders/cuboidFragment.wgsl?raw";
 import { attachPrelude } from "../shaders/prelude";
+import type { GpuRenderMethod } from "./GpuRenderMethod";
+import type { GpuUniformsBufferManager } from "../buffers/GpuUniformsBufferManager";
+import type { GpuMpmBufferManager } from "../buffers/GpuMpmBufferManager";
 
-export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
+export class GpuMpmGridRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;
-
     readonly uniformsManager: GpuUniformsBufferManager;
     readonly mpmManager: GpuMpmBufferManager;
-
+    readonly linesBuffer: GPUBuffer;
+    
     constructor({
         device,
         format,
@@ -25,21 +25,45 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
         mpmManager: GpuMpmBufferManager,
     }) {
         const vertexModule = device.createShaderModule({
-            label: "points vertex module",
-            code: attachPrelude(pointsVertexModuleSrc),
+            label: "mpm grid vertex module",
+            code: attachPrelude(cuboidVertexModuleSrc),
         });
         const fragmentModule = device.createShaderModule({
-            label: "points fragment module",
-            code: attachPrelude(pointsFragmentModuleSrc),
+            label: "mpm grid fragment module",
+            code: attachPrelude(cuboidFragmentModuleSrc),
         });
+
+        this.linesBuffer = device.createBuffer({
+            label: "mpm grid cuboid lines buffer",
+            size: 24 * 4,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(this.linesBuffer, 0, new Uint32Array([
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 0,
+
+            4, 5,
+            5, 6,
+            6, 7,
+            7, 4,
+
+            0, 4,
+            1, 5,
+            2, 6,
+            3, 7,
+        ]));
+        
         
         const renderPipelineLayout = device.createPipelineLayout({
-            label: "points render pipeline",
-            bindGroupLayouts: [uniformsManager.bindGroupLayout],
+            label: "mpm grid render pipeline layout",
+            bindGroupLayouts: [
+                uniformsManager.bindGroupLayout,
+            ],
         });
         this.renderPipeline = device.createRenderPipeline({
-            label: "points render pipeline",
-
+            label: "mpm grid render pipeline",
             layout: renderPipelineLayout,
 
             vertex: {
@@ -51,10 +75,10 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
                             {
                                 shaderLocation: 0,
                                 offset: 0,
-                                format: "float32x4",
+                                format: "uint32",
                             },
                         ],
-                        arrayStride: 96,
+                        arrayStride: 4,
                         stepMode: "vertex",
                     },
                 ],
@@ -71,13 +95,13 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
             },
 
             primitive: {
-                topology: "point-list",
+                topology: "line-list",
             },
 
             depthStencil: {
+                format: depthFormat,
                 depthWriteEnabled: true,
                 depthCompare: "less",
-                format: depthFormat,
             },
         });
 
@@ -87,8 +111,8 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
 
     addDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
-        renderPassEncoder.setVertexBuffer(0, this.mpmManager.particleDataBuffer);
         renderPassEncoder.setPipeline(this.renderPipeline);
-        renderPassEncoder.draw(this.mpmManager.nParticles);
+        renderPassEncoder.setVertexBuffer(0, this.linesBuffer);
+        renderPassEncoder.draw(24);
     }
 }
