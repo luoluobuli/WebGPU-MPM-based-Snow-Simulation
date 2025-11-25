@@ -60,7 +60,7 @@ onMount(async () => {
     const { positions } = await loadGltfScene("/test.glb"); // static mesh
     const { indices } = await loadGltfScene("/test.glb"); 
 
-    const collider: Collider = {
+    const collider: ColliderGeometry = {
         positions,
         indices,
     };
