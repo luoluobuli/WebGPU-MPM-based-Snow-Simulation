@@ -117,6 +117,10 @@ export const loadGltfScene = async (url: string) => {
     }
 
     const vertices: number[][] = [];
+    const positions: number[] = [];
+    const indices: number[] = [];
+    var vertexOffset = 0;
+
     traverseChildren(gltf.scene, child => {
         if (!(child instanceof Mesh)) return;
         
@@ -126,7 +130,19 @@ export const loadGltfScene = async (url: string) => {
         for (let i = 0; i < index.length; i++) {
             const v = vec(pos.slice(3 * index[i], 3 * index[i] + 3), child.matrix);
             vertices.push(v);
+            indices.push(index[i] + vertexOffset);
         }
+
+        for (let i = 0; i < pos.length; i+= 3) {
+            const px = pos[i];
+            const py = pos[i + 1];
+            const pz = pos[i + 2];
+
+            const v = vec(new Float32Array([px, py, pz]), child.matrix);
+            positions.push(v[0], v[1], v[2]);
+        }
+        vertexOffset += pos.length / 3;
+
     });
 
     return {
@@ -134,5 +150,7 @@ export const loadGltfScene = async (url: string) => {
         triangles,
         materials,
         vertices,
+        positions,
+        indices,
     };
 };

@@ -12,7 +12,7 @@ export interface CameraScreenDims {
 
 export class Camera {
     private readonly controlScheme: CameraControlScheme;
-    private readonly screenDims: CameraScreenDims;
+    readonly screenDims: CameraScreenDims;
 
     zNear = $state(0.01);
     zFar = $state(100);
