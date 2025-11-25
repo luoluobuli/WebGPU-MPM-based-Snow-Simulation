@@ -9,7 +9,7 @@ import { GpuPerformanceMeasurementBufferManager } from "./performanceMeasurement
 import { GpuMeshBufferManager } from "./particleInitialize/GpuMeshBufferManager";
 import { GpuColliderBufferManager } from "./collider/GpuColliderBufferManager";
 import { GpuParticleInitializePipelineManager } from "./particleInitialize/GpuParticleInitializePipelineManager";
-import { GpuRasterizeRenderPipelineManager } from "./pipelines/GpuRasterizeRenderPipelineManager";
+import { GpuRasterizeRenderPipelineManager } from "./collider/GpuRasterizeRenderPipelineManager";
 import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRenderPipelineMager";
 
 const MAX_SIMULATION_DRIFT_MS = 1_000;
