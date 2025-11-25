@@ -332,6 +332,21 @@ $$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}
     0.25 & 0
 \end{bmatrix}$$
 
+And one more example, this time with compression instead of shearing:
+
+![velocity field of parallel vectors that results in compression](./docs/deformation-velocity-field-compression.png)
+
+$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}
+    1 & 0 \\
+    0 & 0.6
+\end{bmatrix} - \begin{bmatrix}
+    1 & 0 \\
+    0 & 1
+\end{bmatrix} = \begin{bmatrix}
+    0 & 0 \\
+    0 & -0.4
+\end{bmatrix}$$
+
 We can probably intuit now that this change in deformation is somehow dependent on how the material's velocity vector varies with respect to position along each axis. In calculus terms, we might say we want to take the derivative of the material's velocity field $\mathbf v_\text{material}$ with respect to the position $\mathbf x$. We'll call the result of this the **velocity gradient** $\dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x}$. It turns out that the tool for differentiating a vector with respect to another vector is the **Jacobian matrix** $\mathbf J$, which is simply a matrix such that $\mathbf J_{i,j} = \dfrac{\partial\mathbf v_{\text{material},i}}{\partial\mathbf x_j}$ represents the derivative of the $i\text{th}$ component of $\mathbf v_\text{material}$ with respect to the $j\text{th}$ component of $\mathbf x$. For our 2D case:
 
 $$\frac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x} = \begin{bmatrix}
