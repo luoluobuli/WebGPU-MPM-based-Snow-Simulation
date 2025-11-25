@@ -17,13 +17,13 @@ export class GpuColliderBufferManager {
         this.colliderVerticesBuffer = device.createBuffer({
             label: "collider vertices buffer",
             size: vertices.byteLength,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX,
         });
 
         this.colliderIndicesBuffer = device.createBuffer({
             label: "collider indices buffer",
             size: indices.byteLength,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.INDEX,
         });
 
         device.queue.writeBuffer(
