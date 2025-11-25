@@ -7,11 +7,11 @@ import { GpuRaymarchRenderPipelineManager } from "./pipelines/GpuRaymarchRenderP
 import { GpuRenderMethodType, type GpuRenderMethod } from "./pipelines/GpuRenderMethod";
 import { GpuPerformanceMeasurementBufferManager } from "./buffers/GpuPerformanceMeasurementBufferManager";
 import { GpuMeshBufferManager } from "./buffers/GpuMeshBufferManager";
-import { GpuStaticMeshBufferManager } from "./buffers/GpuStaticMeshBufferManager";
+import { GpuColliderBufferManager } from "./buffers/GpuColliderBufferManager";
 import { GpuParticleInitPipelineManager as GpuParticleScatterPipelineManager } from "./pipelines/GpuParticleScatterPipelineManager";
 import { GpuRasterizeRenderPipelineManager } from "./pipelines/GpuRasterizeRenderPipelineManager";
 
-export interface StaticMesh {
+export interface ColliderGeometry {
     positions: number[];
     indices: number[];
 }
@@ -50,7 +50,7 @@ export class GpuSnowPipelineRunner {
         simulationTimestepS,
         camera,
         meshVertices,
-        staticMesh,
+        collider,
         getRenderMethodType,
         measurePerf,
     }: {
@@ -62,7 +62,7 @@ export class GpuSnowPipelineRunner {
         simulationTimestepS: number,
         camera: Camera,
         meshVertices: number[][],
-        staticMesh: StaticMesh,
+        collider: ColliderGeometry,
         getRenderMethodType: () => GpuRenderMethodType,
         measurePerf: boolean,
     }) {
@@ -100,17 +100,17 @@ export class GpuSnowPipelineRunner {
         uniformsManager.writeMeshMinCoords(meshManager.minCoords);
         uniformsManager.writeMeshMaxCoords(meshManager.maxCoords);
 
-        const staticMeshManager = new GpuStaticMeshBufferManager({
+        const colliderManager = new GpuColliderBufferManager({
             device, 
-            vertices: staticMesh.positions, 
-            indices: staticMesh.indices,
+            vertices: collider.positions, 
+            indices: collider.indices,
         });
-        uniformsManager.writeMinCoordsTmp(staticMeshManager.minCoords);
-        uniformsManager.writeMaxCoordsTmp(staticMeshManager.maxCoords);
+        uniformsManager.writeMinCoordsTmp(colliderManager.minCoords);
+        uniformsManager.writeMaxCoordsTmp(colliderManager.maxCoords);
 
         // debug
         // this.readbackBuffer = device.createBuffer({
-        //         size: staticMeshManager.indicesBuffer.size,
+        //         size: colliderManager.indicesBuffer.size,
         //         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         // });
         
@@ -137,7 +137,7 @@ export class GpuSnowPipelineRunner {
             format,
             depthFormat: "depth24plus",
             uniformsManager: uniformsManager,
-            staticMeshManager: staticMeshManager
+            colliderManager: colliderManager
         });
         this.rasterizeRenderPipelineManager = rasterizeRenderPipeline;
 
@@ -308,9 +308,9 @@ export class GpuSnowPipelineRunner {
 
             // debug
             // commandEncoder.copyBufferToBuffer(
-            //     this.rasterizeRenderPipelineManager.staticMeshManager.indicesBuffer, 0,
+            //     this.rasterizeRenderPipelineManager.colliderManager.indicesBuffer, 0,
             //     this.readbackBuffer, 0,
-            //     this.rasterizeRenderPipelineManager.staticMeshManager.indicesBuffer.size
+            //     this.rasterizeRenderPipelineManager.colliderManager.indicesBuffer.size
             // );
             // await this.readbackBuffer.mapAsync(GPUMapMode.READ);
             // const data = new Uint32Array(this.readbackBuffer.getMappedRange());
