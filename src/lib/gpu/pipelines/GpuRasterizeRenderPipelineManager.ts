@@ -12,6 +12,7 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
     readonly indexCount : number;
 
     readonly uniformsManager: GpuUniformsBufferManager;
+    readonly colliderManager: GpuColliderBufferManager;
 
 
     constructor({
@@ -91,17 +92,17 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
                 module: vertexModule,
                 entryPoint: "vert",
                 buffers: [
-                    // {
-                    //     attributes: [
-                    //         {
-                    //             shaderLocation: 0,
-                    //             offset: 0,
-                    //             format: "float32x3",
-                    //         },
-                    //     ],
-                    //     arrayStride: 12,
-                    //     stepMode: "vertex",
-                    // },
+                    {
+                        attributes: [
+                            {
+                                shaderLocation: 0,
+                                offset: 0,
+                                format: "float32x3",
+                            },
+                        ],
+                        arrayStride: 12,
+                        stepMode: "vertex",
+                    },
                 ],
             },
 
@@ -116,7 +117,7 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
             },
 
             primitive: {
-                topology: "line-list",
+                topology: "triangle-list",
                 cullMode: "back",
             },
 
@@ -128,6 +129,7 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
         });
 
         this.uniformsManager = uniformsManager;
+        this.colliderManager = colliderManager;
         this.rasterizeStorageBindGroup = rasterizeStorageBindGroup;
 
         this.indexCount = colliderManager.numIndices;
@@ -137,7 +139,8 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
         renderPassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
         renderPassEncoder.setBindGroup(1, this.rasterizeStorageBindGroup);
         renderPassEncoder.setPipeline(this.renderPipeline);
-        // renderPassEncoder.draw(this.indexCount);
-        renderPassEncoder.draw(24);
+        renderPassEncoder.setVertexBuffer(0, this.colliderManager.colliderVerticesBuffer);
+        renderPassEncoder.setIndexBuffer(this.colliderManager.colliderIndicesBuffer, "uint32");
+        renderPassEncoder.drawIndexed(this.indexCount);
     }
 }

@@ -31,6 +31,8 @@ export class GpuSnowPipelineRunner {
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
     private readonly particleScatterPipelineManager: GpuParticleScatterPipelineManager;
     private readonly measurePerf: boolean;
+    // debug
+    // private readonly readbackBuffer : GPUBuffer;
 
     private readonly getRenderMethodType: () => GpuRenderMethodType;
 
@@ -100,6 +102,12 @@ export class GpuSnowPipelineRunner {
             vertices: colliderVertices, 
             indices: colliderIndices
         });
+
+        // debug
+        // this.readbackBuffer = device.createBuffer({
+        //         size: colliderManager.colliderIndicesBuffer.size,
+        //         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        // });
         
         // Compute
         const particleScatterPipelineManager = new GpuParticleScatterPipelineManager({
@@ -257,7 +265,7 @@ export class GpuSnowPipelineRunner {
                     depthClearValue: 1.0,
                 },
             });
-
+            
             this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
             renderPassEncoder.end();
         }
@@ -294,6 +302,17 @@ export class GpuSnowPipelineRunner {
             const commandEncoder = this.device.createCommandEncoder({
                 label: "loop command encoder",
             });
+
+            // debug
+            // commandEncoder.copyBufferToBuffer(
+            //     this.rasterizeRenderPipelineManager.colliderManager.colliderIndicesBuffer, 0,
+            //     this.readbackBuffer, 0,
+            //     this.rasterizeRenderPipelineManager.colliderManager.colliderIndicesBuffer.size
+            // );
+            // await this.readbackBuffer.mapAsync(GPUMapMode.READ);
+            // const data = new Uint32Array(this.readbackBuffer.getMappedRange());
+            // console.log(data);
+            // this.readbackBuffer.unmap();
 
             // catch up the simulation to the current time
             let currentSimulationTime = simulationStartTime + nSimulationStep * simulationTimestepMs;
