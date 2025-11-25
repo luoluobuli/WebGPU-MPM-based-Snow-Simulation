@@ -6,15 +6,15 @@ import modelUrl from "$lib/assets/models/monkey.glb?url";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
-import { GpuRenderMethodType } from "../../gpu/pipelines/GpuRenderMethod";
+import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 
 export class SimulationState {
     width = $state(300);
     height = $state(150);
 
     nParticles = $state(500_000);
-    gridResolutionX = $state(192);
-    gridResolutionY = $state(192);
+    gridResolutionX = $state(256);
+    gridResolutionY = $state(256);
     gridResolutionZ = $state(96);
     simulationTimestepS = $state(1 / 144);
 

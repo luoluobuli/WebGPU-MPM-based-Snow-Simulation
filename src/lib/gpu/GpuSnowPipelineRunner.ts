@@ -1,16 +1,16 @@
 import type { Camera } from "$lib/components/simulationViewer/Camera.svelte";
-import { GpuPointsRenderPipelineManager } from "./pipelines/GpuPointsRenderPipelineManager";
-import { GpuSimulationStepPipelineManager } from "./pipelines/GpuSimulationStepPipelineManager";
-import { GpuUniformsBufferManager } from "./buffers/GpuUniformsBufferManager";
-import { GpuMpmBufferManager } from "./buffers/GpuMpmBufferManager";
-import { GpuRaymarchRenderPipelineManager } from "./pipelines/GpuRaymarchRenderPipelineManager";
-import { GpuRenderMethodType, type GpuRenderMethod } from "./pipelines/GpuRenderMethod";
-import { GpuPerformanceMeasurementBufferManager } from "./buffers/GpuPerformanceMeasurementBufferManager";
-import { GpuMeshBufferManager } from "./buffers/GpuMeshBufferManager";
-import { GpuColliderBufferManager } from "./buffers/GpuColliderBufferManager";
-import { GpuParticleInitPipelineManager as GpuParticleScatterPipelineManager } from "./pipelines/GpuParticleScatterPipelineManager";
+import { GpuPointsRenderPipelineManager } from "./pointsRender/GpuPointsRenderPipelineManager";
+import { GpuMpmPipelineManager } from "./mpm/GpuMpmPipelineManager";
+import { GpuUniformsBufferManager } from "./uniforms/GpuUniformsBufferManager";
+import { GpuMpmBufferManager } from "./mpm/GpuMpmBufferManager";
+import { GpuRaymarchRenderPipelineManager } from "./raymarchRender/GpuRaymarchRenderPipelineManager";
+import { GpuRenderMethodType } from "./GpuRenderMethod";
+import { GpuPerformanceMeasurementBufferManager } from "./performanceMeasurement/GpuPerformanceMeasurementBufferManager";
+import { GpuMeshBufferManager } from "./particleInitialize/GpuMeshBufferManager";
+import { GpuColliderBufferManager } from "./collider/GpuColliderBufferManager";
+import { GpuParticleInitializePipelineManager } from "./particleInitialize/GpuParticleInitializePipelineManager";
 import { GpuRasterizeRenderPipelineManager } from "./pipelines/GpuRasterizeRenderPipelineManager";
-import { GpuMpmGridRenderPipelineManager } from "./pipelines/GpuMpmGridRenderPipelineMager";
+import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRenderPipelineMager";
 
 const MAX_SIMULATION_DRIFT_MS = 1_000;
 const FP_SCALE = 1024.0;
@@ -28,12 +28,12 @@ export class GpuSnowPipelineRunner {
 
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
-    private readonly simulationStepPipelineManager: GpuSimulationStepPipelineManager;
+    private readonly mpmPipelineManager: GpuMpmPipelineManager;
     private readonly pointsRenderPipelineManager: GpuPointsRenderPipelineManager;
     private readonly raymarchRenderPipelineManager: GpuRaymarchRenderPipelineManager;
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
-    private readonly particleScatterPipelineManager: GpuParticleScatterPipelineManager;
+    private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
     private readonly measurePerf: boolean;
 
     private readonly getRenderMethodType: () => GpuRenderMethodType;
@@ -114,21 +114,21 @@ export class GpuSnowPipelineRunner {
         });
         
         // Compute
-        const particleScatterPipelineManager = new GpuParticleScatterPipelineManager({
+        const particleInitializePipelineManager = new GpuParticleInitializePipelineManager({
             device,
             particleDataBuffer: mpmManager.particleDataBuffer,
             meshVerticesBuffer: meshManager.meshVerticesBuffer,
             uniformsManager,
         });
-        this.particleScatterPipelineManager = particleScatterPipelineManager;
+        this.particleInitializePipelineManager = particleInitializePipelineManager;
 
-        const simulationStepPipelineManager = new GpuSimulationStepPipelineManager({
+        const mpmPipelineManager = new GpuMpmPipelineManager({
             device,
             particleDataBuffer: mpmManager.particleDataBuffer,
             gridDataBuffer: mpmManager.gridDataBuffer,
             uniformsManager,
         });
-        this.simulationStepPipelineManager = simulationStepPipelineManager;
+        this.mpmPipelineManager = mpmPipelineManager;
 
         // Render
         const rasterizeRenderPipeline = new GpuRasterizeRenderPipelineManager({
@@ -184,7 +184,7 @@ export class GpuSnowPipelineRunner {
             label: "particle scatter command encoder",
         });
 
-        this.particleScatterPipelineManager.addDispatch({
+        this.particleInitializePipelineManager.addDispatch({
             commandEncoder,
             nParticles: this.nParticles,
         });
@@ -204,32 +204,32 @@ export class GpuSnowPipelineRunner {
         });
         
         for (let i = 0; i < nSteps; i++) {
-            this.simulationStepPipelineManager.addDispatch({
+            this.mpmPipelineManager.addDispatch({
                 computePassEncoder,
-                pipeline: this.simulationStepPipelineManager.gridClearComputePipeline,
+                pipeline: this.mpmPipelineManager.gridClearComputePipeline,
                 dispatchX: Math.ceil(this.gridResolutionX / 8),
                 dispatchY: Math.ceil(this.gridResolutionY / 8),
                 dispatchZ: Math.ceil(this.gridResolutionZ / 4),
             });
             
-            this.simulationStepPipelineManager.addDispatch({
+            this.mpmPipelineManager.addDispatch({
                 computePassEncoder,
                 dispatchX: Math.ceil(this.nParticles / 256),
-                pipeline: this.simulationStepPipelineManager.p2gComputePipeline,
+                pipeline: this.mpmPipelineManager.p2gComputePipeline,
             });
 
-            this.simulationStepPipelineManager.addDispatch({
+            this.mpmPipelineManager.addDispatch({
                 computePassEncoder,
-                pipeline: this.simulationStepPipelineManager.gridComputePipeline,
+                pipeline: this.mpmPipelineManager.gridComputePipeline,
                 dispatchX: Math.ceil(this.gridResolutionX / 8),
                 dispatchY: Math.ceil(this.gridResolutionY / 8),
                 dispatchZ: Math.ceil(this.gridResolutionZ / 4),
             });
 
-            this.simulationStepPipelineManager.addDispatch({
+            this.mpmPipelineManager.addDispatch({
                 computePassEncoder,
                 dispatchX: Math.ceil(this.nParticles / 256),
-                pipeline: this.simulationStepPipelineManager.g2pComputePipeline,
+                pipeline: this.mpmPipelineManager.g2pComputePipeline,
             });
         }
 

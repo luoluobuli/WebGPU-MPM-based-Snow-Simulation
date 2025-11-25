@@ -1,7 +1,7 @@
 <script lang="ts">
 import Canvas from "./Canvas.svelte";
 import Separator from "$lib/components/generic/Separator.svelte";
-import { GpuRenderMethodType } from "$lib/gpu/pipelines/GpuRenderMethod";
+import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import ElapsedTimeDisplay from "./ElapsedTimeDisplay.svelte";
 import { SimulationState } from "./SimulationState.svelte";
 import { onMount } from "svelte";

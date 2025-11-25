@@ -1,11 +1,11 @@
-import type { GpuUniformsBufferManager } from "../buffers/GpuUniformsBufferManager";
-import p2gModuleSrc from "../shaders/particleToGrid.cs.wgsl?raw";
-import gridUpdateModuleSrc from "../shaders/gridUpdate.cs.wgsl?raw";
-import g2pModuleSrc from "../shaders/gridToParticle.cs.wgsl?raw";
-import gridClearModuleSrc from "../shaders/gridClear.cs.wgsl?raw";
-import { attachPrelude } from "../shaders/prelude";
+import type { GpuUniformsBufferManager } from "../uniforms/GpuUniformsBufferManager";
+import p2gModuleSrc from "./particleToGrid.cs.wgsl?raw";
+import gridUpdateModuleSrc from "./gridUpdate.cs.wgsl?raw";
+import g2pModuleSrc from "./gridToParticle.cs.wgsl?raw";
+import gridClearModuleSrc from "./gridClear.cs.wgsl?raw";
+import { attachPrelude } from "../shaderPrelude";
 
-export class GpuSimulationStepPipelineManager {
+export class GpuMpmPipelineManager {
     readonly storageBindGroupLayout: GPUBindGroupLayout;
     readonly storageBindGroup: GPUBindGroup;
 
