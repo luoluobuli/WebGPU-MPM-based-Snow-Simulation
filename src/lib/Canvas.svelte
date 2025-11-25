@@ -8,6 +8,8 @@ import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
 import { loadGltfScene } from "./loadScene";
 import type { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
 import type { ElapsedTime } from "./ElapsedTime.svelte";
+import type { StaticMesh } from "./gpu/GpuSnowPipelineRunner";
+
 
 let {
     onStatusChange,
@@ -55,9 +57,13 @@ onMount(async () => {
     onStatusChange("loading geometry...");
     const { vertices } = await loadGltfScene("/monkey.glb"); // particles
 
-    const { positions } = await loadGltfScene("/box.glb"); // static mesh
-    const { indices } = await loadGltfScene("/box.glb"); 
-    const { boundingBoxes } = await loadGltfScene("/box.glb");
+    const { positions } = await loadGltfScene("/test.glb"); // static mesh
+    const { indices } = await loadGltfScene("/test.glb"); 
+
+    const staticMesh: StaticMesh = {
+        positions,
+        indices,
+    };
 
     runner = new GpuSnowPipelineRunner({
         device,
@@ -68,8 +74,7 @@ onMount(async () => {
         simulationTimestepS,
         camera,
         meshVertices: vertices,
-        colliderVertices: positions,
-        colliderIndices: indices,
+        staticMesh: staticMesh,
         getRenderMethodType: () => renderMethodType,
         measurePerf: supportsTimestamp,
     });

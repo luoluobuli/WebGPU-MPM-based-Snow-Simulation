@@ -14,7 +14,7 @@ export class GpuUniformsBufferManager {
     }) {
         const uniformsBuffer = device.createBuffer({
             label: "uniforms buffer",
-            size: 208,
+            size: 240, // 208
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
         });
 
@@ -85,5 +85,13 @@ export class GpuUniformsBufferManager {
 
     writeMeshMaxCoords(max: [number, number, number]) {
         this.device.queue.writeBuffer(this.buffer, 192, new Float32Array(max));
+    }
+
+    writeMinCoordsTmp(min: [number, number, number]) {
+        this.device.queue.writeBuffer(this.buffer, 208, new Float32Array(min));
+    }
+
+    writeMaxCoordsTmp(max: [number, number, number]) {
+        this.device.queue.writeBuffer(this.buffer, 224, new Float32Array(max));
     }
 }

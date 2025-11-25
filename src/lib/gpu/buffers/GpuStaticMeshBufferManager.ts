@@ -2,6 +2,8 @@ export class GpuStaticMeshBufferManager {
     readonly verticesBuffer: GPUBuffer;
     readonly indicesBuffer: GPUBuffer;
     readonly numIndices: number;
+    readonly minCoords: [number, number, number];
+    readonly maxCoords: [number, number, number];
 
     constructor({
         device,
@@ -12,6 +14,21 @@ export class GpuStaticMeshBufferManager {
         vertices: number[],
         indices: number[],
     }) {
+        // tmp stores bounding box as the collider; will use the geometry itself in the future
+        const min: [number, number, number] = [Infinity, Infinity, Infinity];
+        const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+        for (let i = 0; i < vertices.length; i+=3) {
+            min[0] = Math.min(min[0], vertices[i]);
+            min[1] = Math.min(min[1], vertices[i+1]);
+            min[2] = Math.min(min[2], vertices[i+2]);
+
+            max[0] = Math.max(max[0], vertices[i]);
+            max[1] = Math.max(max[1], vertices[i+1]);
+            max[2] = Math.max(max[2], vertices[i+2]);
+        }
+        this.minCoords = min;
+        this.maxCoords = max;
+
         this.numIndices = indices.length;
 
         const flatVertices = new Float32Array(vertices.length * 4);
