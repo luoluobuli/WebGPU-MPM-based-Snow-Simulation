@@ -40,9 +40,12 @@ fn doGridUpdate(
     v = v + gravity * uniforms.simulationTimestep;
     
     // ----------- Collision ------------
-    // Temp cube
-    let minB = vec3f(1.0, 0.0, 1.0);
-    let maxB = vec3f(2.0, 1.0, 2.0);
+    // Tmp cube
+    // let minB = vec3f(1.0, 0.0, 1.0);
+    // let maxB = vec3f(2.0, 1.0, 2.0);
+
+    let minB = uniforms.min;
+    let maxB = uniforms.max;
 
     // Get grid world pos
     let N = uniforms.gridResolution;

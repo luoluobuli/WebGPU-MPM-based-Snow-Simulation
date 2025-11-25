@@ -15,6 +15,9 @@ struct Uniforms {
     meshMinCoords: vec3f, // 192
     // 196
     meshMaxCoords: vec3f, // 208
+    // tmp
+    min: vec3f,
+    max: vec3f,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;

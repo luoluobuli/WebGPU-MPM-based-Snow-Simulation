@@ -11,6 +11,11 @@ import { GpuStaticMeshBufferManager } from "./buffers/GpuStaticMeshBufferManager
 import { GpuParticleInitPipelineManager as GpuParticleScatterPipelineManager } from "./pipelines/GpuParticleScatterPipelineManager";
 import { GpuRasterizeRenderPipelineManager } from "./pipelines/GpuRasterizeRenderPipelineManager";
 
+export interface StaticMesh {
+    positions: number[];
+    indices: number[];
+}
+
 const MAX_SIMULATION_DRIFT_MS = 1_000;
 const FP_SCALE = 1024.0;
 
@@ -45,8 +50,7 @@ export class GpuSnowPipelineRunner {
         simulationTimestepS,
         camera,
         meshVertices,
-        colliderVertices,
-        colliderIndices,
+        staticMesh,
         getRenderMethodType,
         measurePerf,
     }: {
@@ -58,8 +62,7 @@ export class GpuSnowPipelineRunner {
         simulationTimestepS: number,
         camera: Camera,
         meshVertices: number[][],
-        colliderVertices: number[];
-        colliderIndices: number[];
+        staticMesh: StaticMesh,
         getRenderMethodType: () => GpuRenderMethodType,
         measurePerf: boolean,
     }) {
@@ -97,15 +100,17 @@ export class GpuSnowPipelineRunner {
         uniformsManager.writeMeshMinCoords(meshManager.minCoords);
         uniformsManager.writeMeshMaxCoords(meshManager.maxCoords);
 
-        const colliderManager = new GpuStaticMeshBufferManager({
+        const staticMeshManager = new GpuStaticMeshBufferManager({
             device, 
-            vertices: colliderVertices, 
-            indices: colliderIndices
+            vertices: staticMesh.positions, 
+            indices: staticMesh.indices,
         });
+        uniformsManager.writeMinCoordsTmp(staticMeshManager.minCoords);
+        uniformsManager.writeMaxCoordsTmp(staticMeshManager.maxCoords);
 
         // debug
         // this.readbackBuffer = device.createBuffer({
-        //         size: colliderManager.indicesBuffer.size,
+        //         size: staticMeshManager.indicesBuffer.size,
         //         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         // });
         
@@ -132,7 +137,7 @@ export class GpuSnowPipelineRunner {
             format,
             depthFormat: "depth24plus",
             uniformsManager: uniformsManager,
-            staticMeshManager: colliderManager
+            staticMeshManager: staticMeshManager
         });
         this.rasterizeRenderPipelineManager = rasterizeRenderPipeline;
 
@@ -218,7 +223,7 @@ export class GpuSnowPipelineRunner {
         this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
         {
             const rasterizeRenderPassEncoder = commandEncoder.beginRenderPass({
-                label: "collider render pass",
+                label: "static mesh render pass",
                 colorAttachments: [
                     {
                         clearValue: {
