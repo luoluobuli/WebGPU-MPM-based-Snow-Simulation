@@ -1,12 +1,12 @@
 <script lang="ts">
 import Canvas from "./Canvas.svelte";
-    import Separator from "$lib/components/Separator.svelte";
-    import { GpuRenderMethodType } from "$lib/gpu/pipelines/GpuRenderMethod";
-    import ElapsedTimeDisplay from "$lib/ElapsedTimeDisplay.svelte";
-    import { SimulationState } from "./SimulationState.svelte";
-    import { onMount } from "svelte";
-    import Button from "./components/generic/Button.svelte";
-    import Hotkey from "./components/headless/Hotkey.svelte";
+import Separator from "$lib/components/generic/Separator.svelte";
+import { GpuRenderMethodType } from "$lib/gpu/pipelines/GpuRenderMethod";
+import ElapsedTimeDisplay from "./ElapsedTimeDisplay.svelte";
+import { SimulationState } from "./SimulationState.svelte";
+import { onMount } from "svelte";
+import Button from "$lib/components/generic/Button.svelte";
+import Hotkey from "$lib/components/headless/Hotkey.svelte";
 
 let status = $state("loading javascript");
 let err = $state<string | null>(null);
