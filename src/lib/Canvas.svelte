@@ -10,16 +10,22 @@ let {
     canvas?: HTMLCanvasElement | null;
 } = $props();
 
+const lockPointer = () => {
+};
 
 </script>
-
-<!-- <svelte:window onresize={() => updateCanvasSize()} /> -->
 
 <section
     bind:clientWidth={null, clientWidth => simulationState.width = clientWidth!}
     bind:clientHeight={null, clientHeight => simulationState.height = clientHeight!}
 >
     <Draggable
+        onDown={() => {
+            requestAnimationFrame(() => {
+                canvas?.requestPointerLock();
+            });
+        }}
+
         onDrag={async ({ movement, button, pointerEvent }) => {
             switch (button) {
                 case 0:
@@ -32,7 +38,12 @@ let {
             }
 
             pointerEvent.preventDefault();
-            // await rerender();
+        }}
+
+        onUp={() => {
+            requestAnimationFrame(() => {
+                document.exitPointerLock();
+            });
         }}
     >
         {#snippet dragTarget({ onpointerdown })}
