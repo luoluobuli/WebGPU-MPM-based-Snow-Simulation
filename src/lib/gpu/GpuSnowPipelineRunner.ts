@@ -1,4 +1,4 @@
-import type { Camera } from "$lib/Camera.svelte";
+import type { Camera } from "$lib/components/simulationViewer/Camera.svelte";
 import { GpuPointsRenderPipelineManager } from "./pipelines/GpuPointsRenderPipelineManager";
 import { GpuSimulationStepPipelineManager } from "./pipelines/GpuSimulationStepPipelineManager";
 import { GpuUniformsBufferManager } from "./buffers/GpuUniformsBufferManager";

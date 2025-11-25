@@ -1,5 +1,5 @@
 <script lang="ts">
-import Draggable, { type Point } from "./Draggable.svelte";
+import Draggable from "$lib/components/headless/Draggable.svelte";
 import type { SimulationState } from "./SimulationState.svelte";
 
 let {

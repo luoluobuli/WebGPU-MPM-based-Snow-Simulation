@@ -1,12 +1,12 @@
 import { onDestroy, onMount } from "svelte";
-import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
-import { requestGpuDeviceAndContext } from "./gpu/requestGpuDeviceAndContext";
+import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner";
+import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
 import modelUrl from "$lib/assets/models/monkey.glb?url";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
-import { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
+import { GpuRenderMethodType } from "../../gpu/pipelines/GpuRenderMethod";
 
 export class SimulationState {
     width = $state(300);

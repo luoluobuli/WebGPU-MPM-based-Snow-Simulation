@@ -1,6 +1,6 @@
 import { mat3, mat4, vec3, type Mat4 } from "wgpu-matrix";
 import type { CameraControlScheme } from "./Camera.svelte";
-import { mod, PI, PI_2, REV } from "./util";
+import { mod, PI, PI_2, REV } from "../../util";
 
 type Point = { x: number; y: number };
 
