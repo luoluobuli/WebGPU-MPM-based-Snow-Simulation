@@ -25,7 +25,7 @@ let canvas: HTMLCanvasElement;
 let width = $state(300);
 let height = $state(150);
 
-let nParticles = $state(500_000);
+let nParticles = $state(50_000);
 let gridResolution = $state(192);
 let simulationTimestepS = $state(1 / 144);
 
@@ -53,45 +53,11 @@ onMount(async () => {
     const { device, context, format, supportsTimestamp } = response;
 
     onStatusChange("loading geometry...");
-    const { vertices } = await loadGltfScene("/monkey.glb");
+    const { vertices } = await loadGltfScene("/monkey.glb"); // particles
 
-    const colliderVertices = new Float32Array([
-        1, 0, 1,   // 0
-        2, 0, 1,   // 1
-        2, 1, 1,   // 2
-        1, 1, 1,   // 3
-
-        1, 0, 2,   // 4
-        2, 0, 2,   // 5
-        2, 1, 2,   // 6
-        1, 1, 2    // 7
-    ]);
-
-    const colliderIndices = new Uint32Array([
-        // Front
-        0, 1, 2,
-        0, 2, 3,
-
-        // Back
-        5, 4, 7,
-        5, 7, 6,
-
-        // Left
-        4, 0, 3,
-        4, 3, 7,
-
-        // Right
-        1, 5, 6,
-        1, 6, 2,
-
-        // Top
-        3, 2, 6,
-        3, 6, 7,
-
-        // Bottom
-        4, 5, 1,
-        4, 1, 0
-    ]);
+    const { positions } = await loadGltfScene("/box.glb"); // static mesh
+    const { indices } = await loadGltfScene("/box.glb"); 
+    const { boundingBoxes } = await loadGltfScene("/box.glb");
 
     runner = new GpuSnowPipelineRunner({
         device,
@@ -102,8 +68,8 @@ onMount(async () => {
         simulationTimestepS,
         camera,
         meshVertices: vertices,
-        colliderVertices: colliderVertices,
-        colliderIndices: colliderIndices,
+        colliderVertices: positions,
+        colliderIndices: indices,
         getRenderMethodType: () => renderMethodType,
         measurePerf: supportsTimestamp,
     });
