@@ -8,7 +8,7 @@ import { GpuSnowPipelineRunner } from "./gpu/GpuSnowPipelineRunner";
 import { loadGltfScene } from "./loadScene";
 import type { GpuRenderMethodType } from "./gpu/pipelines/GpuRenderMethod";
 import type { ElapsedTime } from "./ElapsedTime.svelte";
-import type { StaticMesh } from "./gpu/GpuSnowPipelineRunner";
+import type { ColliderGeometry } from "./gpu/GpuSnowPipelineRunner";
 
 
 let {
@@ -60,7 +60,7 @@ onMount(async () => {
     const { positions } = await loadGltfScene("/test.glb"); // static mesh
     const { indices } = await loadGltfScene("/test.glb"); 
 
-    const staticMesh: StaticMesh = {
+    const collider: Collider = {
         positions,
         indices,
     };
@@ -74,7 +74,7 @@ onMount(async () => {
         simulationTimestepS,
         camera,
         meshVertices: vertices,
-        staticMesh: staticMesh,
+        collider: collider,
         getRenderMethodType: () => renderMethodType,
         measurePerf: supportsTimestamp,
     });

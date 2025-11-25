@@ -1,4 +1,4 @@
-export class GpuStaticMeshBufferManager {
+export class GpuColliderBufferManager {
     readonly verticesBuffer: GPUBuffer;
     readonly indicesBuffer: GPUBuffer;
     readonly numIndices: number;
