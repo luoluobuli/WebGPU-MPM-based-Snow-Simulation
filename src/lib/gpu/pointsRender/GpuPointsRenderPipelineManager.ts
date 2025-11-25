@@ -4,6 +4,7 @@ import pointsFragmentModuleSrc from "./pointsFragment.wgsl?raw";
 import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
 import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
 import { attachPrelude } from "$lib/gpu/shaderPrelude";
+import preludeSrc from "./prelude.wgsl?raw";
 
 export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;
@@ -26,11 +27,11 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
     }) {
         const vertexModule = device.createShaderModule({
             label: "points vertex module",
-            code: attachPrelude(pointsVertexModuleSrc),
+            code: attachPrelude(`${preludeSrc}${pointsVertexModuleSrc}`),
         });
         const fragmentModule = device.createShaderModule({
             label: "points fragment module",
-            code: attachPrelude(pointsFragmentModuleSrc),
+            code: attachPrelude(`${preludeSrc}${pointsFragmentModuleSrc}`),
         });
         
         const renderPipelineLayout = device.createPipelineLayout({

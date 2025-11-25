@@ -1,5 +1,4 @@
 import uniformsModuleSrc from "./uniforms.wgsl?raw";
-import renderStructsModuleSrc from "./renderStructs.wgsl?raw";
 import randomNumberGeneratorsModuleSrc from "./randomNumberGenerators.wgsl?raw";
 import matrixOpsModuleSrc from "./matrixOps.wgsl?raw";
 import mpmOpsModuleSrc from "./mpmOps.wgsl?raw";
@@ -8,7 +7,6 @@ import plasticityOpsModuleSrc from "./plasticityOps.wgsl?raw";
 
 export const prelude = `
 ${uniformsModuleSrc}
-${renderStructsModuleSrc}
 ${randomNumberGeneratorsModuleSrc}
 ${matrixOpsModuleSrc}
 ${mpmOpsModuleSrc}
