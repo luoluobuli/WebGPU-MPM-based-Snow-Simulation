@@ -1,6 +1,6 @@
 import type { GpuUniformsBufferManager } from "$lib/gpu/buffers/GpuUniformsBufferManager";
 import type { GpuRenderMethod } from "./GpuRenderMethod";
-import type { GpuColliderBufferManager } from "../buffers/GpuColliderBufferManager";
+import type { GpuStaticMeshBufferManager } from "../buffers/GpuStaticMeshBufferManager";
 
 import rasterizeVertexModuleSrc from "$lib/gpu/shaders/rasterizeVertex.wgsl?raw";
 import rasterizeFragmentModuleSrc from "$lib/gpu/shaders/rasterizeFragment.wgsl?raw";
@@ -12,7 +12,7 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
     readonly indexCount : number;
 
     readonly uniformsManager: GpuUniformsBufferManager;
-    readonly colliderManager: GpuColliderBufferManager;
+    readonly staticMeshManager: GpuStaticMeshBufferManager;
 
 
     constructor({
@@ -20,13 +20,13 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
         format,
         depthFormat = "depth24plus",
         uniformsManager,
-        colliderManager,
+        staticMeshManager,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
         depthFormat?: GPUTextureFormat,
         uniformsManager: GpuUniformsBufferManager,
-        colliderManager: GpuColliderBufferManager, 
+        staticMeshManager: GpuStaticMeshBufferManager, 
     }) {
         const rasterizeStorageBindGroupLayout = device.createBindGroupLayout({
             label: "rasterize storage bind group layout",
@@ -53,13 +53,13 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
                 {
                     binding: 0,
                     resource: {
-                        buffer: colliderManager.colliderVerticesBuffer,
+                        buffer: staticMeshManager.verticesBuffer,
                     },
                 },
                 {
                     binding: 1,
                     resource: {
-                        buffer: colliderManager.colliderIndicesBuffer,
+                        buffer: staticMeshManager.indicesBuffer,
                     },
                 },
             ],
@@ -129,18 +129,18 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
         });
 
         this.uniformsManager = uniformsManager;
-        this.colliderManager = colliderManager;
+        this.staticMeshManager = staticMeshManager;
         this.rasterizeStorageBindGroup = rasterizeStorageBindGroup;
 
-        this.indexCount = colliderManager.numIndices;
+        this.indexCount = staticMeshManager.numIndices;
     }
 
     addDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
         renderPassEncoder.setBindGroup(1, this.rasterizeStorageBindGroup);
         renderPassEncoder.setPipeline(this.renderPipeline);
-        renderPassEncoder.setVertexBuffer(0, this.colliderManager.colliderVerticesBuffer);
-        renderPassEncoder.setIndexBuffer(this.colliderManager.colliderIndicesBuffer, "uint32");
+        renderPassEncoder.setVertexBuffer(0, this.staticMeshManager.verticesBuffer);
+        renderPassEncoder.setIndexBuffer(this.staticMeshManager.indicesBuffer, "uint32");
         renderPassEncoder.drawIndexed(this.indexCount);
     }
 }
