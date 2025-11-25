@@ -16,9 +16,10 @@ struct Uniforms {
     // 208
     gridResolution: vec3u, // 220
     // 224
-    // tmp
-    min: vec3f,
-    max: vec3f,
+    min: vec3f, // 236
+    // 240
+    max: vec3f, // 252
+    // 256
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;

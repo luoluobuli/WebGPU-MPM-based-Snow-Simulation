@@ -88,10 +88,10 @@ export class GpuUniformsBufferManager {
     }
 
     writeMinCoordsTmp(min: [number, number, number]) {
-        this.device.queue.writeBuffer(this.buffer, 208, new Float32Array(min));
+        this.device.queue.writeBuffer(this.buffer, 224, new Float32Array(min));
     }
 
     writeMaxCoordsTmp(max: [number, number, number]) {
-        this.device.queue.writeBuffer(this.buffer, 224, new Float32Array(max));
+        this.device.queue.writeBuffer(this.buffer, 240, new Float32Array(max));
     }
 }
