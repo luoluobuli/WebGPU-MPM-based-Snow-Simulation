@@ -89,7 +89,6 @@ onMount(() => {
         <button onclick={() => simulationState.reset()}>Reset</button>
     </overlays-panel>
 </main>
-ns
 
 
 <style lang="scss">
@@ -105,9 +104,13 @@ main {
 }
 
 overlays-panel {
-    width: 16rem;
+    width: 20rem;
     padding: 0.5rem;
 
     color: oklch(1 0 0);
+}
+
+h3 {
+    font-size: 1.5rem;
 }
 </style>

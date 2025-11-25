@@ -69,7 +69,7 @@ fractional-part {
 integral-part,
 radix-point,
 fractional-part {
-    font-family: monospace;
+    font-family: "Atkinson Hyperlegible Mono", monospace;
 }
 
 units-label {
