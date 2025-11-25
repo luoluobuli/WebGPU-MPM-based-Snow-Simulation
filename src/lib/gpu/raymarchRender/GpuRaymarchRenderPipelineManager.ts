@@ -4,6 +4,7 @@ import raymarchFragmentModuleSrc from "./raymarchFragment.wgsl?raw";
 import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
 import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
 import { attachPrelude } from "$lib/gpu/shaderPrelude";
+import preludeSrc from "./prelude.wgsl?raw";
 
 export class GpuRaymarchRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;
@@ -55,11 +56,11 @@ export class GpuRaymarchRenderPipelineManager implements GpuRenderMethod {
 
         const vertexModule = device.createShaderModule({
             label: "raymarch vertex module",
-            code: attachPrelude(raymarchVertexModuleSrc),
+            code: attachPrelude(`${preludeSrc}${raymarchVertexModuleSrc}`),
         });
         const fragmentModule = device.createShaderModule({
             label: "raymarch fragment module",
-            code: attachPrelude(raymarchFragmentModuleSrc),
+            code: attachPrelude(`${preludeSrc}${raymarchFragmentModuleSrc}`),
         });
         
         const renderPipelineLayout = device.createPipelineLayout({
