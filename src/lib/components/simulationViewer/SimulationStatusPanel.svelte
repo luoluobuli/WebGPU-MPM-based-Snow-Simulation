@@ -47,6 +47,17 @@ let {
         <label for="render-method-type_raymarch">Raymarch</label>
     </div>
 
+    <div>
+        <input
+            type="radio"
+            name="render-method-type"
+            bind:group={simulationState.renderMethodType}
+            value={GpuRenderMethodType.Volumetric}
+            id="render-method-type_volumetric"
+        />
+        <label for="render-method-type_volumetric">Volumetric</label>
+    </div>
+
     <Separator />
 
     <h3>Elapsed time</h3>
@@ -89,11 +100,17 @@ let {
 <style lang="scss">
 simulation-status-panel {
     width: 20rem;
-    padding: 0.5rem;
+    margin: 0.5rem;
+    padding: 1rem;
 
     line-height: 1.25;
 
     color: oklch(1 0 0);
+
+    border: 2px solid oklch(1 0 0 / 0.5);
+    border-radius: 2rem / 1.6rem;
+
+    background: oklch(0 0 0 / 0.75);
 }
 
 h3 {

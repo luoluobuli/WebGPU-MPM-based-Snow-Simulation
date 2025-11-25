@@ -1,5 +1,6 @@
 import cuboidVertexModuleSrc from "./cuboidVertex.wgsl?raw";
 import cuboidFragmentModuleSrc from "./cuboidFragment.wgsl?raw";
+import preludeSrc from "./prelude.wgsl?raw";
 import { attachPrelude } from "../shaderPrelude";
 import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
 import type { GpuUniformsBufferManager } from "../uniforms/GpuUniformsBufferManager";
@@ -26,11 +27,11 @@ export class GpuMpmGridRenderPipelineManager implements GpuRenderMethod {
     }) {
         const vertexModule = device.createShaderModule({
             label: "mpm grid vertex module",
-            code: attachPrelude(cuboidVertexModuleSrc),
+            code: attachPrelude(`${preludeSrc}${cuboidVertexModuleSrc}`),
         });
         const fragmentModule = device.createShaderModule({
             label: "mpm grid fragment module",
-            code: attachPrelude(cuboidFragmentModuleSrc),
+            code: attachPrelude(`${preludeSrc}${cuboidFragmentModuleSrc}`),
         });
 
         this.linesBuffer = device.createBuffer({
