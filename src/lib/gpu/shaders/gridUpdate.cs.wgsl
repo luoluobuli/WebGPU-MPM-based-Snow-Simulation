@@ -21,11 +21,11 @@ fn cubeSDF(p: vec3<f32>, minB: vec3<f32>, maxB: vec3<f32>) -> f32 {
 fn doGridUpdate(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
-    if (gid.x >= uniforms.gridResolution || gid.y >= uniforms.gridResolution || gid.z >= uniforms.gridResolution) {
+    if (gid.x >= uniforms.gridResolution.x || gid.y >= uniforms.gridResolution.y || gid.z >= uniforms.gridResolution.z) {
         return;
     }
 
-    let threadIndex = gid.x + uniforms.gridResolution * (gid.y + uniforms.gridResolution * gid.z);
+    let threadIndex = gid.x + uniforms.gridResolution.x * (gid.y + uniforms.gridResolution.y * gid.z);
     if (threadIndex >= arrayLength(&gridData)) { return; }
 
     let grid = &gridData[threadIndex];

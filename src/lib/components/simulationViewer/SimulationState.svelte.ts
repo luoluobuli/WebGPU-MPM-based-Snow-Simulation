@@ -13,7 +13,9 @@ export class SimulationState {
     height = $state(150);
 
     nParticles = $state(500_000);
-    gridResolution = $state(192);
+    gridResolutionX = $state(192);
+    gridResolutionY = $state(192);
+    gridResolutionZ = $state(96);
     simulationTimestepS = $state(1 / 144);
 
     renderMethodType = $state(GpuRenderMethodType.Points);
@@ -152,7 +154,9 @@ export class SimulationState {
                 format,
                 context,
                 nParticles: state.nParticles,
-                gridResolution: state.gridResolution,
+                gridResolutionX: state.gridResolutionX,
+                gridResolutionY: state.gridResolutionY,
+                gridResolutionZ: state.gridResolutionZ,
                 simulationTimestepS: state.simulationTimestepS,
                 camera: state.camera,
                 meshVertices: vertices,
