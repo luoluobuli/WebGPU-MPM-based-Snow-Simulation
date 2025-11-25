@@ -1,9 +1,9 @@
-import type { GpuUniformsBufferManager } from "$lib/gpu/buffers/GpuUniformsBufferManager";
-import raymarchVertexModuleSrc from "$lib/gpu/shaders/raymarchVertex.wgsl?raw";
-import raymarchFragmentModuleSrc from "$lib/gpu/shaders/raymarchFragment.wgsl?raw";
-import type { GpuMpmBufferManager } from "../buffers/GpuMpmBufferManager";
-import type { GpuRenderMethod } from "./GpuRenderMethod";
-import { attachPrelude } from "../shaders/prelude";
+import type { GpuUniformsBufferManager } from "$lib/gpu/uniforms/GpuUniformsBufferManager";
+import raymarchVertexModuleSrc from "./raymarchVertex.wgsl?raw";
+import raymarchFragmentModuleSrc from "./raymarchFragment.wgsl?raw";
+import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
+import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
+import { attachPrelude } from "$lib/gpu/shaderPrelude";
 
 export class GpuRaymarchRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;

@@ -1,8 +1,8 @@
-import type { GpuUniformsBufferManager } from "../buffers/GpuUniformsBufferManager";
-import particleScatterModuleSrc from "../shaders/particleScatter.cs.wgsl?raw";
-import { attachPrelude } from "../shaders/prelude";
+import type { GpuUniformsBufferManager } from "../uniforms/GpuUniformsBufferManager";
+import particleScatterModuleSrc from "./particleScatter.cs.wgsl?raw";
+import { attachPrelude } from "../shaderPrelude";
 
-export class GpuParticleInitPipelineManager {
+export class GpuParticleInitializePipelineManager {
     readonly storageBindGroupLayout: GPUBindGroupLayout;
     readonly storageBindGroup: GPUBindGroup;
     readonly computePipeline: GPUComputePipeline;

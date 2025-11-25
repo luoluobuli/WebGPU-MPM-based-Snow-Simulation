@@ -1,10 +1,10 @@
-import type { GpuUniformsBufferManager } from "$lib/gpu/buffers/GpuUniformsBufferManager";
-import type { GpuRenderMethod } from "./GpuRenderMethod";
-import type { GpuColliderBufferManager } from "../buffers/GpuColliderBufferManager";
+import type { GpuUniformsBufferManager } from "$lib/gpu/uniforms/GpuUniformsBufferManager";
+import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
+import type { GpuColliderBufferManager } from "../collider/GpuColliderBufferManager";
 
 import rasterizeVertexModuleSrc from "$lib/gpu/shaders/rasterizeVertex.wgsl?raw";
 import rasterizeFragmentModuleSrc from "$lib/gpu/shaders/rasterizeFragment.wgsl?raw";
-import { attachPrelude } from "../shaders/prelude";
+import { attachPrelude } from "../shaderPrelude";
 
 export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;
