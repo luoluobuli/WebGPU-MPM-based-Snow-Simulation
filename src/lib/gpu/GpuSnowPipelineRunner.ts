@@ -128,7 +128,13 @@ export class GpuSnowPipelineRunner {
         });
         this.rasterizeRenderPipelineManager = rasterizeRenderPipeline;
 
-        const pointsRenderPipelineManager = new GpuPointsRenderPipelineManager({device, format, uniformsManager, mpmManager});
+        const pointsRenderPipelineManager = new GpuPointsRenderPipelineManager({
+            device,
+            format,
+            depthFormat: "depth24plus",
+            uniformsManager,
+            mpmManager,
+        });
         this.pointsRenderPipelineManager = pointsRenderPipelineManager;
 
         const raymarchRenderPipelineManager = new GpuRaymarchRenderPipelineManager({device, format, uniformsManager, mpmManager});

@@ -4,10 +4,13 @@
     margin: 0;
 
     font-family: "Atkinson Hyperlegible Next", sans-serif;
-    line-height: 1;
-    font-size: 1rem;
+    line-height: inherit;
+    font-size: inherit;
+    color: inherit;
 }
 
 body {
+    line-height: 1;
+    
     background: oklch(0 0 0);
 }

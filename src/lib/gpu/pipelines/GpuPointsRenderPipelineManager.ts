@@ -14,11 +14,13 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
     constructor({
         device,
         format,
+        depthFormat,
         uniformsManager,
         mpmManager,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
+        depthFormat: GPUTextureFormat,
         uniformsManager: GpuUniformsBufferManager,
         mpmManager: GpuMpmBufferManager,
     }) {

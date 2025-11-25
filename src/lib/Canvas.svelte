@@ -9,10 +9,6 @@ let {
     simulationState: SimulationState,
     canvas?: HTMLCanvasElement | null;
 } = $props();
-
-const lockPointer = () => {
-};
-
 </script>
 
 <section
