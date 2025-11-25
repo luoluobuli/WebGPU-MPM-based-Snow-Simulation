@@ -27,20 +27,67 @@ export class SimulationState {
     readonly elapsedTime = new ElapsedTime();
 
 
+    private device: GPUDevice | null = null;
+
+
+    private stopSimulation = $state<(() => void) | null>(null);
+    private runner = $state<GpuSnowPipelineRunner | null>(null);
+
+
+    private onStatusChange: ((status: string) => void) | null = null;
+    private onErr: ((err: string) => void) | null = null;
+
+
+    constructor({
+        onStatusChange = null,
+        onErr = null,
+    }: {
+        onStatusChange?: ((status: string) => void) | null,
+        onErr?: ((err: string) => void) | null,
+    }) {
+        this.onStatusChange = onStatusChange;
+        this.onErr = onErr;
+    }
+
+
+    async reset() {
+        if (this.runner === null || this.device === null) return;
+
+        this.stopSimulation?.();
+        
+        this.runner.scatterParticlesInMeshVolume();
+
+        this.onStatusChange?.("initializing particles");
+
+        await this.device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
+
+        this.onStatusChange?.("off and racing");
+
+        this.stopSimulation = this.runner.loop({
+            onAnimationFrameTimeUpdate: (ms) =>
+                (this.elapsedTime.animationFrameTimeNs = BigInt(
+                    Math.round(ms * 1_000_000),
+                )),
+            onGpuTimeUpdate: (ns) => (this.elapsedTime.gpuTimeNs = ns),
+        });
+    }
+
+
     static loadOntoCanvas({
         canvasPromise,
         onStatusChange,
         onErr,
     }: {
         canvasPromise: Promise<HTMLCanvasElement>,
-        onStatusChange: (status: string) => void,
-        onErr: (err: string) => void,
+        onStatusChange?: (status: string) => void,
+        onErr?: (err: string) => void,
     }) {
-        const state = new SimulationState();
+        const state = new SimulationState({
+            onStatusChange,
+            onErr,
+        });
 
 
-        let stopSimulation: (() => void) | null = null;
-        let runner: GpuSnowPipelineRunner | null = $state(null);
 
         onMount(async () => {
             const response = await requestGpuDeviceAndContext({
@@ -50,8 +97,9 @@ export class SimulationState {
             });
             if (response === null) return;
             const { device, context, format, supportsTimestamp } = response;
+            state.device = device;
 
-            onStatusChange("loading geometry...");
+            onStatusChange?.("loading geometry...");
             const { vertices } = await loadGltfScene(modelUrl);
 
             const colliderVertices = new Float32Array([
@@ -97,7 +145,7 @@ export class SimulationState {
             state.height = innerHeight;
 
 
-            runner = new GpuSnowPipelineRunner({
+            state.runner = new GpuSnowPipelineRunner({
                 device,
                 format,
                 context,
@@ -112,33 +160,16 @@ export class SimulationState {
                 measurePerf: supportsTimestamp,
             });
 
-            runner.scatterParticlesInMeshVolume();
-
-            onStatusChange("initializing particles");
-
-            await device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
-
-            onStatusChange("off and racing");
-
-            stopSimulation = runner.loop({
-                onAnimationFrameTimeUpdate: (ms) =>
-                    (state.elapsedTime.animationFrameTimeNs = BigInt(
-                        Math.round(ms * 1_000_000),
-                    )),
-                onGpuTimeUpdate: (ns) => (state.elapsedTime.gpuTimeNs = ns),
-            });
-
-
-            return state;
+            state.reset();
         });
 
         onDestroy(() => {
-            stopSimulation?.();
+            state.stopSimulation?.();
         });
 
 
         $effect(() => {
-            runner?.resizeTextures(state.width, state.height);
+            state.runner?.resizeTextures(state.width, state.height);
         });
 
 

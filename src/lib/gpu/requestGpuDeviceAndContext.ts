@@ -3,19 +3,19 @@ export const requestGpuDeviceAndContext = async ({
     onErr,
     canvas,
 }: {
-    onStatusChange: (text: string) => void,
-    onErr: (text: string) => void,
+    onStatusChange?: (text: string) => void,
+    onErr?: (text: string) => void,
     canvas: HTMLCanvasElement,
 }) => {
-    onStatusChange("accessing gpu adapter");
+    onStatusChange?.("accessing gpu adapter");
     if (navigator.gpu === undefined) {
-        onErr("webgpu not supported");
+        onErr?.("webgpu not supported");
         return null;
     }
 
     const adapter = await navigator.gpu.requestAdapter();
     if (adapter === null) {
-        onErr("could not get adapter");
+        onErr?.("could not get adapter");
         return null;
     }
 
@@ -25,7 +25,7 @@ export const requestGpuDeviceAndContext = async ({
         requiredFeatures.push("timestamp-query");
     }
 
-    onStatusChange("accessing gpu device");
+    onStatusChange?.("accessing gpu device");
     const device = await adapter.requestDevice({
         requiredFeatures,
         requiredLimits: {
@@ -33,18 +33,18 @@ export const requestGpuDeviceAndContext = async ({
         },
     });
     if (device === null) {
-        onErr("could not get device");
+        onErr?.("could not get device");
         return null;
     }
 
     device.lost.then(() => {
-        onErr("gpu device was lost");
+        onErr?.("gpu device was lost");
     });
 
 
     const context = canvas.getContext("webgpu");
     if (context === null) {
-        onErr("could not get context");
+        onErr?.("could not get context");
         return null;
     }
 

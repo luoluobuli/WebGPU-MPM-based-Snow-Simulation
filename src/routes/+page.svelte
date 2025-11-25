@@ -1,5 +1,5 @@
 <script lang="ts">
-import SimulationView from "$lib/SimulationView.svelte";
+import SimulationViewer from "$lib/SimulationViewer.svelte";
 </script>
 
-<SimulationView />
+<SimulationViewer />

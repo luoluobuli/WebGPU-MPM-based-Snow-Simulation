@@ -9,8 +9,6 @@ import Canvas from "./Canvas.svelte";
 let status = $state("loading javascript");
 let err = $state<string | null>(null);
 
-let renderMethodType = $state(GpuRenderMethodType.Points);
-
 let canvas = $state<HTMLCanvasElement | null>(null);
 let canvasPromise = Promise.withResolvers<HTMLCanvasElement>();
 
@@ -44,7 +42,7 @@ onMount(() => {
             <input
                 type="radio"
                 name="render-method-type"
-                bind:group={renderMethodType}
+                bind:group={simulationState.renderMethodType}
                 value={GpuRenderMethodType.Points}
                 id="render-method-type_points"
             />
@@ -55,7 +53,7 @@ onMount(() => {
             <input
                 type="radio"
                 name="render-method-type"
-                bind:group={renderMethodType}
+                bind:group={simulationState.renderMethodType}
                 value={GpuRenderMethodType.Raymarch}
                 id="render-method-type_raymarch"
             />
@@ -88,7 +86,7 @@ onMount(() => {
 
         <h3>Simulation controls</h3>
 
-        <button>Reset</button>
+        <button onclick={() => simulationState.reset()}>Reset</button>
     </overlays-panel>
 </main>
 ns
