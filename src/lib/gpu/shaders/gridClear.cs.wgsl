@@ -5,12 +5,12 @@
 fn doClearGrid(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
-    if (gid.x >= uniforms.gridResolution || gid.y >= uniforms.gridResolution || gid.z >= uniforms.gridResolution) {
+    if gid.x >= uniforms.gridResolution.x || gid.y >= uniforms.gridResolution.y || gid.z >= uniforms.gridResolution.z {
         return;
     }
 
-    let threadIndex = gid.x + uniforms.gridResolution * (gid.y + gid.z * uniforms.gridResolution);
-    if (threadIndex >= arrayLength(&gridData)) { return; }
+    let threadIndex = gid.x + uniforms.gridResolution.x * (gid.y + uniforms.gridResolution.y * gid.z);
+    if threadIndex >= arrayLength(&gridData) { return; }
 
     let grid = &gridData[threadIndex];
 

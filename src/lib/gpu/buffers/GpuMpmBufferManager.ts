@@ -9,11 +9,15 @@ export class GpuMpmBufferManager {
     constructor({
         device,
         nParticles,
-        gridResolution,
+        gridResolutionX,
+        gridResolutionY,
+        gridResolutionZ,
     }: {
         device: GPUDevice,
         nParticles: number,
-        gridResolution: number,
+        gridResolutionX: number,
+        gridResolutionY: number,
+        gridResolutionZ: number,
     }) {
         const particleDataBuffer = device.createBuffer({
             label: "particle data buffer",
@@ -24,7 +28,7 @@ export class GpuMpmBufferManager {
 
         const gridDataBuffer = device.createBuffer({
             label: "grid data buffer",
-            size: (gridResolution**3) * 16,
+            size: gridResolutionX * gridResolutionY * gridResolutionZ * 16,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 

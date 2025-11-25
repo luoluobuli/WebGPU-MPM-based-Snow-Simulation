@@ -19,7 +19,9 @@ export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;
     private readonly context: GPUCanvasContext;
     private readonly nParticles: number;
-    private readonly gridResolution: number;
+    private readonly gridResolutionX: number;
+    private readonly gridResolutionY: number;
+    private readonly gridResolutionZ: number;
     private readonly simulationTimestepS: number;
     private readonly camera: Camera;
     private depthTextureView: GPUTextureView;
@@ -41,7 +43,9 @@ export class GpuSnowPipelineRunner {
         format,
         context,
         nParticles,
-        gridResolution,
+        gridResolutionX,
+        gridResolutionY,
+        gridResolutionZ,
         simulationTimestepS,
         camera,
         meshVertices,
@@ -54,7 +58,9 @@ export class GpuSnowPipelineRunner {
         format: GPUTextureFormat,
         context: GPUCanvasContext,
         nParticles: number,
-        gridResolution: number,
+        gridResolutionX: number,
+        gridResolutionY: number,
+        gridResolutionZ: number,
         simulationTimestepS: number,
         camera: Camera,
         meshVertices: number[][],
@@ -66,7 +72,9 @@ export class GpuSnowPipelineRunner {
         this.device = device;
         this.context = context;
         this.nParticles = nParticles;
-        this.gridResolution = gridResolution;
+        this.gridResolutionX = gridResolutionX;
+        this.gridResolutionY = gridResolutionY;
+        this.gridResolutionZ = gridResolutionZ;
         this.simulationTimestepS = simulationTimestepS;
 
         this.camera = camera;
@@ -82,7 +90,7 @@ export class GpuSnowPipelineRunner {
         this.uniformsManager = uniformsManager;
 
         uniformsManager.writeSimulationTimestepS(simulationTimestepS);
-        uniformsManager.writeGridResolution(gridResolution);
+        uniformsManager.writeGridResolution([gridResolutionX, gridResolutionY, gridResolutionZ]);
         uniformsManager.writeFixedPointScale(FP_SCALE);
         uniformsManager.writeGridMinCoords([-5, -5, 0]);
         uniformsManager.writeGridMaxCoords([5, 5, 4]);
@@ -90,7 +98,9 @@ export class GpuSnowPipelineRunner {
         const mpmManager = new GpuMpmBufferManager({
             device,
             nParticles,
-            gridResolution,
+            gridResolutionX,
+            gridResolutionY,
+            gridResolutionZ,
         });
 
         const meshManager = new GpuMeshBufferManager({device, vertices: meshVertices});
@@ -197,9 +207,9 @@ export class GpuSnowPipelineRunner {
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
                 pipeline: this.simulationStepPipelineManager.gridClearComputePipeline,
-                dispatchX: Math.ceil(this.gridResolution / 8),
-                dispatchY: Math.ceil(this.gridResolution / 8),
-                dispatchZ: Math.ceil(this.gridResolution / 4),
+                dispatchX: Math.ceil(this.gridResolutionX / 8),
+                dispatchY: Math.ceil(this.gridResolutionY / 8),
+                dispatchZ: Math.ceil(this.gridResolutionZ / 4),
             });
             
             this.simulationStepPipelineManager.addDispatch({
@@ -211,9 +221,9 @@ export class GpuSnowPipelineRunner {
             this.simulationStepPipelineManager.addDispatch({
                 computePassEncoder,
                 pipeline: this.simulationStepPipelineManager.gridComputePipeline,
-                dispatchX: Math.ceil(this.gridResolution / 8),
-                dispatchY: Math.ceil(this.gridResolution / 8),
-                dispatchZ: Math.ceil(this.gridResolution / 4),
+                dispatchX: Math.ceil(this.gridResolutionX / 8),
+                dispatchY: Math.ceil(this.gridResolutionY / 8),
+                dispatchZ: Math.ceil(this.gridResolutionZ / 4),
             });
 
             this.simulationStepPipelineManager.addDispatch({

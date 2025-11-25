@@ -14,7 +14,7 @@ export class GpuUniformsBufferManager {
     }) {
         const uniformsBuffer = device.createBuffer({
             label: "uniforms buffer",
-            size: 208,
+            size: 224,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
         });
 
@@ -55,12 +55,8 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 0, new Float32Array([timestep]));
     }
 
-    writeGridResolution(gridResolution: number) {
-        this.device.queue.writeBuffer(this.buffer, 4, new Uint32Array([gridResolution]));
-    }
-
     writeFixedPointScale(fixedPointScale: number) {
-        this.device.queue.writeBuffer(this.buffer, 8, new Float32Array([fixedPointScale]));
+        this.device.queue.writeBuffer(this.buffer, 4, new Float32Array([fixedPointScale]));
     }
 
     writeGridMinCoords(min: [number, number, number]) {
@@ -85,5 +81,9 @@ export class GpuUniformsBufferManager {
 
     writeMeshMaxCoords(max: [number, number, number]) {
         this.device.queue.writeBuffer(this.buffer, 192, new Float32Array(max));
+    }
+
+    writeGridResolution(gridResolution: [number, number, number]) {
+        this.device.queue.writeBuffer(this.buffer, 208, new Uint32Array(gridResolution));
     }
 }
