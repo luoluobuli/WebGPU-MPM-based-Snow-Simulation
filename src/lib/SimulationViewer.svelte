@@ -5,6 +5,8 @@ import Canvas from "./Canvas.svelte";
     import ElapsedTimeDisplay from "$lib/ElapsedTimeDisplay.svelte";
     import { SimulationState } from "./SimulationState.svelte";
     import { onMount } from "svelte";
+    import Button from "./components/generic/Button.svelte";
+    import Hotkey from "./components/headless/Hotkey.svelte";
 
 let status = $state("loading javascript");
 let err = $state<string | null>(null);
@@ -23,6 +25,16 @@ onMount(() => {
 });
 
 </script>
+
+<svelte:window
+    onkeydown={event => {
+        switch (event.key) {
+            case "r":
+                simulationState.reset();
+                break;
+        }
+    }}
+/>
 
 <main>
     <Canvas
@@ -86,7 +98,16 @@ onMount(() => {
 
         <h3>Simulation controls</h3>
 
-        <button onclick={() => simulationState.reset()}>Reset</button>
+        <Hotkey
+            key="r"
+        >
+            {#snippet pressTarget({keyHeld})}
+                <Button
+                    {keyHeld}
+                    onclick={() => simulationState.reset()}
+                >Reset (R)</Button>
+            {/snippet}
+        </Hotkey>
     </overlays-panel>
 </main>
 
@@ -107,10 +128,13 @@ overlays-panel {
     width: 20rem;
     padding: 0.5rem;
 
+    line-height: 1.25;
+
     color: oklch(1 0 0);
 }
 
 h3 {
     font-size: 1.5rem;
+    margin-bottom: 1rem;
 }
 </style>
