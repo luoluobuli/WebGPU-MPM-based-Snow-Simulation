@@ -4,6 +4,7 @@ import { GpuMpmPipelineManager } from "./mpm/GpuMpmPipelineManager";
 import { GpuUniformsBufferManager } from "./uniforms/GpuUniformsBufferManager";
 import { GpuMpmBufferManager } from "./mpm/GpuMpmBufferManager";
 import { GpuRaymarchRenderPipelineManager } from "./raymarchRender/GpuRaymarchRenderPipelineManager";
+import { GpuVolumetricRenderPipelineManager } from "./volumetricRender/GpuVolumetricRenderPipelineManager";
 import { GpuRenderMethodType } from "./GpuRenderMethod";
 import { GpuPerformanceMeasurementBufferManager } from "./performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 import { GpuMeshBufferManager } from "./particleInitialize/GpuMeshBufferManager";
@@ -31,6 +32,7 @@ export class GpuSnowPipelineRunner {
     private readonly mpmPipelineManager: GpuMpmPipelineManager;
     private readonly pointsRenderPipelineManager: GpuPointsRenderPipelineManager;
     private readonly raymarchRenderPipelineManager: GpuRaymarchRenderPipelineManager;
+    private readonly volumetricRenderPipelineManager: GpuVolumetricRenderPipelineManager;
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
@@ -151,6 +153,9 @@ export class GpuSnowPipelineRunner {
 
         const raymarchRenderPipelineManager = new GpuRaymarchRenderPipelineManager({device, format, uniformsManager, mpmManager});
         this.raymarchRenderPipelineManager = raymarchRenderPipelineManager;
+
+        const volumetricRenderPipelineManager = new GpuVolumetricRenderPipelineManager({device, format, uniformsManager, mpmManager});
+        this.volumetricRenderPipelineManager = volumetricRenderPipelineManager;
 
         const mpmGridRenderPipelineManager = new GpuMpmGridRenderPipelineManager({
             device,
@@ -356,6 +361,9 @@ export class GpuSnowPipelineRunner {
             
             case GpuRenderMethodType.Raymarch:
                 return this.raymarchRenderPipelineManager;
+            
+            case GpuRenderMethodType.Volumetric:
+                return this.volumetricRenderPipelineManager;
         }
     }
 }
