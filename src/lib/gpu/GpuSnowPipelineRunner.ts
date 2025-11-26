@@ -14,6 +14,7 @@ import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRende
 
 export interface ColliderGeometry {
     positions: number[];
+    normals: number[];
     indices: number[];
 }
 
@@ -115,6 +116,7 @@ export class GpuSnowPipelineRunner {
         const colliderManager = new GpuColliderBufferManager({
             device, 
             vertices: collider.positions, 
+            normals: collider.normals,
             indices: collider.indices,
         });
         uniformsManager.writeMinCoordsTmp(colliderManager.minCoords);
