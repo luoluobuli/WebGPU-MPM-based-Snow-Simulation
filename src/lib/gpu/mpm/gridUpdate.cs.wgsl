@@ -44,8 +44,8 @@ fn doGridUpdate(
     v = v + gravity * uniforms.simulationTimestep;
     
     // ----------- Collision ------------
-    let minB = uniforms.colliderMinCoords;
-    let maxB = uniforms.colliderMaxCoords;
+    let minB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
+    let maxB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMaxCoords, 1.0)).xyz;
 
     let cellIdx3d = vec3<u32>(gid.x, gid.y, gid.z);
     let cellDims = calculateCellDims();

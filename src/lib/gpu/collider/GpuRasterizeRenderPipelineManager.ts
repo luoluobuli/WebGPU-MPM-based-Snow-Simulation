@@ -41,7 +41,6 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
             label: "rasterize render pipeline layout",
             bindGroupLayouts: [
                 uniformsManager.bindGroupLayout,
-                //rasterizeStorageBindGroupLayout,
             ],
         });
 

@@ -11,7 +11,7 @@ struct VSOut {
 @vertex
 fn vert(in: VSIn) -> VSOut {
     var out: VSOut;
-    out.position = uniforms.viewProjMat * vec4<f32>(in.position, 1.0);
+    out.position = uniforms.viewProjMat * uniforms.colliderTransformMat * vec4<f32>(in.position, 1.0);
     out.normal = in.normal;
     return out;
 }
