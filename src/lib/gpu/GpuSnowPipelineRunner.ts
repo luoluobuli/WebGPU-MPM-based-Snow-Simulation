@@ -1,3 +1,4 @@
+import { mat4, type Mat4 } from "wgpu-matrix";
 import type { Camera } from "$lib/components/simulationViewer/Camera.svelte";
 import { GpuPointsRenderPipelineManager } from "./pointsRender/GpuPointsRenderPipelineManager";
 import { GpuMpmPipelineManager } from "./mpm/GpuMpmPipelineManager";
@@ -11,12 +12,7 @@ import { GpuColliderBufferManager } from "./collider/GpuColliderBufferManager";
 import { GpuParticleInitializePipelineManager } from "./particleInitialize/GpuParticleInitializePipelineManager";
 import { GpuRasterizeRenderPipelineManager } from "./collider/GpuRasterizeRenderPipelineManager";
 import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRenderPipelineMager";
-
-export interface ColliderGeometry {
-    positions: number[];
-    normals: number[];
-    indices: number[];
-}
+import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
 
 const MAX_SIMULATION_DRIFT_MS = 1_000;
 const FP_SCALE = 1024.0;
@@ -119,8 +115,9 @@ export class GpuSnowPipelineRunner {
             normals: collider.normals,
             indices: collider.indices,
         });
-        uniformsManager.writeMinCoordsTmp(colliderManager.minCoords);
-        uniformsManager.writeMaxCoordsTmp(colliderManager.maxCoords);
+        uniformsManager.writeColliderMinCoords(colliderManager.minCoords);
+        uniformsManager.writeColliderMaxCoords(colliderManager.maxCoords);
+        uniformsManager.writeColliderTransformMat(mat4.identity());
 
         // debug
         // this.readbackBuffer = device.createBuffer({
@@ -207,6 +204,10 @@ export class GpuSnowPipelineRunner {
         this.device.queue.submit([commandEncoder.finish()]);
     }
 
+    updateColliderPos(transformMat: Mat4) {
+        this.uniformsManager.writeColliderTransformMat(transformMat);
+    }
+
     private async addSimulationStepsComputePass({
         commandEncoder,
         nSteps,
@@ -290,9 +291,11 @@ export class GpuSnowPipelineRunner {
     loop({
         onGpuTimeUpdate,
         onAnimationFrameTimeUpdate,
+        onUserControlUpdate,
     }: {
         onGpuTimeUpdate?: (ns: bigint) => void,
         onAnimationFrameTimeUpdate?: (ms: number) => void,
+        onUserControlUpdate?: () => void,
     } = {}) {
         let handle = 0;
         let canceled = false;
@@ -314,6 +317,8 @@ export class GpuSnowPipelineRunner {
                 onAnimationFrameTimeUpdate?.(newFrameTime - lastFrameTime);
                 lastFrameTime = newFrameTime;
             }
+
+            onUserControlUpdate?.();
 
             const commandEncoder = this.device.createCommandEncoder({
                 label: "loop command encoder",

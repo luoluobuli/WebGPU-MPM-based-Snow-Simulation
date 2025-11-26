@@ -1,3 +1,12 @@
+import type { Mat4 } from "wgpu-matrix";
+
+export interface ColliderGeometry {
+    positions: number[];
+    normals: number[];
+    indices: number[];
+    transform: Mat4;
+}
+
 export class GpuColliderBufferManager {
     readonly verticesBuffer: GPUBuffer;
     readonly normalsBuffer: GPUBuffer;

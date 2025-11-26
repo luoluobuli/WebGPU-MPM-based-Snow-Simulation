@@ -1,3 +1,4 @@
+import { mat4 } from "wgpu-matrix";
 import { onDestroy, onMount } from "svelte";
 import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
@@ -8,7 +9,7 @@ import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
-import type { ColliderGeometry } from "../../gpu/GpuSnowPipelineRunner";
+import type { ColliderGeometry } from "../../gpu/collider/GpuColliderBufferManager";
 
 export class SimulationState {
     width = $state(300);
@@ -19,6 +20,14 @@ export class SimulationState {
     gridResolutionY = $state(256);
     gridResolutionZ = $state(96);
     simulationTimestepS = $state(1 / 144);
+    transformMat = $state(mat4.identity());
+
+    moveForward  = $state(false); // W
+    moveBackward = $state(false); // S
+    moveLeft     = $state(false); // A
+    moveRight    = $state(false); // D
+    moveUp       = $state(false); // Q
+    moveDown     = $state(false); // E
 
     renderMethodType = $state(GpuRenderMethodType.Points);
 
@@ -75,9 +84,23 @@ export class SimulationState {
                     Math.round(ms * 1_000_000),
                 )),
             onGpuTimeUpdate: (ns) => (this.elapsedTime.gpuTimeNs = ns),
+            onUserControlUpdate: () => {
+                const speed = 0.02;
+                if (this.moveForward) { this.applyMovement([0.0, -speed, 0.0]); }
+                if (this.moveBackward) { this.applyMovement([0.0, speed, 0.0]); }
+                if (this.moveLeft) { this.applyMovement([speed, 0.0, 0.0]); }
+                if (this.moveRight) { this.applyMovement([-speed, 0.0, 0.0]); }
+                if (this.moveUp) { this.applyMovement([0.0, 0.0, speed]); }
+                if (this.moveDown) { this.applyMovement([0.0, 0.0, -speed]); }
+            },
         });
     }
 
+    applyMovement(step: number[]) {
+        const t = mat4.translation(step);
+        this.transformMat = mat4.mul(t, this.transformMat);
+        this.runner?.updateColliderPos(this.transformMat);
+    }
 
     static loadOntoCanvas({
         canvasPromise,
@@ -107,15 +130,13 @@ export class SimulationState {
 
             onStatusChange?.("loading geometry...");
             const { vertices } = await loadGltfScene(modelUrl);
-
-            const { positions } = await loadGltfScene(colliderUrl);
-            const { normals } = await loadGltfScene(colliderUrl);
-            const { indices } = await loadGltfScene(colliderUrl); 
+            const { positions, normals, indices } = await loadGltfScene(colliderUrl);
 
             const collider: ColliderGeometry = {
                 positions,
                 normals,
                 indices,
+                transform: state.transformMat,
             };
 
             state.width = innerWidth;
