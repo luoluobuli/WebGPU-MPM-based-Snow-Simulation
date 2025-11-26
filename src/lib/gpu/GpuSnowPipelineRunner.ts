@@ -11,6 +11,8 @@ import { GpuColliderBufferManager } from "./collider/GpuColliderBufferManager";
 import { GpuParticleInitializePipelineManager } from "./particleInitialize/GpuParticleInitializePipelineManager";
 import { GpuRasterizeRenderPipelineManager } from "./collider/GpuRasterizeRenderPipelineManager";
 import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRenderPipelineMager";
+import { GpuVolumetricBufferManager } from "./volumetric/GpuVolumetricBufferManager";
+import { GpuVolumetricRenderPipelineManager } from "./volumetric/GpuVolumetricRenderPipelineManager";
 
 export interface ColliderGeometry {
     positions: number[];
@@ -38,7 +40,10 @@ export class GpuSnowPipelineRunner {
     private readonly raymarchRenderPipelineManager: GpuRaymarchRenderPipelineManager;
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
+    private readonly volumetricBufferManager: GpuVolumetricBufferManager;
+    private readonly volumetricRenderPipelineManager: GpuVolumetricRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
+
     private readonly measurePerf: boolean;
 
     private readonly getRenderMethodType: () => GpuRenderMethodType;
@@ -117,12 +122,6 @@ export class GpuSnowPipelineRunner {
         });
         uniformsManager.writeMinCoordsTmp(colliderManager.minCoords);
         uniformsManager.writeMaxCoordsTmp(colliderManager.maxCoords);
-
-        // debug
-        // this.readbackBuffer = device.createBuffer({
-        //         size: colliderManager.indicesBuffer.size,
-        //         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-        // });
         
         // Compute
         const particleInitializePipelineManager = new GpuParticleInitializePipelineManager({
@@ -178,6 +177,25 @@ export class GpuSnowPipelineRunner {
         });
         this.mpmGridRenderPipelineManager = mpmGridRenderPipelineManager;
 
+        const volumetricBufferManager = new GpuVolumetricBufferManager({
+            device,
+            gridResolutionX,
+            gridResolutionY,
+            gridResolutionZ,
+            screenDims: { width: camera.screenDims.width(), height: camera.screenDims.height() },
+        });
+        this.volumetricBufferManager = volumetricBufferManager;
+
+        const volumetricRenderPipelineManager = new GpuVolumetricRenderPipelineManager({
+            device,
+            format,
+            uniformsManager,
+            volumetricBufferManager,
+            mpmBufferManager: mpmManager,
+        });
+        this.volumetricRenderPipelineManager = volumetricRenderPipelineManager;
+
+
         this.getRenderMethodType = getRenderMethodType;
 
         this.performanceMeasurementManager = measurePerf
@@ -194,6 +212,8 @@ export class GpuSnowPipelineRunner {
             usage: GPUTextureUsage.RENDER_ATTACHMENT,
         });
         this.depthTextureView = depthTexture.createView();
+
+        this.volumetricRenderPipelineManager.resize(this.device, width, height);
     }
 
     scatterParticlesInMeshVolume() {
@@ -256,6 +276,21 @@ export class GpuSnowPipelineRunner {
     async addRenderPass(commandEncoder: GPUCommandEncoder) {
         this.uniformsManager.writeViewProjMat(this.camera.viewProjMat);
         this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
+
+        if (this.getRenderMethodType() === GpuRenderMethodType.Volumetric) {
+            // Clear grid
+            commandEncoder.clearBuffer(this.volumetricBufferManager.densityGridBuffer);
+
+            const volComputePass = commandEncoder.beginComputePass({
+                label: "volumetric compute pass",
+            });
+
+            this.volumetricRenderPipelineManager.addDensityDispatch(volComputePass, this.nParticles);
+            this.volumetricRenderPipelineManager.addRaymarchDispatch(volComputePass);
+            
+            volComputePass.end();
+        }
+
         {
             const renderPassEncoder = commandEncoder.beginRenderPass({
                 label: "particles render pass",
@@ -283,8 +318,11 @@ export class GpuSnowPipelineRunner {
             });
 
             this.selectRenderPipelineManager().addDraw(renderPassEncoder);
-            this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
-            this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
+            if (this.getRenderMethodType() !== GpuRenderMethodType.Volumetric) {
+                this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
+                this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
+            }
+
             renderPassEncoder.end();
         }
     }
@@ -321,17 +359,6 @@ export class GpuSnowPipelineRunner {
                 label: "loop command encoder",
             });
 
-            // debug
-            // commandEncoder.copyBufferToBuffer(
-            //     this.rasterizeRenderPipelineManager.colliderManager.indicesBuffer, 0,
-            //     this.readbackBuffer, 0,
-            //     this.rasterizeRenderPipelineManager.colliderManager.indicesBuffer.size
-            // );
-            // await this.readbackBuffer.mapAsync(GPUMapMode.READ);
-            // const data = new Uint32Array(this.readbackBuffer.getMappedRange());
-            // console.log(data);
-            // this.readbackBuffer.unmap();
-
             // catch up the simulation to the current time
             let currentSimulationTime = simulationStartTime + nSimulationStep * simulationTimestepMs;
             let timeToSimulate = Date.now() - currentSimulationTime;
@@ -354,7 +381,6 @@ export class GpuSnowPipelineRunner {
             }
 
             this.device.queue.submit([commandEncoder.finish()]);
-            // await this.device.queue.onSubmittedWorkDone();
 
             if (this.performanceMeasurementManager !== null) {
                 this.performanceMeasurementManager.mapTime()
@@ -383,6 +409,10 @@ export class GpuSnowPipelineRunner {
             
             case GpuRenderMethodType.Raymarch:
                 return this.raymarchRenderPipelineManager;
+
+            case GpuRenderMethodType.Volumetric:
+                return this.volumetricRenderPipelineManager;
+
         }
     }
 }

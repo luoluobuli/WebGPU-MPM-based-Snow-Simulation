@@ -20,7 +20,7 @@ export class SimulationState {
     gridResolutionZ = $state(96);
     simulationTimestepS = $state(1 / 144);
 
-    renderMethodType = $state(GpuRenderMethodType.Points);
+    renderMethodType = $state(GpuRenderMethodType.Volumetric);
 
     readonly orbit = new CameraOrbit();
     readonly camera = new Camera({
