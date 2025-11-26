@@ -8,7 +8,6 @@ import { attachPrelude } from "../shaderPrelude";
 
 export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;
-    readonly rasterizeStorageBindGroup: GPUBindGroup;
     readonly indexCount : number;
 
     readonly uniformsManager: GpuUniformsBufferManager;
@@ -28,44 +27,6 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
         uniformsManager: GpuUniformsBufferManager,
         colliderManager: GpuColliderBufferManager, 
     }) {
-        const rasterizeStorageBindGroupLayout = device.createBindGroupLayout({
-            label: "rasterize storage bind group layout",
-            
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.VERTEX,
-                    buffer: { type: "read-only-storage" },
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.VERTEX,
-                    buffer: { type: "read-only-storage" },
-                },
-            ],
-        });
-        
-        const rasterizeStorageBindGroup = device.createBindGroup({
-            label: "rasterize storage bind group",
-
-            layout: rasterizeStorageBindGroupLayout,
-            entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: colliderManager.verticesBuffer,
-                    },
-                },
-                {
-                    binding: 1,
-                    resource: {
-                        buffer: colliderManager.indicesBuffer,
-                    },
-                },
-            ],
-        });
-
-
         const vertexModule = device.createShaderModule({
             label: "rasterize vertex module",
             code: attachPrelude(rasterizeVertexModuleSrc),
@@ -80,7 +41,7 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
             label: "rasterize render pipeline layout",
             bindGroupLayouts: [
                 uniformsManager.bindGroupLayout,
-                rasterizeStorageBindGroupLayout,
+                //rasterizeStorageBindGroupLayout,
             ],
         });
 
@@ -92,10 +53,21 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
                 module: vertexModule,
                 entryPoint: "vert",
                 buffers: [
-                    {
+                    { // positions
+                        attributes: [
+                            { 
+                                shaderLocation: 0,
+                                offset: 0,
+                                format: "float32x3",
+                            },
+                        ],
+                        arrayStride: 12,
+                        stepMode: "vertex",
+                    },
+                    { // normals
                         attributes: [
                             {
-                                shaderLocation: 0,
+                                shaderLocation: 1,
                                 offset: 0,
                                 format: "float32x3",
                             },
@@ -130,16 +102,15 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
 
         this.uniformsManager = uniformsManager;
         this.colliderManager = colliderManager;
-        this.rasterizeStorageBindGroup = rasterizeStorageBindGroup;
 
         this.indexCount = colliderManager.numIndices;
     }
 
     addDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
-        renderPassEncoder.setBindGroup(1, this.rasterizeStorageBindGroup);
         renderPassEncoder.setPipeline(this.renderPipeline);
         renderPassEncoder.setVertexBuffer(0, this.colliderManager.verticesBuffer);
+        renderPassEncoder.setVertexBuffer(1, this.colliderManager.normalsBuffer);
         renderPassEncoder.setIndexBuffer(this.colliderManager.indicesBuffer, "uint32");
         renderPassEncoder.drawIndexed(this.indexCount);
     }

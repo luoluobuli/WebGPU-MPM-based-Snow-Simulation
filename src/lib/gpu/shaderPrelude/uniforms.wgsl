@@ -16,9 +16,9 @@ struct Uniforms {
     // 208
     gridResolution: vec3u, // 220
     // 224
-    min: vec3f, // 236
+    colliderMinCoords: vec3f, // 236
     // 240
-    max: vec3f, // 252
+    colliderMaxCoords: vec3f, // 252
     // 256
 }
 
