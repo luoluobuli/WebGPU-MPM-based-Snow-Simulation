@@ -90,6 +90,7 @@ export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
 
             primitive: {
                 topology: "triangle-list",
+                frontFace: "cw",
                 cullMode: "back",
             },
 
