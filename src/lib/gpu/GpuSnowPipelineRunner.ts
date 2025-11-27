@@ -39,6 +39,7 @@ export class GpuSnowPipelineRunner {
     private readonly measurePerf: boolean;
     // debug
     // private readonly readbackBuffer : GPUBuffer;
+    // v : [number, number, number] = [0.0, 0.0, 0.0];
 
     private readonly getRenderMethodType: () => GpuRenderMethodType;
 
@@ -118,6 +119,7 @@ export class GpuSnowPipelineRunner {
         uniformsManager.writeColliderMinCoords(colliderManager.minCoords);
         uniformsManager.writeColliderMaxCoords(colliderManager.maxCoords);
         uniformsManager.writeColliderTransformMat(mat4.identity());
+        uniformsManager.writeColliderVel([0.0, 0.0, 0.0]);
 
         // debug
         // this.readbackBuffer = device.createBuffer({
@@ -204,8 +206,13 @@ export class GpuSnowPipelineRunner {
         this.device.queue.submit([commandEncoder.finish()]);
     }
 
-    updateColliderPos(transformMat: Mat4) {
+    updateColliderTransformMat(transformMat: Mat4) {
         this.uniformsManager.writeColliderTransformMat(transformMat);
+    }
+
+    updateColliderVel(transform: [number, number, number]) {
+        this.uniformsManager.writeColliderVel(transform);
+        // this.v = transform;
     }
 
     private async addSimulationStepsComputePass({
@@ -334,6 +341,7 @@ export class GpuSnowPipelineRunner {
             // const data = new Uint32Array(this.readbackBuffer.getMappedRange());
             // console.log(data);
             // this.readbackBuffer.unmap();
+            // console.log(this.v);
 
             // catch up the simulation to the current time
             let currentSimulationTime = simulationStartTime + nSimulationStep * simulationTimestepMs;

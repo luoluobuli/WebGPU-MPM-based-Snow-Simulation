@@ -86,20 +86,22 @@ export class SimulationState {
             onGpuTimeUpdate: (ns) => (this.elapsedTime.gpuTimeNs = ns),
             onUserControlUpdate: () => {
                 const speed = 0.02;
-                if (this.moveForward) { this.applyMovement([0.0, -speed, 0.0]); }
-                if (this.moveBackward) { this.applyMovement([0.0, speed, 0.0]); }
-                if (this.moveLeft) { this.applyMovement([speed, 0.0, 0.0]); }
-                if (this.moveRight) { this.applyMovement([-speed, 0.0, 0.0]); }
-                if (this.moveUp) { this.applyMovement([0.0, 0.0, speed]); }
-                if (this.moveDown) { this.applyMovement([0.0, 0.0, -speed]); }
+                this.runner?.updateColliderVel([0.0, 0.0, 0.0]);
+                if (this.moveForward) { this.applyColliderTransform([0.0, -speed, 0.0]); }
+                if (this.moveBackward) { this.applyColliderTransform([0.0, speed, 0.0]); }
+                if (this.moveLeft) { this.applyColliderTransform([speed, 0.0, 0.0]); }
+                if (this.moveRight) { this.applyColliderTransform([-speed, 0.0, 0.0]); }
+                if (this.moveUp) { this.applyColliderTransform([0.0, 0.0, speed]); }
+                if (this.moveDown) { this.applyColliderTransform([0.0, 0.0, -speed]); }
             },
         });
     }
 
-    applyMovement(step: number[]) {
+    applyColliderTransform(step: [number, number, number]) {
         const t = mat4.translation(step);
         this.transformMat = mat4.mul(t, this.transformMat);
-        this.runner?.updateColliderPos(this.transformMat);
+        this.runner?.updateColliderTransformMat(this.transformMat);
+        this.runner?.updateColliderVel(step);
     }
 
     static loadOntoCanvas({
@@ -136,7 +138,7 @@ export class SimulationState {
                 positions,
                 normals,
                 indices,
-                transform: state.transformMat,
+                //transform: state.transformMat,
             };
 
             state.width = innerWidth;

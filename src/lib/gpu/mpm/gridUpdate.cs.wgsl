@@ -41,7 +41,7 @@ fn doGridUpdate(
 
     // ------------ Gravity -------------
     let gravity = vec3f(0.0, 0.0, -9.81);
-    v = v + gravity * uniforms.simulationTimestep;
+    v += gravity * uniforms.simulationTimestep;
     
     // ----------- Collision ------------
     let minB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
@@ -52,7 +52,7 @@ fn doGridUpdate(
     let cellWorldPos = uniforms.gridMinCoords + (vec3<f32>(cellIdx3d) + vec3<f32>(0.5, 0.5, 0.5)) * cellDims;
 
     let dist = cubeSDF(cellWorldPos, minB, maxB);
-    if (dist < 0.0) {
+    if (dist < 0.05) {
         let projected = clamp(cellWorldPos, minB, maxB);
         var normal = cellWorldPos - projected;
         let nLen = length(normal);
@@ -60,15 +60,17 @@ fn doGridUpdate(
         if (nLen > 1e-6) {
             normal = normal / nLen;
 
-            let vn = dot(v, normal);
+            var v_rel = v - uniforms.colliderVelocity * 100.0;
+            let vn = dot(v_rel, normal);
 
             if (vn < 0.0) {
                 let vN = vn * normal;
-                let vT = v - vN;
+                let vT = v_rel - vN;
 
                 let friction = 0.3;
-                v = vT * (1.0 - friction);
+                v_rel = vT * (1.0 - friction);
             }
+            v = v_rel + uniforms.colliderVelocity * 100.0; 
         }
         else {
             v = vec3f(0.0, 0.0, 0.0);

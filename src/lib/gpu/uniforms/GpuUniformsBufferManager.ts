@@ -14,7 +14,7 @@ export class GpuUniformsBufferManager {
     }) {
         const uniformsBuffer = device.createBuffer({
             label: "uniforms buffer",
-            size: 320,
+            size: 336,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
         });
 
@@ -97,5 +97,9 @@ export class GpuUniformsBufferManager {
 
     writeColliderTransformMat(transformMat: Mat4) {
         this.device.queue.writeBuffer(this.buffer, 256, transformMat.buffer);
+    }
+
+    writeColliderVel(vel: [number, number, number]) {
+        this.device.queue.writeBuffer(this.buffer, 320, new Float32Array(vel));
     }
 }

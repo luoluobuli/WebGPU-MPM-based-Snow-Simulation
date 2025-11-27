@@ -21,6 +21,7 @@ struct Uniforms {
     colliderMaxCoords: vec3f, // 252
     // 256
     colliderTransformMat: mat4x4f, // 320
+    colliderVelocity: vec3f, // 336
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
