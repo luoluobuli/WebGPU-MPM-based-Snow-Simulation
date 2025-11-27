@@ -2,20 +2,22 @@ import { attachPrelude } from "../shaderPrelude";
 import type { GpuUniformsBufferManager } from "../uniforms/GpuUniformsBufferManager";
 import type { GpuVolumetricBufferManager } from "./GpuVolumetricBufferManager";
 import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
-import densityRasterizeSrc from "./densityRasterize.cs.wgsl?raw";
+import calculateGridDensitySrc from "./calculateGridDensity.wgsl?raw";
 import volumetricRaymarchSrc from "./volumetricRaymarch.cs.wgsl?raw";
-import blitSrc from "./blit.wgsl?raw";
+import volumetricVertexSrc from "./volumetricVertex.wgsl?raw";
+import volumetricFragmentSrc from "./volumetricFragment.wgsl?raw";
+import preludeSrc from "./prelude.wgsl?raw";
 
 export class GpuVolumetricRenderPipelineManager {
     readonly densityRasterizePipeline: GPUComputePipeline;
     readonly volumetricRaymarchPipeline: GPUComputePipeline;
-    readonly blitPipeline: GPURenderPipeline;
+    readonly renderPipeline: GPURenderPipeline;
     
     densityBindGroup: GPUBindGroup;
     raymarchBindGroup: GPUBindGroup;
-    blitBindGroup: GPUBindGroup;
+    renderBindGroup: GPUBindGroup;
 
-    readonly fullscreenBuffer: GPUBuffer;
+    readonly vertBuffer: GPUBuffer;
 
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly volumetricBufferManager: GpuVolumetricBufferManager;
@@ -37,17 +39,18 @@ export class GpuVolumetricRenderPipelineManager {
         this.uniformsManager = uniformsManager;
         this.volumetricBufferManager = volumetricBufferManager;
 
-        // 1. Density Rasterize Pipeline
+
+
         const densityBindGroupLayout = device.createBindGroupLayout({
             label: "volumetric density bind group layout",
             entries: [
                 {
-                    binding: 0, // Particle Data (Read)
+                    binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "read-only-storage" },
                 },
                 {
-                    binding: 1, // Density Grid (Read-Write)
+                    binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "storage" },
                 },
@@ -69,6 +72,8 @@ export class GpuVolumetricRenderPipelineManager {
             ],
         });
 
+
+
         const densityPipelineLayout = device.createPipelineLayout({
             label: "volumetric density pipeline layout",
             bindGroupLayouts: [uniformsManager.bindGroupLayout, densityBindGroupLayout],
@@ -79,23 +84,25 @@ export class GpuVolumetricRenderPipelineManager {
             layout: densityPipelineLayout,
             compute: {
                 module: device.createShaderModule({
-                    code: attachPrelude(densityRasterizeSrc),
+                    code: attachPrelude(calculateGridDensitySrc),
                 }),
-                entryPoint: "doDensityRasterize",
+                entryPoint: "calculateGridDensity",
             },
         });
 
-        // 2. Volumetric Raymarch Pipeline
+
+
+
         const raymarchBindGroupLayout = device.createBindGroupLayout({
             label: "volumetric raymarch bind group layout",
             entries: [
                 {
-                    binding: 0, // Density Grid (Read)
+                    binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "storage" },
                 },
                 {
-                    binding: 1, // Output Texture (Write)
+                    binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
                     storageTexture: {
                         access: "write-only",
@@ -122,6 +129,9 @@ export class GpuVolumetricRenderPipelineManager {
             ],
         });
 
+
+
+
         const raymarchPipelineLayout = device.createPipelineLayout({
             label: "volumetric raymarch pipeline layout",
             bindGroupLayouts: [
@@ -141,21 +151,23 @@ export class GpuVolumetricRenderPipelineManager {
             },
         });
 
-        // 3. Blit Pipeline
-        const blitBindGroupLayout = device.createBindGroupLayout({
-            label: "volumetric blit bind group layout",
+
+
+
+        const renderBindGroupLayout = device.createBindGroupLayout({
+            label: "volumetric render bind group layout",
             entries: [
                 {
                     binding: 0,
                     visibility: GPUShaderStage.FRAGMENT,
-                    texture: { sampleType: "unfilterable-float" }, // storage texture is not filterable usually, but we are binding as texture_2d<f32>
+                    texture: { sampleType: "unfilterable-float" },
                 },
             ],
         });
 
-        this.blitBindGroup = device.createBindGroup({
-            label: "volumetric blit bind group",
-            layout: blitBindGroupLayout,
+        this.renderBindGroup = device.createBindGroup({
+            label: "volumetric render bind group",
+            layout: renderBindGroupLayout,
             entries: [
                 {
                     binding: 0,
@@ -164,16 +176,16 @@ export class GpuVolumetricRenderPipelineManager {
             ],
         });
 
-        const blitPipelineLayout = device.createPipelineLayout({
-            label: "volumetric blit pipeline layout",
-            bindGroupLayouts: [blitBindGroupLayout],
+        const renderPipelineLayout = device.createPipelineLayout({
+            label: "volumetric render pipeline layout",
+            bindGroupLayouts: [renderBindGroupLayout],
         });
 
-        this.blitPipeline = device.createRenderPipeline({
-            label: "volumetric blit pipeline",
-            layout: blitPipelineLayout,
+        this.renderPipeline = device.createRenderPipeline({
+            label: "volumetric render pipeline",
+            layout: renderPipelineLayout,
             vertex: {
-                module: device.createShaderModule({ code: blitSrc }),
+                module: device.createShaderModule({ code: `${preludeSrc}\n${volumetricVertexSrc}` }),
                 entryPoint: "vert",
                 buffers: [
                     {
@@ -183,7 +195,7 @@ export class GpuVolumetricRenderPipelineManager {
                 ],
             },
             fragment: {
-                module: device.createShaderModule({ code: blitSrc }),
+                module: device.createShaderModule({ code: `${preludeSrc}\n${volumetricFragmentSrc}` }),
                 entryPoint: "frag",
                 targets: [{ format }],
             },
@@ -196,13 +208,15 @@ export class GpuVolumetricRenderPipelineManager {
             },
         });
 
-        // Fullscreen Quad Buffer
-        this.fullscreenBuffer = device.createBuffer({
+        this.vertBuffer = device.createBuffer({
             size: 32,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
-        device.queue.writeBuffer(this.fullscreenBuffer, 0, new Float32Array([
-            -1, -1, -1, 1, 1, -1, 1, 1,
+        device.queue.writeBuffer(this.vertBuffer, 0, new Float32Array([
+            -1, -1,
+            -1, 1,
+            1, -1,
+            1, 1,
         ]));
     }
 
@@ -223,9 +237,9 @@ export class GpuVolumetricRenderPipelineManager {
     }
 
     addDraw(renderPassEncoder: GPURenderPassEncoder) {
-        renderPassEncoder.setPipeline(this.blitPipeline);
-        renderPassEncoder.setBindGroup(0, this.blitBindGroup);
-        renderPassEncoder.setVertexBuffer(0, this.fullscreenBuffer);
+        renderPassEncoder.setPipeline(this.renderPipeline);
+        renderPassEncoder.setBindGroup(0, this.renderBindGroup);
+        renderPassEncoder.setVertexBuffer(0, this.vertBuffer);
         renderPassEncoder.draw(4);
     }
 
@@ -238,7 +252,9 @@ export class GpuVolumetricRenderPipelineManager {
             entries: [
                 {
                     binding: 0,
-                    resource: { buffer: this.volumetricBufferManager.densityGridBuffer },
+                    resource: {
+                        buffer: this.volumetricBufferManager.densityGridBuffer,
+                    },
                 },
                 {
                     binding: 1,
@@ -247,11 +263,10 @@ export class GpuVolumetricRenderPipelineManager {
             ],
         });
 
-        // 2. Blit Bind Group (reads from outputTexture)
-        const blitBindGroupLayout = this.blitPipeline.getBindGroupLayout(0);
-        this.blitBindGroup = device.createBindGroup({
-            label: "volumetric blit bind group",
-            layout: blitBindGroupLayout,
+        const renderBindGroupLayout = this.renderPipeline.getBindGroupLayout(0);
+        this.renderBindGroup = device.createBindGroup({
+            label: "volumetric render bind group",
+            layout: renderBindGroupLayout,
             entries: [
                 {
                     binding: 0,
