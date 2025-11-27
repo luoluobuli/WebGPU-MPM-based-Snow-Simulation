@@ -68,6 +68,7 @@ fn aabbIntersectionDistances(
 ) -> vec2f {
     let distance_min = (grid_min_coords - ray_origin) / ray_dir;
     let distance_max = (grid_max_coords - ray_origin) / ray_dir;
+
     let t1 = min(distance_min, distance_max);
     let t2 = max(distance_min, distance_max);
     let t_near = max(max(t1.x, t1.y), t1.z);
@@ -111,11 +112,11 @@ fn doVolumetricRaymarch(
 
     let distance_start = max(0, distance_near);
     let distance_end = distance_far;
-    let jitter = f32(hash2(bitcast<vec2u>(vec2f(global_id.xy) + vec2f(uniforms.simulationTimestep)))) / f32(0xFFFFFFFF); // Time varying jitter
+    let jitter = f32(hash2(bitcast<vec2u>(vec2f(global_id.xy) + vec2f(uniforms.simulationTimestep)))) / f32(0xFFFFFFFF);
     var current_ray_distance = distance_start + jitter * STEP_SIZE;
 
     var transmittance = 1.;
-    var accumulatedColor = vec3f(0);
+    var out_col = vec3f(0);
 
     for (var i = 0u; i < MAX_STEPS; i++) {
         if current_ray_distance >= distance_end || transmittance < 0.01 { break; }
@@ -127,13 +128,33 @@ fn doVolumetricRaymarch(
             let local_extinction = EXTINCTION_COEFFICIENT * density; // σ_t
             let local_scattering = local_extinction * SCATTERING_ALBEDO; // σ_s
             
+            // exponential assuming a constant density, since every step can be thought of as an independent trial
+            // in a geometric probability distribution
             let stepTransmittance = exp(-local_extinction * STEP_SIZE); // T
             let phase = henyeyGreenstein(dot(ray_dir, light_dir), HENYEY_GREENSTEIN_ASYMMETRY); // P
-            const AMBIENT = vec3f(0.2);
-            let scattering = (light_col * phase + AMBIENT) * local_scattering;
-            let lightAdded = scattering * (1.0 - stepTransmittance) / max(local_extinction, 0.0001);
             
-            accumulatedColor += transmittance * lightAdded;
+
+            // shadow raymarch
+            var shadow_pos = pos;
+            var shadow_transmittance = 1.0;
+            const SHADOW_STEPS = 8u;
+            const SHADOW_STEP_SIZE = STEP_SIZE * 0.25;
+
+            for (var s = 0u; s < SHADOW_STEPS; s++) {
+                shadow_pos += light_dir * SHADOW_STEP_SIZE;
+                let shadow_density = readDensity(shadow_pos);
+                if shadow_density > 0.001 {
+                    let shadow_extinction = EXTINCTION_COEFFICIENT * shadow_density;
+                    shadow_transmittance *= exp(-shadow_extinction * SHADOW_STEP_SIZE);
+                    if shadow_transmittance < 0.01 { break; }
+                }
+            }
+
+            const AMBIENT = vec3f(0.2);
+            let scattering = (light_col * phase * shadow_transmittance + AMBIENT) * local_scattering;
+            let light_addition_fac = scattering * (1 - stepTransmittance) / max(local_extinction, 0.0001);
+            
+            out_col += transmittance * light_addition_fac;
             transmittance *= stepTransmittance;
         }
 
@@ -142,5 +163,5 @@ fn doVolumetricRaymarch(
 
 
     let alpha = 1 - transmittance;
-    textureStore(outputTexture, global_id.xy, vec4f(accumulatedColor, alpha));
+    textureStore(outputTexture, global_id.xy, vec4f(out_col, alpha));
 }
