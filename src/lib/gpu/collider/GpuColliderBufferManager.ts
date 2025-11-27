@@ -4,7 +4,6 @@ export interface ColliderGeometry {
     positions: number[];
     normals: number[];
     indices: number[];
-    transform: Mat4;
 }
 
 export class GpuColliderBufferManager {
