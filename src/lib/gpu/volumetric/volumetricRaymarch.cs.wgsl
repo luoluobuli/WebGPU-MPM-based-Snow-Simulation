@@ -7,8 +7,12 @@ const DENSITY_SCALE = 1000.0;
 const EXTINCTION_COEFFICIENT = 724.;
 const SCATTERING_ALBEDO = 0.95;
 const HENYEY_GREENSTEIN_ASYMMETRY = 0.5;
-const STEP_SIZE = 0.15;
+const STEP_SIZE = 0.1;
 const MAX_STEPS = 256u;
+
+fn linearSplineWeights(fractional_pos: vec3f) -> array<vec3f, 2> {
+    return array(vec3f(1 - fractional_pos), vec3f(fractional_pos));
+}
 
 fn readDensity(worldPos: vec3f) -> f32 {
     if any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords) {
@@ -26,6 +30,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
     let splatPos = gridPos - 0.5;
     let start_cell_number = vec3u(splatPos);
     let fractional_pos = splatPos - vec3f(start_cell_number);
+    let weights = linearSplineWeights(fractional_pos);
 
     var mass = 0.;
 
@@ -40,10 +45,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
                 
                 let val = f32(atomicLoad(&densityGrid[cell_index])) / DENSITY_SCALE;
                 
-                let weight = 
-                    select(fractional_pos.x, 1 - fractional_pos.x, x == 0) *
-                    select(fractional_pos.y, 1 - fractional_pos.y, y == 0) *
-                    select(fractional_pos.z, 1 - fractional_pos.z, z == 0);
+                let weight = weights[x].x * weights[y].y * weights[z].z;
                 
                 mass += val * weight;
             }
@@ -58,6 +60,12 @@ fn henyeyGreenstein(cosTheta: f32, g: f32) -> f32 {
     let g2 = g * g;
     let denom = 1.0 + g2 - 2.0 * g * cosTheta;
     return (1.0 - g2) / (4.0 * PI * pow(denom, 1.5));
+}
+
+fn twoLobeHenyeyGreenstein(cosTheta: f32, gForward: f32, gBackward: f32) -> f32 {
+    let forward_scatter = henyeyGreenstein(cosTheta, gForward);
+    let backward_scatter = henyeyGreenstein(cosTheta, -gBackward);
+    return backward_scatter + forward_scatter;
 }
 
 fn aabbIntersectionDistances(
@@ -98,8 +106,8 @@ fn doVolumetricRaymarch(
     let ray_origin = nearPos;
     let ray_dir = normalize(farPos - nearPos);
 
-    let light_dir = normalize(vec3f(0.5, 0.5, 1.0));
-    let light_col = vec3f(1);
+    let light_dir = normalize(vec3f(0.25, 0.25, 1));
+    let light_col = vec3f(1.6, 1.9, 2);
 
     let distance_bounds = aabbIntersectionDistances(ray_origin, ray_dir, uniforms.gridMinCoords, uniforms.gridMaxCoords);
     let distance_near = distance_bounds.x;
@@ -131,13 +139,13 @@ fn doVolumetricRaymarch(
             // exponential assuming a constant density, since every step can be thought of as an independent trial
             // in a geometric probability distribution
             let stepTransmittance = exp(-local_extinction * STEP_SIZE); // T
-            let phase = henyeyGreenstein(dot(ray_dir, light_dir), HENYEY_GREENSTEIN_ASYMMETRY); // P
+            let phase = twoLobeHenyeyGreenstein(dot(ray_dir, light_dir), 0.5, 0.3); // P
             
 
-            // shadow raymarch
+            // shadow raymarch - march toward the light source (opposite of light direction)
             var shadow_pos = pos;
             var shadow_transmittance = 1.0;
-            const SHADOW_STEPS = 8u;
+            const SHADOW_STEPS = 12u;
             const SHADOW_STEP_SIZE = STEP_SIZE * 0.25;
 
             for (var s = 0u; s < SHADOW_STEPS; s++) {
@@ -150,9 +158,9 @@ fn doVolumetricRaymarch(
                 }
             }
 
-            const AMBIENT = vec3f(0.2);
-            let scattering = (light_col * phase * shadow_transmittance + AMBIENT) * local_scattering;
-            let light_addition_fac = scattering * (1 - stepTransmittance) / max(local_extinction, 0.0001);
+            const AMBIENT_LIGHT_COL = vec3f(0.2);
+            let light = AMBIENT_LIGHT_COL + light_col * phase * shadow_transmittance;
+            let light_addition_fac = light * local_scattering * (1 - stepTransmittance) / max(local_extinction, 0.0001);
             
             out_col += transmittance * light_addition_fac;
             transmittance *= stepTransmittance;
