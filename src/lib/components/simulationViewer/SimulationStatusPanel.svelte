@@ -36,7 +36,7 @@ let {
         <label for="render-method-type_points">Points</label>
     </div>
 
-    <div>
+    <!-- <div>
         <input
             type="radio"
             name="render-method-type"
@@ -45,7 +45,7 @@ let {
             id="render-method-type_raymarch"
         />
         <label for="render-method-type_raymarch">Raymarch</label>
-    </div>
+    </div> -->
 
     <div>
         <input
