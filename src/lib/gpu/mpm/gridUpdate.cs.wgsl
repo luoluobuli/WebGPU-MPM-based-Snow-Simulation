@@ -41,25 +41,18 @@ fn doGridUpdate(
 
     // ------------ Gravity -------------
     let gravity = vec3f(0.0, 0.0, -9.81);
-    v = v + gravity * uniforms.simulationTimestep;
+    v += gravity * uniforms.simulationTimestep;
     
     // ----------- Collision ------------
-    // Tmp cube
-    // let minB = vec3f(1.0, 0.0, 1.0);
-    // let maxB = vec3f(2.0, 1.0, 2.0);
+    let minB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
+    let maxB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMaxCoords, 1.0)).xyz;
 
-    let minB = uniforms.min;
-    let maxB = uniforms.max;
-
-    // Get grid world pos
     let cellIdx3d = vec3<u32>(gid.x, gid.y, gid.z);
-
     let cellDims = calculateCellDims();
     let cellWorldPos = uniforms.gridMinCoords + (vec3<f32>(cellIdx3d) + vec3<f32>(0.5, 0.5, 0.5)) * cellDims;
 
-    // Check if object is inside the collider
     let dist = cubeSDF(cellWorldPos, minB, maxB);
-    if (dist < 0.0) {
+    if (dist < 0.05) {
         let projected = clamp(cellWorldPos, minB, maxB);
         var normal = cellWorldPos - projected;
         let nLen = length(normal);
@@ -67,17 +60,19 @@ fn doGridUpdate(
         if (nLen > 1e-6) {
             normal = normal / nLen;
 
-            let vn = dot(v, normal);
+            var v_rel = v - uniforms.colliderVelocity * 100.0;
+            let vn = dot(v_rel, normal);
 
             if (vn < 0.0) {
                 let vN = vn * normal;
-                let vT = v - vN;
+                let vT = v_rel - vN;
 
                 let friction = 0.3;
-                v = vT * (1.0 - friction);
+                v_rel = vT * (1.0 - friction);
             }
-        } else {
-            // Degenerate normal (exactly at center): just zero velocity
+            v = v_rel + uniforms.colliderVelocity * 100.0; 
+        }
+        else {
             v = vec3f(0.0, 0.0, 0.0);
         }
     }

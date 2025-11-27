@@ -1,3 +1,4 @@
+import { mat4, type Mat4 } from "wgpu-matrix";
 import type { Camera } from "$lib/components/simulationViewer/Camera.svelte";
 import { GpuPointsRenderPipelineManager } from "./pointsRender/GpuPointsRenderPipelineManager";
 import { GpuMpmPipelineManager } from "./mpm/GpuMpmPipelineManager";
@@ -13,11 +14,7 @@ import { GpuRasterizeRenderPipelineManager } from "./collider/GpuRasterizeRender
 import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRenderPipelineMager";
 import { GpuVolumetricBufferManager } from "./volumetric/GpuVolumetricBufferManager";
 import { GpuVolumetricRenderPipelineManager } from "./volumetric/GpuVolumetricRenderPipelineManager";
-
-export interface ColliderGeometry {
-    positions: number[];
-    indices: number[];
-}
+import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
 
 const MAX_SIMULATION_DRIFT_MS = 1_000;
 const FP_SCALE = 1024.0;
@@ -45,6 +42,9 @@ export class GpuSnowPipelineRunner {
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
 
     private readonly measurePerf: boolean;
+    // debug
+    // private readonly readbackBuffer : GPUBuffer;
+    // v : [number, number, number] = [0.0, 0.0, 0.0];
 
     private readonly getRenderMethodType: () => GpuRenderMethodType;
 
@@ -118,10 +118,19 @@ export class GpuSnowPipelineRunner {
         const colliderManager = new GpuColliderBufferManager({
             device, 
             vertices: collider.positions, 
+            normals: collider.normals,
             indices: collider.indices,
         });
-        uniformsManager.writeMinCoordsTmp(colliderManager.minCoords);
-        uniformsManager.writeMaxCoordsTmp(colliderManager.maxCoords);
+        uniformsManager.writeColliderMinCoords(colliderManager.minCoords);
+        uniformsManager.writeColliderMaxCoords(colliderManager.maxCoords);
+        uniformsManager.writeColliderTransformMat(mat4.identity());
+        uniformsManager.writeColliderVel([0.0, 0.0, 0.0]);
+
+        // debug
+        // this.readbackBuffer = device.createBuffer({
+        //         size: colliderManager.indicesBuffer.size,
+        //         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        // });
         
         // Compute
         const particleInitializePipelineManager = new GpuParticleInitializePipelineManager({
@@ -229,6 +238,15 @@ export class GpuSnowPipelineRunner {
         this.device.queue.submit([commandEncoder.finish()]);
     }
 
+    updateColliderTransformMat(transformMat: Mat4) {
+        this.uniformsManager.writeColliderTransformMat(transformMat);
+    }
+
+    updateColliderVel(transform: [number, number, number]) {
+        this.uniformsManager.writeColliderVel(transform);
+        // this.v = transform;
+    }
+
     private async addSimulationStepsComputePass({
         commandEncoder,
         nSteps,
@@ -330,9 +348,11 @@ export class GpuSnowPipelineRunner {
     loop({
         onGpuTimeUpdate,
         onAnimationFrameTimeUpdate,
+        onUserControlUpdate,
     }: {
         onGpuTimeUpdate?: (ns: bigint) => void,
         onAnimationFrameTimeUpdate?: (ms: number) => void,
+        onUserControlUpdate?: () => void,
     } = {}) {
         let handle = 0;
         let canceled = false;
@@ -355,9 +375,23 @@ export class GpuSnowPipelineRunner {
                 lastFrameTime = newFrameTime;
             }
 
+            onUserControlUpdate?.();
+
             const commandEncoder = this.device.createCommandEncoder({
                 label: "loop command encoder",
             });
+
+            // debug
+            // commandEncoder.copyBufferToBuffer(
+            //     this.rasterizeRenderPipelineManager.colliderManager.indicesBuffer, 0,
+            //     this.readbackBuffer, 0,
+            //     this.rasterizeRenderPipelineManager.colliderManager.indicesBuffer.size
+            // );
+            // await this.readbackBuffer.mapAsync(GPUMapMode.READ);
+            // const data = new Uint32Array(this.readbackBuffer.getMappedRange());
+            // console.log(data);
+            // this.readbackBuffer.unmap();
+            // console.log(this.v);
 
             // catch up the simulation to the current time
             let currentSimulationTime = simulationStartTime + nSimulationStep * simulationTimestepMs;

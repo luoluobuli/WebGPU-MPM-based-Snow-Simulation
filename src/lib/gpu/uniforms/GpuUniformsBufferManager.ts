@@ -14,7 +14,7 @@ export class GpuUniformsBufferManager {
     }) {
         const uniformsBuffer = device.createBuffer({
             label: "uniforms buffer",
-            size: 256, // 224
+            size: 336,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
         });
 
@@ -87,11 +87,19 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 208, new Uint32Array(gridResolution));
     }
 
-    writeMinCoordsTmp(min: [number, number, number]) {
+    writeColliderMinCoords(min: [number, number, number]) {
         this.device.queue.writeBuffer(this.buffer, 224, new Float32Array(min));
     }
 
-    writeMaxCoordsTmp(max: [number, number, number]) {
+    writeColliderMaxCoords(max: [number, number, number]) {
         this.device.queue.writeBuffer(this.buffer, 240, new Float32Array(max));
+    }
+
+    writeColliderTransformMat(transformMat: Mat4) {
+        this.device.queue.writeBuffer(this.buffer, 256, transformMat.buffer);
+    }
+
+    writeColliderVel(vel: [number, number, number]) {
+        this.device.queue.writeBuffer(this.buffer, 320, new Float32Array(vel));
     }
 }
