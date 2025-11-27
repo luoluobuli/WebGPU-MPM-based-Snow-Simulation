@@ -1,14 +1,15 @@
+import { mat4 } from "wgpu-matrix";
 import { onDestroy, onMount } from "svelte";
 import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
 import modelUrl from "$lib/assets/models/monkey.glb?url";
-import colliderUrl from "$lib/assets/models/test.glb?url";
+import colliderUrl from "$lib/assets/models/test2.glb?url";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
-import type { ColliderGeometry } from "../../gpu/GpuSnowPipelineRunner";
+import type { ColliderGeometry } from "../../gpu/collider/GpuColliderBufferManager";
 
 export class SimulationState {
     width = $state(300);
@@ -19,6 +20,14 @@ export class SimulationState {
     gridResolutionY = $state(256);
     gridResolutionZ = $state(96);
     simulationTimestepS = $state(1 / 144);
+    transformMat = $state(mat4.identity());
+
+    moveForward  = $state(false); // W
+    moveBackward = $state(false); // S
+    moveLeft     = $state(false); // A
+    moveRight    = $state(false); // D
+    moveUp       = $state(false); // Q
+    moveDown     = $state(false); // E
 
     renderMethodType = $state(GpuRenderMethodType.Volumetric);
 
@@ -75,9 +84,25 @@ export class SimulationState {
                     Math.round(ms * 1_000_000),
                 )),
             onGpuTimeUpdate: (ns) => (this.elapsedTime.gpuTimeNs = ns),
+            onUserControlUpdate: () => {
+                const speed = 0.02;
+                this.runner?.updateColliderVel([0.0, 0.0, 0.0]);
+                if (this.moveForward) { this.applyColliderTransform([0.0, -speed, 0.0]); }
+                if (this.moveBackward) { this.applyColliderTransform([0.0, speed, 0.0]); }
+                if (this.moveLeft) { this.applyColliderTransform([speed, 0.0, 0.0]); }
+                if (this.moveRight) { this.applyColliderTransform([-speed, 0.0, 0.0]); }
+                if (this.moveUp) { this.applyColliderTransform([0.0, 0.0, speed]); }
+                if (this.moveDown) { this.applyColliderTransform([0.0, 0.0, -speed]); }
+            },
         });
     }
 
+    applyColliderTransform(step: [number, number, number]) {
+        const t = mat4.translation(step);
+        this.transformMat = mat4.mul(t, this.transformMat);
+        this.runner?.updateColliderTransformMat(this.transformMat);
+        this.runner?.updateColliderVel(step);
+    }
 
     static loadOntoCanvas({
         canvasPromise,
@@ -107,57 +132,17 @@ export class SimulationState {
 
             onStatusChange?.("loading geometry...");
             const { vertices } = await loadGltfScene(modelUrl);
-
-            const { positions } = await loadGltfScene(colliderUrl);
-            const { indices } = await loadGltfScene(colliderUrl); 
+            const { positions, normals, indices } = await loadGltfScene(colliderUrl);
 
             const collider: ColliderGeometry = {
                 positions,
+                normals,
                 indices,
+                //transform: state.transformMat,
             };
-
-            const colliderVertices = new Float32Array([
-                1, 0, 1,   // 0
-                2, 0, 1,   // 1
-                2, 1, 1,   // 2
-                1, 1, 1,   // 3
-
-                1, 0, 2,   // 4
-                2, 0, 2,   // 5
-                2, 1, 2,   // 6
-                1, 1, 2    // 7
-            ]);
-
-            const colliderIndices = new Uint32Array([
-                // Front
-                0, 1, 2,
-                0, 2, 3,
-
-                // Back
-                5, 4, 7,
-                5, 7, 6,
-
-                // Left
-                4, 0, 3,
-                4, 3, 7,
-
-                // Right
-                1, 5, 6,
-                1, 6, 2,
-
-                // Top
-                3, 2, 6,
-                3, 6, 7,
-
-                // Bottom
-                4, 5, 1,
-                4, 1, 0
-            ]);
-
 
             state.width = innerWidth;
             state.height = innerHeight;
-
 
             state.runner = new GpuSnowPipelineRunner({
                 device,

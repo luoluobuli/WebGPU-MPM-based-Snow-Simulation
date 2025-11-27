@@ -12,7 +12,7 @@
 // };
 
 import {GLTFLoader, type GLTF} from "three/addons/loaders/GLTFLoader.js";
-import { Matrix4, Mesh, MeshPhysicalMaterial, Object3D, Vector3 } from "three";
+import { Matrix4, Matrix3, Mesh, MeshPhysicalMaterial, Object3D, Vector3 } from "three";
 
 
 const traverseChildren = (scene: Object3D, fn: (child: Object3D) => void) => {
@@ -118,30 +118,39 @@ export const loadGltfScene = async (url: string) => {
 
     const vertices: number[][] = [];
     const positions: number[] = [];
+    const normals: number[] = [];
     const indices: number[] = [];
     var vertexOffset = 0;
 
     traverseChildren(gltf.scene, child => {
         if (!(child instanceof Mesh)) return;
         
-        const pos = child.geometry.attributes.position.array;
-        const index = child.geometry.index.array;
+        const pos_in = child.geometry.attributes.position.array;
+        const nor_in = child.geometry.attributes.normal?.array;
+        const idx_in = child.geometry.index.array;
         
-        for (let i = 0; i < index.length; i++) {
-            const v = vec(pos.slice(3 * index[i], 3 * index[i] + 3), child.matrix);
+        // indices
+        for (let i = 0; i < idx_in.length; i++) {
+            const v = vec(pos_in.slice(3 * idx_in[i], 3 * idx_in[i] + 3), child.matrix);
             vertices.push(v);
-            indices.push(index[i] + vertexOffset);
+            indices.push(idx_in[i] + vertexOffset);
         }
 
-        for (let i = 0; i < pos.length; i+= 3) {
-            const px = pos[i];
-            const py = pos[i + 1];
-            const pz = pos[i + 2];
+        const invTransMat = new Matrix3().getNormalMatrix(child.matrix);
 
-            const v = vec(new Float32Array([px, py, pz]), child.matrix);
-            positions.push(v[0], v[1], v[2]);
+        // flat vertex attributes
+        for (let i = 0; i < pos_in.length; i+= 3) {
+            // positions
+            const p = vec(new Float32Array([pos_in[i], pos_in[i+1], pos_in[i+2]]), child.matrix);
+            positions.push(p[0], p[1], p[2]);
+
+            // normals
+            if (nor_in) {
+                const n = new Vector3(nor_in[i], nor_in[i+1], nor_in[i+2]).applyMatrix3(invTransMat).normalize();
+                normals.push(n.x, n.y, n.z);
+            }
         }
-        vertexOffset += pos.length / 3;
+        vertexOffset += pos_in.length / 3;
 
     });
 
@@ -151,6 +160,7 @@ export const loadGltfScene = async (url: string) => {
         materials,
         vertices,
         positions,
+        normals,
         indices,
     };
 };

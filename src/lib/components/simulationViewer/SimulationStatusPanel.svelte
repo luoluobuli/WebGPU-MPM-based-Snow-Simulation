@@ -95,6 +95,45 @@ let {
             >Reset (R)</Button>
         {/snippet}
     </Hotkey>
+
+    <Hotkey key="q">
+        {#snippet pressTarget({ keyHeld })}
+            {simulationState.moveForward = keyHeld}
+        {/snippet}
+    </Hotkey>
+
+    <Hotkey key="e">
+        {#snippet pressTarget({ keyHeld })}
+            {simulationState.moveBackward = keyHeld}
+        {/snippet}
+    </Hotkey>
+
+    <Hotkey key="a">
+        {#snippet pressTarget({ keyHeld })}
+            {simulationState.moveLeft = keyHeld}
+        {/snippet}
+    </Hotkey>
+
+    <Hotkey key="d">
+        {#snippet pressTarget({ keyHeld })}
+            {simulationState.moveRight = keyHeld}
+        {/snippet}
+    </Hotkey>
+
+    <Hotkey key="w">
+        {#snippet pressTarget({ keyHeld })}
+            {simulationState.moveUp = keyHeld}
+        {/snippet}
+    </Hotkey>
+
+    <Hotkey key="s">
+        {#snippet pressTarget({ keyHeld })}
+            {simulationState.moveDown = keyHeld}
+        {/snippet}
+    </Hotkey>
+
+
+
 </simulation-status-panel>
 
 <style lang="scss">
