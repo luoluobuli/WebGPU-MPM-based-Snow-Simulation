@@ -1,18 +1,13 @@
-@group(1) @binding(0) var<storage, read_write> densityGrid: array<atomic<u32>>;
+@group(1) @binding(0) var<storage, read_write> mass_grid: array<atomic<u32>>;
 @group(1) @binding(1) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 
 // Constants
 const PI = 3.1415926;
-const DENSITY_SCALE = 1000.0;
 const EXTINCTION_COEFFICIENT = 724.;
 const SCATTERING_ALBEDO = 0.95;
 const HENYEY_GREENSTEIN_ASYMMETRY = 0.5;
 const STEP_SIZE = 0.1;
 const MAX_STEPS = 256u;
-
-fn linearSplineWeights(fractional_pos: vec3f) -> array<vec3f, 2> {
-    return array(vec3f(1 - fractional_pos), vec3f(fractional_pos));
-}
 
 fn readDensity(worldPos: vec3f) -> f32 {
     if any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords) {
@@ -26,7 +21,6 @@ fn readDensity(worldPos: vec3f) -> f32 {
     let localPos = worldPos - uniforms.gridMinCoords;
     let gridPos = localPos / cellSize;
     
-    // Trilinear interpolation manually since we are using a storage buffer
     let splatPos = gridPos - 0.5;
     let start_cell_number = vec3u(splatPos);
     let fractional_pos = splatPos - vec3f(start_cell_number);
@@ -43,7 +37,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
                 
                 let cell_index = linearizeCellIndex(cell_number);
                 
-                let val = f32(atomicLoad(&densityGrid[cell_index])) / DENSITY_SCALE;
+                let val = f32(atomicLoad(&mass_grid[cell_index])) / MASS_FIXED_POINT_SCALE;
                 
                 let weight = weights[x].x * weights[y].y * weights[z].z;
                 
@@ -84,6 +78,24 @@ fn aabbIntersectionDistances(
     return vec2f(t_near, t_far);
 }
 
+fn raymarchShadow(pos: vec3f, light_dir: vec3f) -> f32 {
+    var shadow_pos = pos;
+    var shadow_transmittance = 1.0;
+    const SHADOW_STEPS = 50u;
+    const SHADOW_STEP_SIZE = STEP_SIZE;
+
+    for (var s = 0u; s < SHADOW_STEPS; s++) {
+        shadow_pos += light_dir * SHADOW_STEP_SIZE;
+        let shadow_density = readDensity(shadow_pos);
+        if shadow_density > 0.001 {
+            let shadow_extinction = EXTINCTION_COEFFICIENT * shadow_density;
+            shadow_transmittance *= exp(-shadow_extinction * SHADOW_STEP_SIZE);
+            if shadow_transmittance < 0.01 { break; }
+        }
+    }
+    return shadow_transmittance;
+}
+
 @compute
 @workgroup_size(16, 16)
 fn doVolumetricRaymarch(
@@ -106,21 +118,42 @@ fn doVolumetricRaymarch(
     let ray_origin = nearPos;
     let ray_dir = normalize(farPos - nearPos);
 
-    let light_dir = normalize(vec3f(0.25, 0.25, 1));
+    let light_dir = normalize(vec3f(0.25, 0.5, 1));
     let light_col = vec3f(1.6, 1.9, 2);
+    const AMBIENT_LIGHT_COL = vec3f(0.01);
 
     let distance_bounds = aabbIntersectionDistances(ray_origin, ray_dir, uniforms.gridMinCoords, uniforms.gridMaxCoords);
     let distance_near = distance_bounds.x;
     let distance_far = distance_bounds.y;
 
-    if distance_near > distance_far || distance_far < 0 {
+    let ray_hits_volume = distance_near <= distance_far && distance_far >= 0;
+
+    // let ground_z = uniforms.gridMinCoords.z;
+    // var t_ground = 1e20;
+    // var hit_ground = false;
+    
+    // if (abs(ray_dir.z) > 1e-5) {
+    //     let t = (ground_z - ray_origin.z) / ray_dir.z;
+    //     if (t > 0.0) {
+    //         t_ground = t;
+    //         hit_ground = true;
+    //     }
+    // }
+
+    if (!ray_hits_volume) {
         textureStore(outputTexture, global_id.xy, vec4f(0, 0, 0, 0));
         return;
     }
 
-    let distance_start = max(0, distance_near);
-    let distance_end = distance_far;
-    let jitter = f32(hash2(bitcast<vec2u>(vec2f(global_id.xy) + vec2f(uniforms.simulationTimestep)))) / f32(0xFFFFFFFF);
+    let volume_start = max(0, distance_near);
+
+    let distance_start = volume_start;
+    var distance_end = distance_far;
+    
+    // if (hit_ground && t_ground < distance_end) {
+    //     distance_end = t_ground;
+    // }
+    let jitter = f32(hash2(global_id.xy)) / f32(0xFFFFFFFF);
     var current_ray_distance = distance_start + jitter * STEP_SIZE;
 
     var transmittance = 1.;
@@ -139,26 +172,10 @@ fn doVolumetricRaymarch(
             // exponential assuming a constant density, since every step can be thought of as an independent trial
             // in a geometric probability distribution
             let stepTransmittance = exp(-local_extinction * STEP_SIZE); // T
-            let phase = twoLobeHenyeyGreenstein(dot(ray_dir, light_dir), 0.5, 0.3); // P
+            let phase = twoLobeHenyeyGreenstein(dot(ray_dir, light_dir), 0.3, 0.2); // P
             
+            let shadow_transmittance = raymarchShadow(pos, light_dir);
 
-            // shadow raymarch - march toward the light source (opposite of light direction)
-            var shadow_pos = pos;
-            var shadow_transmittance = 1.0;
-            const SHADOW_STEPS = 12u;
-            const SHADOW_STEP_SIZE = STEP_SIZE * 0.25;
-
-            for (var s = 0u; s < SHADOW_STEPS; s++) {
-                shadow_pos += light_dir * SHADOW_STEP_SIZE;
-                let shadow_density = readDensity(shadow_pos);
-                if shadow_density > 0.001 {
-                    let shadow_extinction = EXTINCTION_COEFFICIENT * shadow_density;
-                    shadow_transmittance *= exp(-shadow_extinction * SHADOW_STEP_SIZE);
-                    if shadow_transmittance < 0.01 { break; }
-                }
-            }
-
-            const AMBIENT_LIGHT_COL = vec3f(0.2);
             let light = AMBIENT_LIGHT_COL + light_col * phase * shadow_transmittance;
             let light_addition_fac = light * local_scattering * (1 - stepTransmittance) / max(local_extinction, 0.0001);
             
@@ -170,6 +187,20 @@ fn doVolumetricRaymarch(
     }
 
 
+    // if (hit_ground && transmittance > 0) {
+    //     let pos = ray_origin + t_ground * ray_dir;
+    //     let shadow = raymarchShadow(pos, light_dir);
+    //     let ground_albedo = vec3f(0.2);
+    //     let ground_col = ground_albedo * (AMBIENT_LIGHT_COL + light_col * shadow * max(0, light_dir.z));
+    //     out_col += transmittance * ground_col;
+    //     transmittance = 0;
+    // }
+
     let alpha = 1 - transmittance;
-    textureStore(outputTexture, global_id.xy, vec4f(out_col, alpha));
+    textureStore(outputTexture, global_id.xy, vec4f(
+        pow(out_col.r, 1/2.2),
+        pow(out_col.g, 1/2.2),
+        pow(out_col.b, 1/2.2),
+        alpha,
+    ));
 }

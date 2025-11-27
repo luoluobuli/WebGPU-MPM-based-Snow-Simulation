@@ -84,7 +84,7 @@ export class GpuVolumetricRenderPipelineManager {
             layout: densityPipelineLayout,
             compute: {
                 module: device.createShaderModule({
-                    code: attachPrelude(calculateGridDensitySrc),
+                    code: attachPrelude(`${preludeSrc}\n${calculateGridDensitySrc}`),
                 }),
                 entryPoint: "calculateGridDensity",
             },
@@ -145,7 +145,7 @@ export class GpuVolumetricRenderPipelineManager {
             layout: raymarchPipelineLayout,
             compute: {
                 module: device.createShaderModule({
-                    code: attachPrelude(volumetricRaymarchSrc),
+                    code: attachPrelude(`${preludeSrc}\n${volumetricRaymarchSrc}`),
                 }),
                 entryPoint: "doVolumetricRaymarch",
             },
