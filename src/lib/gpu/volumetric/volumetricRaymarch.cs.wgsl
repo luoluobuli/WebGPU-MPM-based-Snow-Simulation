@@ -10,8 +10,7 @@ const HENYEY_GREENSTEIN_ASYMMETRY: f32 = 0.5;
 const STEP_SIZE: f32 = 0.2; // 2cm step size (tunable)
 const MAX_STEPS: u32 = 256; // Max steps to prevent TDR
 
-// Helper to get density from grid
-fn getDensity(worldPos: vec3f) -> f32 {
+fn readDensity(worldPos: vec3f) -> f32 {
     if any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords) {
         return 0;
     }
@@ -25,10 +24,10 @@ fn getDensity(worldPos: vec3f) -> f32 {
     
     // Trilinear interpolation manually since we are using a storage buffer
     let splatPos = gridPos - 0.5;
-    let baseIndex = vec3u(floor(splatPos));
-    let w = fract(splatPos);
+    let baseIndex = vec3u(splatPos);
+    let fractional_pos = fract(splatPos);
 
-    var density = 0.;
+    var mass = 0.;
 
     for (var z = 0u; z < 2; z++) {
         for (var y = 0u; y < 2; y++) {
@@ -39,26 +38,22 @@ fn getDensity(worldPos: vec3f) -> f32 {
                     continue;
                 }
 
-                let idx = neighborIndex.x + 
-                          neighborIndex.y * uniforms.gridResolution.x + 
-                          neighborIndex.z * uniforms.gridResolution.x * uniforms.gridResolution.y;
+                let cell_index = linearizeCellIndex(neighborIndex);
                 
-                let val = f32(atomicLoad(&densityGrid[idx])) / DENSITY_SCALE;
+                let val = f32(atomicLoad(&densityGrid[cell_index])) / DENSITY_SCALE;
                 
                 let weight = 
-                    select(w.x, 1 - w.x, x == 0u) *
-                    select(w.y, 1 - w.y, y == 0u) *
-                    select(w.z, 1 - w.z, z == 0u);
+                    select(fractional_pos.x, 1 - fractional_pos.x, x == 0) *
+                    select(fractional_pos.y, 1 - fractional_pos.y, y == 0) *
+                    select(fractional_pos.z, 1 - fractional_pos.z, z == 0);
                 
-                density += val * weight;
+                mass += val * weight;
             }
         }
     }
     
-    // The stored density is "Mass". We need "Density" = Mass / Volume.
-    // Cell volume = cellSize.x * cellSize.y * cellSize.z
     let cellVolume = cellSize.x * cellSize.y * cellSize.z;
-    return density / cellVolume * 0.00001; 
+    return mass / cellVolume * 0.000005; 
 }
 
 fn henyeyGreenstein(cosTheta: f32, g: f32) -> f32 {
@@ -128,7 +123,7 @@ fn doVolumetricRaymarch(
         if current_ray_distance >= distance_end || transmittance < 0.01 { break; }
 
         let pos = rayOrigin + current_ray_distance * rayDir;
-        let density = getDensity(pos);
+        let density = readDensity(pos);
 
         if density > 0.001 {
             let local_extinction = SIGMA_T * density; // σ_t
