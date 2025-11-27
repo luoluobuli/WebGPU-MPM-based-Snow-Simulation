@@ -296,53 +296,50 @@ export class GpuSnowPipelineRunner {
         this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
 
         if (this.getRenderMethodType() === GpuRenderMethodType.Volumetric) {
-            // Clear grid
-            commandEncoder.clearBuffer(this.volumetricBufferManager.densityGridBuffer);
+            commandEncoder.clearBuffer(this.volumetricBufferManager.massGridBuffer);
 
             const volComputePass = commandEncoder.beginComputePass({
                 label: "volumetric compute pass",
             });
 
-            this.volumetricRenderPipelineManager.addDensityDispatch(volComputePass, this.nParticles);
+            this.volumetricRenderPipelineManager.addMassCalulationDispatch(volComputePass, this.nParticles);
             this.volumetricRenderPipelineManager.addRaymarchDispatch(volComputePass);
             
             volComputePass.end();
         }
 
-        {
-            const renderPassEncoder = commandEncoder.beginRenderPass({
-                label: "particles render pass",
-                colorAttachments: [
-                    {
-                        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-                        loadOp: "clear",
-                        storeOp: "store",
-                        view: this.context.getCurrentTexture().createView(),
-                    },
-                ],
-                depthStencilAttachment: {
-                    view: this.depthTextureView,
-                    depthLoadOp: 'clear',
-                    depthStoreOp: 'store',
-                    depthClearValue: 1.0,
+        const renderPassEncoder = commandEncoder.beginRenderPass({
+            label: "particles render pass",
+            colorAttachments: [
+                {
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                    loadOp: "clear",
+                    storeOp: "store",
+                    view: this.context.getCurrentTexture().createView(),
                 },
-                timestampWrites: this.performanceMeasurementManager !== null
-                    ? {
-                        querySet: this.performanceMeasurementManager.querySet,
-                        beginningOfPassWriteIndex: 0,
-                        endOfPassWriteIndex: 1,
-                    }
-                    : undefined,
-            });
+            ],
+            depthStencilAttachment: {
+                view: this.depthTextureView,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+                depthClearValue: 1.0,
+            },
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 0,
+                    endOfPassWriteIndex: 1,
+                }
+                : undefined,
+        });
 
-            this.selectRenderPipelineManager().addDraw(renderPassEncoder);
-            if (this.getRenderMethodType() !== GpuRenderMethodType.Volumetric) {
-                this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
-                this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
-            }
-
-            renderPassEncoder.end();
+        this.selectRenderPipelineManager().addDraw(renderPassEncoder);
+        if (this.getRenderMethodType() !== GpuRenderMethodType.Volumetric) {
+            this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
+            this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
         }
+
+        renderPassEncoder.end();
     }
 
     loop({

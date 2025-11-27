@@ -1,6 +1,6 @@
 
 export class GpuVolumetricBufferManager {
-    densityGridBuffer: GPUBuffer;
+    massGridBuffer: GPUBuffer;
     outputTexture: GPUTexture;
     outputTextureView: GPUTextureView;
     readonly gridResolution: [number, number, number];
@@ -20,15 +20,12 @@ export class GpuVolumetricBufferManager {
     }) {
         this.gridResolution = [gridResolutionX, gridResolutionY, gridResolutionZ];
 
-        // Density Grid: atomic<u32>
-        // Size: X * Y * Z * 4 bytes
-        this.densityGridBuffer = device.createBuffer({
-            label: "volumetric density grid buffer",
+        this.massGridBuffer = device.createBuffer({
+            label: "volumetric mass grid buffer",
             size: gridResolutionX * gridResolutionY * gridResolutionZ * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
         });
 
-        // Output Texture for Raymarcher
         this.outputTexture = device.createTexture({
             label: "volumetric output texture",
             size: [screenDims.width, screenDims.height],
