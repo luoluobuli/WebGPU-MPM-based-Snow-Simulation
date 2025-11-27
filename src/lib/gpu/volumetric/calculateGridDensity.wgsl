@@ -32,17 +32,19 @@ fn calculateGridDensity(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // So we want to find the 8 voxels surrounding gridPos - 0.5.
     
     let pos_cell_center = pos_cell - 0.5;
-    let start_cell_number = vec3u(pos_cell_center);
-    let fractional_pos = fract(pos_cell_center);
+    let start_cell_number_i = vec3i(floor(pos_cell_center));
+    let fractional_pos = pos_cell_center - vec3f(start_cell_number_i);
 
-    for (var z = 0u; z < 2; z++) {
-        for (var y = 0u; y < 2; y++) {
-            for (var x = 0u; x < 2; x++) {
-                let cell_number = start_cell_number + vec3u(x, y, z);
+    for (var z = 0; z < 2; z++) {
+        for (var y = 0; y < 2; y++) {
+            for (var x = 0; x < 2; x++) {
+                let cell_number_i = start_cell_number_i + vec3i(x, y, z);
 
-                if any(cell_number >= uniforms.gridResolution) {
+                if any(cell_number_i < vec3i(0)) || any(cell_number_i >= vec3i(uniforms.gridResolution)) {
                     continue;
                 }
+                
+                let cell_number = vec3u(cell_number_i);
 
                 let weight = 
                     select(fractional_pos.x, 1 - fractional_pos.x, x == 0) *

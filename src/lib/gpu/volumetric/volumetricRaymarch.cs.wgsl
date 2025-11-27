@@ -2,13 +2,13 @@
 @group(1) @binding(1) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 
 // Constants
-const PI: f32 = 3.14159265359;
-const DENSITY_SCALE: f32 = 1000.0;
-const SIGMA_T: f32 = 724.0; // Extinction coefficient (m^-1)
-const ALBEDO: f32 = 0.95; // Scattering albedo
-const HENYEY_GREENSTEIN_ASYMMETRY: f32 = 0.5;
-const STEP_SIZE: f32 = 0.2; // 2cm step size (tunable)
-const MAX_STEPS: u32 = 256; // Max steps to prevent TDR
+const PI = 3.1415926;
+const DENSITY_SCALE = 1000.0;
+const EXTINCTION_COEFFICIENT = 724.;
+const SCATTERING_ALBEDO = 0.95;
+const HENYEY_GREENSTEIN_ASYMMETRY = 0.5;
+const STEP_SIZE = 0.15;
+const MAX_STEPS = 256u;
 
 fn readDensity(worldPos: vec3f) -> f32 {
     if any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords) {
@@ -24,19 +24,21 @@ fn readDensity(worldPos: vec3f) -> f32 {
     
     // Trilinear interpolation manually since we are using a storage buffer
     let splatPos = gridPos - 0.5;
-    let baseIndex = vec3u(splatPos);
-    let fractional_pos = fract(splatPos);
+    let baseIndexI = vec3i(floor(splatPos));
+    let fractional_pos = splatPos - vec3f(baseIndexI);
 
     var mass = 0.;
 
-    for (var z = 0u; z < 2; z++) {
-        for (var y = 0u; y < 2; y++) {
-            for (var x = 0u; x < 2; x++) {
-                let neighborIndex = baseIndex + vec3u(x, y, z);
+    for (var z = 0; z < 2; z++) {
+        for (var y = 0; y < 2; y++) {
+            for (var x = 0; x < 2; x++) {
+                let neighborIndexI = baseIndexI + vec3i(x, y, z);
                 
-                if any(neighborIndex >= uniforms.gridResolution) {
+                if any(neighborIndexI < vec3i(0)) || any(neighborIndexI >= vec3i(uniforms.gridResolution)) {
                     continue;
                 }
+                
+                let neighborIndex = vec3u(neighborIndexI);
 
                 let cell_index = linearizeCellIndex(neighborIndex);
                 
@@ -53,7 +55,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
     }
     
     let cellVolume = cellSize.x * cellSize.y * cellSize.z;
-    return mass / cellVolume * 0.000005; 
+    return mass / cellVolume * 0.00000005;
 }
 
 fn henyeyGreenstein(cosTheta: f32, g: f32) -> f32 {
@@ -107,7 +109,7 @@ fn doVolumetricRaymarch(
     let distance_far = distance_bounds.y;
 
     if distance_near > distance_far || distance_far < 0 {
-        textureStore(outputTexture, global_id.xy, vec4f(0, 0, 0, 1));
+        textureStore(outputTexture, global_id.xy, vec4f(0, 0, 0, 0));
         return;
     }
 
@@ -126,13 +128,13 @@ fn doVolumetricRaymarch(
         let density = readDensity(pos);
 
         if density > 0.001 {
-            let local_extinction = SIGMA_T * density; // σ_t
-            let local_scattering = local_extinction * ALBEDO; // σ_s
+            let local_extinction = EXTINCTION_COEFFICIENT * density; // σ_t
+            let local_scattering = local_extinction * SCATTERING_ALBEDO; // σ_s
             
             let stepTransmittance = exp(-local_extinction * STEP_SIZE); // T
             let phase = henyeyGreenstein(dot(rayDir, lightDir), HENYEY_GREENSTEIN_ASYMMETRY); // P
-            let ambient = vec3f(0.2) * density;
-            let scattering = (light_col * phase + ambient) * local_scattering;
+            const AMBIENT = vec3f(0.2);
+            let scattering = (light_col * phase + AMBIENT) * local_scattering;
             let lightAdded = scattering * (1.0 - stepTransmittance) / max(local_extinction, 0.0001);
             
             accumulatedColor += transmittance * lightAdded;
@@ -143,7 +145,6 @@ fn doVolumetricRaymarch(
     }
 
 
-    // TODO alpha handling is incorrect
     let alpha = 1 - transmittance;
     textureStore(outputTexture, global_id.xy, vec4f(accumulatedColor, alpha));
 }
