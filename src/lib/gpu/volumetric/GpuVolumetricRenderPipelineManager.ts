@@ -197,7 +197,11 @@ export class GpuVolumetricRenderPipelineManager {
             fragment: {
                 module: device.createShaderModule({ code: `${preludeSrc}\n${volumetricFragmentSrc}` }),
                 entryPoint: "frag",
-                targets: [{ format }],
+                targets: [
+                    {
+                        format,
+                    },
+                ],
             },
             primitive: { topology: "triangle-strip" },
 
