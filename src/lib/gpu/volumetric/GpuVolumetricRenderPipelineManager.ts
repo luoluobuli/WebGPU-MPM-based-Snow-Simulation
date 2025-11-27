@@ -2,18 +2,18 @@ import { attachPrelude } from "../shaderPrelude";
 import type { GpuUniformsBufferManager } from "../uniforms/GpuUniformsBufferManager";
 import type { GpuVolumetricBufferManager } from "./GpuVolumetricBufferManager";
 import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
-import calculateGridDensitySrc from "./calculateGridDensity.wgsl?raw";
+import calculateGridMassSrc from "./calculateGridMass.wgsl?raw";
 import volumetricRaymarchSrc from "./volumetricRaymarch.cs.wgsl?raw";
 import volumetricVertexSrc from "./volumetricVertex.wgsl?raw";
 import volumetricFragmentSrc from "./volumetricFragment.wgsl?raw";
 import preludeSrc from "./prelude.wgsl?raw";
 
 export class GpuVolumetricRenderPipelineManager {
-    readonly densityRasterizePipeline: GPUComputePipeline;
+    readonly massCalulationPipeline: GPUComputePipeline;
     readonly volumetricRaymarchPipeline: GPUComputePipeline;
     readonly renderPipeline: GPURenderPipeline;
     
-    densityBindGroup: GPUBindGroup;
+    massCalulationBindGroup: GPUBindGroup;
     raymarchBindGroup: GPUBindGroup;
     renderBindGroup: GPUBindGroup;
 
@@ -41,8 +41,8 @@ export class GpuVolumetricRenderPipelineManager {
 
 
 
-        const densityBindGroupLayout = device.createBindGroupLayout({
-            label: "volumetric density bind group layout",
+        const massCalulationBindGroupLayout = device.createBindGroupLayout({
+            label: "volumetric mass calculation bind group layout",
             entries: [
                 {
                     binding: 0,
@@ -57,9 +57,9 @@ export class GpuVolumetricRenderPipelineManager {
             ],
         });
 
-        this.densityBindGroup = device.createBindGroup({
-            label: "volumetric density bind group",
-            layout: densityBindGroupLayout,
+        this.massCalulationBindGroup = device.createBindGroup({
+            label: "volumetric mass calculation bind group",
+            layout: massCalulationBindGroupLayout,
             entries: [
                 {
                     binding: 0,
@@ -67,26 +67,26 @@ export class GpuVolumetricRenderPipelineManager {
                 },
                 {
                     binding: 1,
-                    resource: { buffer: volumetricBufferManager.densityGridBuffer },
+                    resource: { buffer: volumetricBufferManager.massGridBuffer },
                 },
             ],
         });
 
 
 
-        const densityPipelineLayout = device.createPipelineLayout({
-            label: "volumetric density pipeline layout",
-            bindGroupLayouts: [uniformsManager.bindGroupLayout, densityBindGroupLayout],
+        const massCalulationPipelineLayout = device.createPipelineLayout({
+            label: "volumetric mass calculation pipeline layout",
+            bindGroupLayouts: [uniformsManager.bindGroupLayout, massCalulationBindGroupLayout],
         });
 
-        this.densityRasterizePipeline = device.createComputePipeline({
-            label: "volumetric density rasterize pipeline",
-            layout: densityPipelineLayout,
+        this.massCalulationPipeline = device.createComputePipeline({
+            label: "volumetric mass calculation pipeline",
+            layout: massCalulationPipelineLayout,
             compute: {
                 module: device.createShaderModule({
-                    code: attachPrelude(`${preludeSrc}\n${calculateGridDensitySrc}`),
+                    code: attachPrelude(`${preludeSrc}\n${calculateGridMassSrc}`),
                 }),
-                entryPoint: "calculateGridDensity",
+                entryPoint: "calculateGridMass",
             },
         });
 
@@ -120,7 +120,7 @@ export class GpuVolumetricRenderPipelineManager {
             entries: [
                 {
                     binding: 0,
-                    resource: { buffer: volumetricBufferManager.densityGridBuffer },
+                    resource: { buffer: volumetricBufferManager.massGridBuffer },
                 },
                 {
                     binding: 1,
@@ -224,10 +224,10 @@ export class GpuVolumetricRenderPipelineManager {
         ]));
     }
 
-    addDensityDispatch(computePassEncoder: GPUComputePassEncoder, nParticles: number) {
-        computePassEncoder.setPipeline(this.densityRasterizePipeline);
+    addMassCalulationDispatch(computePassEncoder: GPUComputePassEncoder, nParticles: number) {
+        computePassEncoder.setPipeline(this.massCalulationPipeline);
         computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
-        computePassEncoder.setBindGroup(1, this.densityBindGroup);
+        computePassEncoder.setBindGroup(1, this.massCalulationBindGroup);
         computePassEncoder.dispatchWorkgroups(Math.ceil(nParticles / 256));
     }
 
@@ -257,7 +257,7 @@ export class GpuVolumetricRenderPipelineManager {
                 {
                     binding: 0,
                     resource: {
-                        buffer: this.volumetricBufferManager.densityGridBuffer,
+                        buffer: this.volumetricBufferManager.massGridBuffer,
                     },
                 },
                 {
