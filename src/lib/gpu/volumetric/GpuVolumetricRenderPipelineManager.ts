@@ -19,6 +19,7 @@ export class GpuVolumetricRenderPipelineManager {
 
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly volumetricBufferManager: GpuVolumetricBufferManager;
+    private readonly raymarchBindGroupLayout: GPUBindGroupLayout;
 
     constructor({
         device,
@@ -91,7 +92,7 @@ export class GpuVolumetricRenderPipelineManager {
                 {
                     binding: 0, // Density Grid (Read)
                     visibility: GPUShaderStage.COMPUTE,
-                    buffer: { type: "read-only-storage" },
+                    buffer: { type: "storage" },
                 },
                 {
                     binding: 1, // Output Texture (Write)
@@ -104,6 +105,7 @@ export class GpuVolumetricRenderPipelineManager {
                 },
             ],
         });
+        this.raymarchBindGroupLayout = raymarchBindGroupLayout;
 
         this.raymarchBindGroup = device.createBindGroup({
             label: "volumetric raymarch bind group",
@@ -122,7 +124,10 @@ export class GpuVolumetricRenderPipelineManager {
 
         const raymarchPipelineLayout = device.createPipelineLayout({
             label: "volumetric raymarch pipeline layout",
-            bindGroupLayouts: [uniformsManager.bindGroupLayout, raymarchBindGroupLayout],
+            bindGroupLayouts: [
+                uniformsManager.bindGroupLayout,
+                raymarchBindGroupLayout,
+            ],
         });
 
         this.volumetricRaymarchPipeline = device.createComputePipeline({
@@ -227,19 +232,9 @@ export class GpuVolumetricRenderPipelineManager {
     resize(device: GPUDevice, width: number, height: number) {
         this.volumetricBufferManager.resize(device, width, height);
 
-        // Recreate Bind Groups that depend on the output texture
-        // 1. Raymarch Bind Group (writes to outputTexture)
-        const raymarchBindGroupLayout = this.volumetricRaymarchPipeline.getBindGroupLayout(1);
-        // Note: We can't easily get the layout from the pipeline if we created it manually, 
-        // but we can just recreate the bind group using the SAME layout object if we stored it, 
-        // OR just create a new one matching the layout. 
-        // Since we didn't store the layout as a class member, we have to rely on the pipeline's layout or recreate it.
-        // Easier to just recreate the bind group using the device and the known layout structure.
-        // Actually, getBindGroupLayout(1) works.
-
         this.raymarchBindGroup = device.createBindGroup({
             label: "volumetric raymarch bind group",
-            layout: raymarchBindGroupLayout,
+            layout: this.raymarchBindGroupLayout,
             entries: [
                 {
                     binding: 0,

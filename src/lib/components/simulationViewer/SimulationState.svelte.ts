@@ -14,7 +14,7 @@ export class SimulationState {
     width = $state(300);
     height = $state(150);
 
-    nParticles = $state(2_000);
+    nParticles = $state(100_000);
     gridResolutionX = $state(256);
     gridResolutionY = $state(256);
     gridResolutionZ = $state(96);
