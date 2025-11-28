@@ -32,8 +32,8 @@ export class GpuMpmPipelineManager {
         gridMomentumYBuffer,
         gridMomentumZBuffer,
         allocatorBuffer,
-        indirectDispatchBuffer,
-        activeBlockListBuffer,
+        // nWorkgroupsBuffer,
+        mappedBlockIndexesBuffer,
         uniformsManager,
     }: {
         device: GPUDevice,
@@ -44,8 +44,8 @@ export class GpuMpmPipelineManager {
         gridMomentumYBuffer: GPUBuffer,
         gridMomentumZBuffer: GPUBuffer,
         allocatorBuffer: GPUBuffer,
-        indirectDispatchBuffer: GPUBuffer,
-        activeBlockListBuffer: GPUBuffer,
+        // nWorkgroupsBuffer: GPUBuffer,
+        mappedBlockIndexesBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
     }) {
         const sparseGridBindGroupLayout = device.createBindGroupLayout({
@@ -58,7 +58,7 @@ export class GpuMpmPipelineManager {
                 { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                // { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
             ],
         });
 
@@ -68,12 +68,12 @@ export class GpuMpmPipelineManager {
             entries: [
                 { binding: 0, resource: { buffer: pageTableBuffer } },
                 { binding: 1, resource: { buffer: allocatorBuffer } },
-                { binding: 2, resource: { buffer: activeBlockListBuffer } },
+                { binding: 2, resource: { buffer: mappedBlockIndexesBuffer } },
                 { binding: 3, resource: { buffer: gridMassBuffer } },
                 { binding: 4, resource: { buffer: gridMomentumXBuffer } },
                 { binding: 5, resource: { buffer: gridMomentumYBuffer } },
                 { binding: 6, resource: { buffer: gridMomentumZBuffer } },
-                { binding: 7, resource: { buffer: indirectDispatchBuffer } },
+                // { binding: 7, resource: { buffer: nWorkgroupsBuffer } },
             ],
         });
 
@@ -221,23 +221,23 @@ export class GpuMpmPipelineManager {
         computePassEncoder.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ);
     }
     
-    addIndirectDispatch({
-        computePassEncoder,
-        pipeline,
-        indirectBuffer,
-        useParticles = false,
-    }: {
-        computePassEncoder: GPUComputePassEncoder,
-        pipeline: GPUComputePipeline,
-        indirectBuffer: GPUBuffer,
-        useParticles?: boolean,
-    }) {
-        computePassEncoder.setPipeline(pipeline);
-        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
-        computePassEncoder.setBindGroup(1, this.sparseGridBindGroup);
-        if (useParticles) {
-            computePassEncoder.setBindGroup(2, this.particleDataBindGroup);
-        }
-        computePassEncoder.dispatchWorkgroupsIndirect(indirectBuffer, 0);
-    }
+    // addIndirectDispatch({
+    //     computePassEncoder,
+    //     pipeline,
+    //     indirectBuffer,
+    //     useParticles = false,
+    // }: {
+    //     computePassEncoder: GPUComputePassEncoder,
+    //     pipeline: GPUComputePipeline,
+    //     indirectBuffer: GPUBuffer,
+    //     useParticles?: boolean,
+    // }) {
+    //     computePassEncoder.setPipeline(pipeline);
+    //     computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+    //     computePassEncoder.setBindGroup(1, this.sparseGridBindGroup);
+    //     if (useParticles) {
+    //         computePassEncoder.setBindGroup(2, this.particleDataBindGroup);
+    //     }
+    //     computePassEncoder.dispatchWorkgroupsIndirect(indirectBuffer, 0);
+    // }
 }
