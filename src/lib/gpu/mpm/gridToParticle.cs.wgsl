@@ -1,5 +1,8 @@
 @group(1) @binding(0) var<storage, read_write> particleDataOut: array<ParticleData>;
-@group(1) @binding(1) var<storage, read_write> gridDataIn: array<CellData>;
+@group(1) @binding(1) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
+@group(1) @binding(2) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
+@group(1) @binding(3) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
+@group(1) @binding(4) var<storage, read_write> grid_mass: array<atomic<i32>>;
 
 @compute
 @workgroup_size(256)
@@ -32,14 +35,14 @@ fn doGridToParticle(
 
                 let cellIndex = linearizeCellIndex(vec3u(cell_number));
                 
-                let cellMass = f32(atomicLoad(&gridDataIn[cellIndex].mass)) / uniforms.fixedPointScale;
+                let cellMass = f32(atomicLoad(&grid_mass[cellIndex])) / uniforms.fixedPointScale;
                 if cellMass <= 0 { continue; }
 
 
 
-                let cellMomentumX = f32(atomicLoad(&gridDataIn[cellIndex].momentumX)) / uniforms.fixedPointScale;
-                let cellMomentumY = f32(atomicLoad(&gridDataIn[cellIndex].momentumY)) / uniforms.fixedPointScale;
-                let cellMomentumZ = f32(atomicLoad(&gridDataIn[cellIndex].momentumZ)) / uniforms.fixedPointScale;
+                let cellMomentumX = f32(atomicLoad(&grid_momentum_x[cellIndex])) / uniforms.fixedPointScale;
+                let cellMomentumY = f32(atomicLoad(&grid_momentum_y[cellIndex])) / uniforms.fixedPointScale;
+                let cellMomentumZ = f32(atomicLoad(&grid_momentum_z[cellIndex])) / uniforms.fixedPointScale;
                 let cellVelocity = vec3f(cellMomentumX, cellMomentumY, cellMomentumZ) / cellMass;
 
                 

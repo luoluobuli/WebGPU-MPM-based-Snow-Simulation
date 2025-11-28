@@ -8,19 +8,6 @@ struct ParticleData {
     deformationPlastic: mat3x3f, // 128
 }
 
-struct CellData {
-    // 0
-
-    // vel: vec3f, // 12
-    // mass: f32, // 16
-    momentumX: atomic<i32>, // 4
-    momentumY: atomic<i32>, // 8
-    momentumZ: atomic<i32>, // 12
-    mass: atomic<i32>, // 16
-}
-
-
-
 
 fn calculateCellDims() -> vec3f {
     let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;

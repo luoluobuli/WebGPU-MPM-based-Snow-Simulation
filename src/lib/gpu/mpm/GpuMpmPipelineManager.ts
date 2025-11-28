@@ -19,12 +19,18 @@ export class GpuMpmPipelineManager {
     constructor({
         device,
         particleDataBuffer,
-        gridDataBuffer,
+        gridMomentumXBuffer,
+        gridMomentumYBuffer,
+        gridMomentumZBuffer,
+        gridMassBuffer,
         uniformsManager,
     }: {
         device: GPUDevice,
         particleDataBuffer: GPUBuffer,
-        gridDataBuffer: GPUBuffer,
+        gridMomentumXBuffer: GPUBuffer,
+        gridMomentumYBuffer: GPUBuffer,
+        gridMomentumZBuffer: GPUBuffer,
+        gridMassBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
     }) {
         const simulationStepStorageBindGroupLayout = device.createBindGroupLayout({
@@ -41,6 +47,30 @@ export class GpuMpmPipelineManager {
 
                 {
                     binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage",
+                    },
+                },
+
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage",
+                    },
+                },
+
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage",
+                    },
+                },
+
+                {
+                    binding: 4,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
                         type: "storage",
@@ -64,7 +94,28 @@ export class GpuMpmPipelineManager {
                 {
                     binding: 1,
                     resource: {
-                        buffer: gridDataBuffer,
+                        buffer: gridMomentumXBuffer,
+                    },
+                },
+
+                {
+                    binding: 2,
+                    resource: {
+                        buffer: gridMomentumYBuffer,
+                    },
+                },
+
+                {
+                    binding: 3,
+                    resource: {
+                        buffer: gridMomentumZBuffer,
+                    },
+                },
+
+                {
+                    binding: 4,
+                    resource: {
+                        buffer: gridMassBuffer,
                     },
                 },
             ],

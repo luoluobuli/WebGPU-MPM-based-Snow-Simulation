@@ -144,7 +144,10 @@ export class GpuSnowPipelineRunner {
         const mpmPipelineManager = new GpuMpmPipelineManager({
             device,
             particleDataBuffer: mpmManager.particleDataBuffer,
-            gridDataBuffer: mpmManager.gridDataBuffer,
+            gridMomentumXBuffer: mpmManager.gridMomentumXBuffer,
+            gridMomentumYBuffer: mpmManager.gridMomentumYBuffer,
+            gridMomentumZBuffer: mpmManager.gridMomentumZBuffer,
+            gridMassBuffer: mpmManager.gridMassBuffer,
             uniformsManager,
         });
         this.mpmPipelineManager = mpmPipelineManager;

@@ -2,7 +2,11 @@
 
 export class GpuMpmBufferManager {
     readonly particleDataBuffer: GPUBuffer;
-    readonly gridDataBuffer: GPUBuffer;
+    readonly gridMomentumXBuffer: GPUBuffer;
+    readonly gridMomentumYBuffer: GPUBuffer;
+    readonly gridMomentumZBuffer: GPUBuffer;
+    readonly gridMassBuffer: GPUBuffer;
+
     readonly nParticles: number;
 
 
@@ -20,21 +24,45 @@ export class GpuMpmBufferManager {
         gridResolutionZ: number,
     }) {
         const particleDataBuffer = device.createBuffer({
-            label: "particle data buffer",
+            label: "MPM particle data buffer",
             size: nParticles * 128,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
         });
 
 
-        const gridDataBuffer = device.createBuffer({
-            label: "grid data buffer",
-            size: gridResolutionX * gridResolutionY * gridResolutionZ * 16,
+        // these are split out to avoid single buffers from becoming too large
+
+        const gridMomentumXBuffer = device.createBuffer({
+            label: "MPM grid momentum X buffer",
+            size: gridResolutionX * gridResolutionY * gridResolutionZ * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        const gridMomentumYBuffer = device.createBuffer({
+            label: "MPM grid momentum Y buffer",
+            size: gridResolutionX * gridResolutionY * gridResolutionZ * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        const gridMomentumZBuffer = device.createBuffer({
+            label: "MPM grid momentum Z buffer",
+            size: gridResolutionX * gridResolutionY * gridResolutionZ * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        const gridMassBuffer = device.createBuffer({
+            label: "MPM grid mass buffer",
+            size: gridResolutionX * gridResolutionY * gridResolutionZ * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
 
         this.particleDataBuffer = particleDataBuffer;
-        this.gridDataBuffer = gridDataBuffer;
+        this.gridMomentumXBuffer = gridMomentumXBuffer;
+        this.gridMomentumYBuffer = gridMomentumYBuffer;
+        this.gridMomentumZBuffer = gridMomentumZBuffer;
+        this.gridMassBuffer = gridMassBuffer;
+
         this.nParticles = nParticles;
     }
 }
