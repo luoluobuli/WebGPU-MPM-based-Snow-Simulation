@@ -83,7 +83,11 @@ export class SimulationState {
                 (this.elapsedTime.animationFrameTimeNs = BigInt(
                     Math.round(ms * 1_000_000),
                 )),
-            onGpuTimeUpdate: (ns) => (this.elapsedTime.gpuTimeNs = ns),
+            onGpuTimeUpdate: (times) => {
+                this.elapsedTime.gpuComputeSimulationStepTimeNs = times.computeSimulationStepNs;
+                this.elapsedTime.gpuComputePrerenderTimeNs = times.computePrerenderNs;
+                this.elapsedTime.gpuRenderTimeNs = times.renderNs;
+            },
             onUserControlUpdate: () => {
                 const speed = 0.02;
                 this.runner?.updateColliderVel([0.0, 0.0, 0.0]);

@@ -11,7 +11,7 @@ export class GpuPerformanceMeasurementBufferManager {
     }) {
         const querySet = device.createQuerySet({
             type: "timestamp",
-            count: 2,
+            count: 6,
         });
 
 
@@ -48,10 +48,16 @@ export class GpuPerformanceMeasurementBufferManager {
         await this.resultBuffer.mapAsync(GPUMapMode.READ);
 
         const startEndGpuTimestamps = new BigUint64Array(this.resultBuffer.getMappedRange());
-        const gpuElapsedTimeNs = startEndGpuTimestamps[1] - startEndGpuTimestamps[0];
+        const computeSimulationStepNs = startEndGpuTimestamps[1] - startEndGpuTimestamps[0];
+        const computePrerenderNs = startEndGpuTimestamps[3] - startEndGpuTimestamps[2];
+        const renderNs = startEndGpuTimestamps[5] - startEndGpuTimestamps[4];
 
         this.resultBuffer.unmap();
 
-        return gpuElapsedTimeNs;
+        return {
+            computeSimulationStepNs,
+            computePrerenderNs,
+            renderNs,
+        };
     }
 }
