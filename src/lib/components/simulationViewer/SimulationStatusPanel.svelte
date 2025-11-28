@@ -71,7 +71,7 @@ let {
             />
         </dd>
 
-        <dt>GPU simulation prerender pass (sample)</dt>
+        <dt>GPU prerender compute pass (sample)</dt>
         <dd>
             <ElapsedTimeDisplay
                 ns={simulationState.elapsedTime.gpuComputePrerenderTimeNs}
