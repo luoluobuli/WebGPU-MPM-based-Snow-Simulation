@@ -63,10 +63,26 @@ let {
     <h3>Elapsed time</h3>
 
     <dl>
-        <dt>Time spent in GPU (sample)</dt>
+        <dt>GPU simulation compute pass (sample)</dt>
         <dd>
             <ElapsedTimeDisplay
-                ns={simulationState.elapsedTime.gpuTimeNs}
+                ns={simulationState.elapsedTime.gpuComputeSimulationStepTimeNs}
+                inverseLabel="commands / s"
+            />
+        </dd>
+
+        <dt>GPU prerender compute pass (sample)</dt>
+        <dd>
+            <ElapsedTimeDisplay
+                ns={simulationState.elapsedTime.gpuComputePrerenderTimeNs}
+                inverseLabel="commands / s"
+            />
+        </dd>
+
+        <dt>GPU render pass (sample)</dt>
+        <dd>
+            <ElapsedTimeDisplay
+                ns={simulationState.elapsedTime.gpuRenderTimeNs}
                 inverseLabel="commands / s"
             />
         </dd>

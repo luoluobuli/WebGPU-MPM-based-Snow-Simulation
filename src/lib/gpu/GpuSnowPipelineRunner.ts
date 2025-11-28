@@ -250,6 +250,13 @@ export class GpuSnowPipelineRunner {
     }) {
         const computePassEncoder = commandEncoder.beginComputePass({
             label: "simulation step compute pass",
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 0,
+                    endOfPassWriteIndex: 1,
+                }
+                : undefined,
         });
         
         const gridCellDispatchX = 256;
@@ -313,6 +320,8 @@ export class GpuSnowPipelineRunner {
         computePassEncoder.end();
     }
 
+    private prerenderPassRan = false;
+
     async addRenderPass(commandEncoder: GPUCommandEncoder) {
         this.uniformsManager.writeViewProjMat(this.camera.viewProjMat);
         this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
@@ -320,14 +329,25 @@ export class GpuSnowPipelineRunner {
         if (this.getRenderMethodType() === GpuRenderMethodType.Volumetric) {
             commandEncoder.clearBuffer(this.volumetricBufferManager.massGridBuffer);
 
-            const volComputePass = commandEncoder.beginComputePass({
+            const prerenderComputePassEncoder = commandEncoder.beginComputePass({
                 label: "volumetric compute pass",
+                timestampWrites: this.performanceMeasurementManager !== null
+                    ? {
+                        querySet: this.performanceMeasurementManager.querySet,
+                        beginningOfPassWriteIndex: 2,
+                        endOfPassWriteIndex: 3,
+                    }
+                    : undefined,
             });
 
-            this.volumetricRenderPipelineManager.addMassCalulationDispatch(volComputePass, this.nParticles);
-            this.volumetricRenderPipelineManager.addRaymarchDispatch(volComputePass);
+            this.volumetricRenderPipelineManager.addMassCalulationDispatch(prerenderComputePassEncoder, this.nParticles);
+            this.volumetricRenderPipelineManager.addRaymarchDispatch(prerenderComputePassEncoder);
             
-            volComputePass.end();
+            prerenderComputePassEncoder.end();
+
+            this.prerenderPassRan = true;
+        } else {
+            this.prerenderPassRan = false;
         }
 
         const renderPassEncoder = commandEncoder.beginRenderPass({
@@ -349,8 +369,8 @@ export class GpuSnowPipelineRunner {
             timestampWrites: this.performanceMeasurementManager !== null
                 ? {
                     querySet: this.performanceMeasurementManager.querySet,
-                    beginningOfPassWriteIndex: 0,
-                    endOfPassWriteIndex: 1,
+                    beginningOfPassWriteIndex: 4,
+                    endOfPassWriteIndex: 5,
                 }
                 : undefined,
         });
@@ -369,7 +389,11 @@ export class GpuSnowPipelineRunner {
         onAnimationFrameTimeUpdate,
         onUserControlUpdate,
     }: {
-        onGpuTimeUpdate?: (ns: bigint) => void,
+        onGpuTimeUpdate?: (times: {
+            computeSimulationStepNs: bigint,
+            computePrerenderNs: bigint,
+            renderNs: bigint,
+        }) => void,
         onAnimationFrameTimeUpdate?: (ms: number) => void,
         onUserControlUpdate?: () => void,
     } = {}) {
@@ -425,9 +449,14 @@ export class GpuSnowPipelineRunner {
 
             if (this.performanceMeasurementManager !== null) {
                 this.performanceMeasurementManager.mapTime()
-                    .then(elapsedTimeNs => {
-                        if (elapsedTimeNs === null) return;
-                        onGpuTimeUpdate?.(elapsedTimeNs);
+                    .then(times => {
+                        if (times === null) return;
+
+                        if (!this.prerenderPassRan) {
+                            times.computePrerenderNs = 0n;
+                        }
+
+                        onGpuTimeUpdate?.(times);
                     });
             }
 
