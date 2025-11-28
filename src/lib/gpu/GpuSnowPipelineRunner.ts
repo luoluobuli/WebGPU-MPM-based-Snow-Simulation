@@ -301,6 +301,8 @@ export class GpuSnowPipelineRunner {
         computePassEncoder.end();
     }
 
+    private prerenderPassRan = false;
+
     async addRenderPass(commandEncoder: GPUCommandEncoder) {
         this.uniformsManager.writeViewProjMat(this.camera.viewProjMat);
         this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
@@ -308,7 +310,7 @@ export class GpuSnowPipelineRunner {
         if (this.getRenderMethodType() === GpuRenderMethodType.Volumetric) {
             commandEncoder.clearBuffer(this.volumetricBufferManager.massGridBuffer);
 
-            const volComputePass = commandEncoder.beginComputePass({
+            const prerenderComputePassEncoder = commandEncoder.beginComputePass({
                 label: "volumetric compute pass",
                 timestampWrites: this.performanceMeasurementManager !== null
                     ? {
@@ -319,10 +321,14 @@ export class GpuSnowPipelineRunner {
                     : undefined,
             });
 
-            this.volumetricRenderPipelineManager.addMassCalulationDispatch(volComputePass, this.nParticles);
-            this.volumetricRenderPipelineManager.addRaymarchDispatch(volComputePass);
+            this.volumetricRenderPipelineManager.addMassCalulationDispatch(prerenderComputePassEncoder, this.nParticles);
+            this.volumetricRenderPipelineManager.addRaymarchDispatch(prerenderComputePassEncoder);
             
-            volComputePass.end();
+            prerenderComputePassEncoder.end();
+
+            this.prerenderPassRan = true;
+        } else {
+            this.prerenderPassRan = false;
         }
 
         const renderPassEncoder = commandEncoder.beginRenderPass({
@@ -438,6 +444,11 @@ export class GpuSnowPipelineRunner {
                 this.performanceMeasurementManager.mapTime()
                     .then(times => {
                         if (times === null) return;
+
+                        if (!this.prerenderPassRan) {
+                            times.computePrerenderNs = 0n;
+                        }
+
                         onGpuTimeUpdate?.(times);
                     });
             }
