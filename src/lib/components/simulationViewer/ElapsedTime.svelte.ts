@@ -1,4 +1,8 @@
 export class ElapsedTime {
-    gpuTimeNs = $state(0n);
+    gpuComputeSimulationStepTimeNs = $state(0n);
+    gpuComputePrerenderTimeNs = $state(0n);
+    gpuRenderTimeNs = $state(0n);
+
+
     animationFrameTimeNs = $state(0n);
 }
