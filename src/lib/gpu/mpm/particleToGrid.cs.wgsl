@@ -1,5 +1,8 @@
 @group(1) @binding(0) var<storage, read_write> particleDataIn: array<ParticleData>;
-@group(1) @binding(1) var<storage, read_write> gridDataOut: array<CellData>;
+@group(1) @binding(1) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
+@group(1) @binding(2) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
+@group(1) @binding(3) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
+@group(1) @binding(4) var<storage, read_write> grid_mass: array<atomic<i32>>;
 
 @compute
 @workgroup_size(256)
@@ -67,10 +70,10 @@ fn doParticleToGrid(
                 let momentum = cellWeight * particleCurrentMomentum + stressMomentum;
 
 
-                atomicAdd(&gridDataOut[cellIndex].momentumX, i32(momentum.x * uniforms.fixedPointScale));
-                atomicAdd(&gridDataOut[cellIndex].momentumY, i32(momentum.y * uniforms.fixedPointScale));
-                atomicAdd(&gridDataOut[cellIndex].momentumZ, i32(momentum.z * uniforms.fixedPointScale));
-                atomicAdd(&gridDataOut[cellIndex].mass, i32(cellWeight * particle.mass * uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_x[cellIndex], i32(momentum.x * uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_y[cellIndex], i32(momentum.y * uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_z[cellIndex], i32(momentum.z * uniforms.fixedPointScale));
+                atomicAdd(&grid_mass[cellIndex], i32(cellWeight * particle.mass * uniforms.fixedPointScale));
             }
         }
     }

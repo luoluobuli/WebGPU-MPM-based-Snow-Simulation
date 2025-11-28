@@ -1,4 +1,8 @@
-@group(1) @binding(1) var<storage, read_write> gridData: array<CellData>;
+@group(1) @binding(1) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
+@group(1) @binding(2) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
+@group(1) @binding(3) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
+@group(1) @binding(4) var<storage, read_write> grid_mass: array<atomic<i32>>;
+
 
 fn cubeSDF(p: vec3<f32>, minB: vec3<f32>, maxB: vec3<f32>) -> f32 {
     // distance outside cube
@@ -26,16 +30,14 @@ fn doGridUpdate(
     }
 
     let threadIndex = gid.x + uniforms.gridResolution.x * (gid.y + uniforms.gridResolution.y * gid.z);
-    if (threadIndex >= arrayLength(&gridData)) { return; }
+    if (threadIndex >= arrayLength(&grid_mass)) { return; }
 
-    let grid = &gridData[threadIndex];
-
-    let cellMass = f32(atomicLoad(&(*grid).mass)) / uniforms.fixedPointScale;
+    let cellMass = f32(atomicLoad(&grid_mass[threadIndex])) / uniforms.fixedPointScale;
     if cellMass <= 0.0 { return; }
 
-    let momX = f32(atomicLoad(&(*grid).momentumX)) / uniforms.fixedPointScale;
-    let momY = f32(atomicLoad(&(*grid).momentumY)) / uniforms.fixedPointScale;
-    let momZ = f32(atomicLoad(&(*grid).momentumZ)) / uniforms.fixedPointScale;
+    let momX = f32(atomicLoad(&grid_momentum_x[threadIndex])) / uniforms.fixedPointScale;
+    let momY = f32(atomicLoad(&grid_momentum_y[threadIndex])) / uniforms.fixedPointScale;
+    let momZ = f32(atomicLoad(&grid_momentum_z[threadIndex])) / uniforms.fixedPointScale;
 
     var v = vec3f(momX, momY, momZ) / cellMass;
 
@@ -80,7 +82,7 @@ fn doGridUpdate(
 
     let newMomentum = v * cellMass * uniforms.fixedPointScale;
 
-    atomicStore(&(*grid).momentumX, i32(newMomentum.x));
-    atomicStore(&(*grid).momentumY, i32(newMomentum.y));
-    atomicStore(&(*grid).momentumZ, i32(newMomentum.z));
+    atomicStore(&grid_momentum_x[threadIndex], i32(newMomentum.x));
+    atomicStore(&grid_momentum_y[threadIndex], i32(newMomentum.y));
+    atomicStore(&grid_momentum_z[threadIndex], i32(newMomentum.z));
 }

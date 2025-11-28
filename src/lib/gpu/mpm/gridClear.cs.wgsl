@@ -1,4 +1,7 @@
-@group(1) @binding(1) var<storage, read_write> gridData: array<CellData>;
+@group(1) @binding(1) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
+@group(1) @binding(2) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
+@group(1) @binding(3) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
+@group(1) @binding(4) var<storage, read_write> grid_mass: array<atomic<i32>>;
 
 @compute
 @workgroup_size(8, 8, 4)
@@ -9,13 +12,11 @@ fn doClearGrid(
         return;
     }
 
-    let threadIndex = gid.x + uniforms.gridResolution.x * (gid.y + uniforms.gridResolution.y * gid.z);
-    if threadIndex >= arrayLength(&gridData) { return; }
+    let thread_index = gid.x + uniforms.gridResolution.x * (gid.y + uniforms.gridResolution.y * gid.z);
+    if thread_index >= arrayLength(&grid_mass) { return; }
 
-    let grid = &gridData[threadIndex];
-
-    atomicStore(&(*grid).momentumX, 0);
-    atomicStore(&(*grid).momentumY, 0);
-    atomicStore(&(*grid).momentumZ, 0);
-    atomicStore(&(*grid).mass, 0);
+    atomicStore(&grid_momentum_x[thread_index], 0);
+    atomicStore(&grid_momentum_y[thread_index], 0);
+    atomicStore(&grid_momentum_z[thread_index], 0);
+    atomicStore(&grid_mass[thread_index], 0);
 }
