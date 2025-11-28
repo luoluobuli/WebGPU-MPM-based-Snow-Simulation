@@ -7,7 +7,7 @@ const HASH_MAP_SIZE = 200003u; // prime modulus that is greater than N_MAX_BLOCK
 const N_MAX_BLOCKS_IN_HASH_MAP = 100000u;
 const N_HASH_MAP_CANDIDATE_INDEX_ATTEMPTS = 100u;
 const GRID_HASH_MAP_BLOCK_INDEX_EMPTY = 0xFFFFFFFFu;
-const GRID_HASH_MAP_RESERVED_KEY = 0xFFFFFFFEu;
+const GRID_HASH_MAP_BLOCK_INDEX_RESERVED = 0xFFFFFFFEu;
 
 struct HashMapEntry {
     block_number: vec3i,

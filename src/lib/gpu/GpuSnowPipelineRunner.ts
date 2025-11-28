@@ -23,9 +23,6 @@ export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;
     private readonly context: GPUCanvasContext;
     private readonly nParticles: number;
-    private readonly gridResolutionX: number;
-    private readonly gridResolutionY: number;
-    private readonly gridResolutionZ: number;
     private readonly simulationTimestepS: number;
     private readonly camera: Camera;
     private depthTextureView: GPUTextureView;
@@ -82,9 +79,6 @@ export class GpuSnowPipelineRunner {
         this.device = device;
         this.context = context;
         this.nParticles = nParticles;
-        this.gridResolutionX = gridResolutionX;
-        this.gridResolutionY = gridResolutionY;
-        this.gridResolutionZ = gridResolutionZ;
         this.simulationTimestepS = simulationTimestepS;
 
         this.camera = camera;
@@ -144,8 +138,8 @@ export class GpuSnowPipelineRunner {
             gridMomentumYBuffer: mpmManager.gridMomentumYBuffer,
             gridMomentumZBuffer: mpmManager.gridMomentumZBuffer,
             allocatorBuffer: mpmManager.nAllocatedBlocksBuffer,
-            indirectDispatchBuffer: mpmManager.indirectDispatchBuffer,
-            activeBlockListBuffer: mpmManager.activeBlockListBuffer,
+            // nWorkgroupsBuffer: mpmManager.nWorkgroupsBuffer,
+            mappedBlockIndexesBuffer: mpmManager.mappedBlockIndexesBuffer,
             uniformsManager,
         });
         this.mpmPipelineManager = mpmPipelineManager;

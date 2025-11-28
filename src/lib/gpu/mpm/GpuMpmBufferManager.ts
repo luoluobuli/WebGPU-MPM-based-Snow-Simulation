@@ -7,8 +7,8 @@ export class GpuMpmBufferManager {
     readonly gridMomentumYBuffer: GPUBuffer;
     readonly gridMomentumZBuffer: GPUBuffer;
     readonly nAllocatedBlocksBuffer: GPUBuffer;
-    readonly indirectDispatchBuffer: GPUBuffer;
-    readonly activeBlockListBuffer: GPUBuffer; // To store indices of active blocks for indirect dispatch
+    // readonly nWorkgroupsBuffer: GPUBuffer;
+    readonly mappedBlockIndexesBuffer: GPUBuffer;
 
     readonly nParticles: number;
     readonly nMaxBlocksInHashMap: number = 100_000;
@@ -67,14 +67,14 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
         });
 
-        const indirectDispatchBuffer = device.createBuffer({
-            label: "MPM indirect dispatch buffer",
-            size: 12,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
-        });
+        // const nWorkgroupsBuffer = device.createBuffer({
+        //     label: "MPM # workgroups buffer",
+        //     size: 12,
+        //     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+        // });
 
-        const activeBlockListBuffer = device.createBuffer({
-            label: "MPM active block list buffer",
+        const mappedBlockIndexesBuffer = device.createBuffer({
+            label: "MPM mapped block indexes buffer",
             size: this.nMaxBlocksInHashMap * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
@@ -86,8 +86,8 @@ export class GpuMpmBufferManager {
         this.gridMomentumYBuffer = gridMomentumYBuffer;
         this.gridMomentumZBuffer = gridMomentumZBuffer;
         this.nAllocatedBlocksBuffer = nAllocatedBlocksBufer;
-        this.indirectDispatchBuffer = indirectDispatchBuffer;
-        this.activeBlockListBuffer = activeBlockListBuffer;
+        // this.nWorkgroupsBuffer = nWorkgroupsBuffer;
+        this.mappedBlockIndexesBuffer = mappedBlockIndexesBuffer;
 
         this.nParticles = nParticles;
     }

@@ -16,7 +16,7 @@ fn allocateBlock(block_number: vec3i) {
         // is this index empty?
         if current_allocated_block_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY {
             // try to reserve it
-            let res = atomicCompareExchangeWeak(&hash_map_entries[candidate_hash_map_index].block_index, GRID_HASH_MAP_BLOCK_INDEX_EMPTY, GRID_HASH_MAP_RESERVED_KEY);
+            let res = atomicCompareExchangeWeak(&hash_map_entries[candidate_hash_map_index].block_index, GRID_HASH_MAP_BLOCK_INDEX_EMPTY, GRID_HASH_MAP_BLOCK_INDEX_RESERVED);
             
             // did we get the reservation?
             if res.exchanged {
@@ -42,13 +42,13 @@ fn allocateBlock(block_number: vec3i) {
         
         // if the index is reserved, wait for it to free up (spin loop lol)
         var n_spin_loop_iterations = 0u;
-        while current_allocated_block_index == GRID_HASH_MAP_RESERVED_KEY && n_spin_loop_iterations < 64 {
+        while current_allocated_block_index == GRID_HASH_MAP_BLOCK_INDEX_RESERVED && n_spin_loop_iterations < 64 {
             current_allocated_block_index = atomicLoad(&hash_map_entries[candidate_hash_map_index].block_index);
             n_spin_loop_iterations++;
         }
         
         // if it's still empty or reserved, allocation failed :( probe another index
-        if current_allocated_block_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY || current_allocated_block_index == GRID_HASH_MAP_RESERVED_KEY { continue; }
+        if current_allocated_block_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY || current_allocated_block_index == GRID_HASH_MAP_BLOCK_INDEX_RESERVED { continue; }
 
         let block_number_in_page_table = hash_map_entries[candidate_hash_map_index].block_number;
 
