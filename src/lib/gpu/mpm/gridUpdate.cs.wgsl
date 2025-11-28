@@ -1,8 +1,10 @@
-@group(1) @binding(1) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
-@group(1) @binding(2) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
-@group(1) @binding(3) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
-@group(1) @binding(4) var<storage, read_write> grid_mass: array<atomic<i32>>;
-
+@group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
+@group(1) @binding(1) var<storage, read_write> n_allocated_blocks: atomic<u32>;
+@group(1) @binding(2) var<storage, read_write> mapped_block_indexes: array<u32>; // Stores indices into PageTable
+@group(1) @binding(3) var<storage, read_write> grid_mass: array<atomic<i32>>;
+@group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
+@group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
+@group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
 
 fn cubeSDF(p: vec3<f32>, minB: vec3<f32>, maxB: vec3<f32>) -> f32 {
     // distance outside cube
@@ -14,6 +16,7 @@ fn cubeSDF(p: vec3<f32>, minB: vec3<f32>, maxB: vec3<f32>) -> f32 {
         min(p.x - minB.x, maxB.x - p.x),
         min(p.y - minB.y, maxB.y - p.y)
     );
+    
     let insideDist2 = min(insideDist, min(p.z - minB.z, maxB.z - p.z));
 
     // If outside -> positive, if inside -> negative
@@ -21,23 +24,30 @@ fn cubeSDF(p: vec3<f32>, minB: vec3<f32>, maxB: vec3<f32>) -> f32 {
 }
 
 @compute
-@workgroup_size(8, 8, 4)
+@workgroup_size(64) // run per block
 fn doGridUpdate(
     @builtin(global_invocation_id) gid: vec3u,
+    @builtin(local_invocation_id) lid: vec3u,
+    @builtin(workgroup_id) wid: vec3u,
 ) {
-    if (gid.x >= uniforms.gridResolution.x || gid.y >= uniforms.gridResolution.y || gid.z >= uniforms.gridResolution.z) {
-        return;
-    }
-
-    let threadIndex = gid.x + uniforms.gridResolution.x * (gid.y + uniforms.gridResolution.y * gid.z);
-    if (threadIndex >= arrayLength(&grid_mass)) { return; }
-
-    let cellMass = f32(atomicLoad(&grid_mass[threadIndex])) / uniforms.fixedPointScale;
+    let block_index = wid.y * 256u + wid.x;
+    if block_index >= N_MAX_BLOCKS_IN_HASH_MAP { return; }
+    
+    let count = atomicLoad(&n_allocated_blocks);
+    if block_index >= count { return; }
+    
+    let mapped_block_index = mapped_block_indexes[block_index];
+    let block_number = hash_map_entries[mapped_block_index].block_number;
+    
+    let cell_index_within_block = lid.x;
+    let cell_index = block_index * 64u + cell_index_within_block;
+    
+    let cellMass = f32(atomicLoad(&grid_mass[cell_index])) / uniforms.fixedPointScale;
     if cellMass <= 0.0 { return; }
 
-    let momX = f32(atomicLoad(&grid_momentum_x[threadIndex])) / uniforms.fixedPointScale;
-    let momY = f32(atomicLoad(&grid_momentum_y[threadIndex])) / uniforms.fixedPointScale;
-    let momZ = f32(atomicLoad(&grid_momentum_z[threadIndex])) / uniforms.fixedPointScale;
+    let momX = f32(atomicLoad(&grid_momentum_x[cell_index])) / uniforms.fixedPointScale;
+    let momY = f32(atomicLoad(&grid_momentum_y[cell_index])) / uniforms.fixedPointScale;
+    let momZ = f32(atomicLoad(&grid_momentum_z[cell_index])) / uniforms.fixedPointScale;
 
     var v = vec3f(momX, momY, momZ) / cellMass;
 
@@ -49,9 +59,18 @@ fn doGridUpdate(
     let minB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
     let maxB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMaxCoords, 1.0)).xyz;
 
-    let cellIdx3d = vec3<u32>(gid.x, gid.y, gid.z);
+
+
+    let cell_number_within_block_z = i32(cell_index_within_block / 16u);
+    let cell_number_within_block_y = i32((cell_index_within_block / 4u) % 4u);
+    let cell_number_within_block_x = i32(cell_index_within_block % 4u);
+    
+    let cell_number = block_number * 4 + vec3i(cell_number_within_block_x, cell_number_within_block_y, cell_number_within_block_z);
+    
     let cellDims = calculateCellDims();
-    let cellWorldPos = uniforms.gridMinCoords + (vec3<f32>(cellIdx3d) + vec3<f32>(0.5, 0.5, 0.5)) * cellDims;
+    let cellWorldPos = uniforms.gridMinCoords + (vec3f(cell_number) + vec3<f32>(0.5, 0.5, 0.5)) * cellDims;
+
+
 
     let dist = cubeSDF(cellWorldPos, minB, maxB);
     if (dist < 0.05) {
@@ -82,7 +101,7 @@ fn doGridUpdate(
 
     let newMomentum = v * cellMass * uniforms.fixedPointScale;
 
-    atomicStore(&grid_momentum_x[threadIndex], i32(newMomentum.x));
-    atomicStore(&grid_momentum_y[threadIndex], i32(newMomentum.y));
-    atomicStore(&grid_momentum_z[threadIndex], i32(newMomentum.z));
+    atomicStore(&grid_momentum_x[cell_index], i32(newMomentum.x));
+    atomicStore(&grid_momentum_y[cell_index], i32(newMomentum.y));
+    atomicStore(&grid_momentum_z[cell_index], i32(newMomentum.z));
 }

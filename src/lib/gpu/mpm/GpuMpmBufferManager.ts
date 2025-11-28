@@ -1,27 +1,25 @@
 
-
 export class GpuMpmBufferManager {
     readonly particleDataBuffer: GPUBuffer;
+    readonly pageTableBuffer: GPUBuffer;
+    readonly gridMassBuffer: GPUBuffer;
     readonly gridMomentumXBuffer: GPUBuffer;
     readonly gridMomentumYBuffer: GPUBuffer;
     readonly gridMomentumZBuffer: GPUBuffer;
-    readonly gridMassBuffer: GPUBuffer;
+    readonly nAllocatedBlocksBuffer: GPUBuffer;
+    readonly indirectDispatchBuffer: GPUBuffer;
+    readonly activeBlockListBuffer: GPUBuffer; // To store indices of active blocks for indirect dispatch
 
     readonly nParticles: number;
-
+    readonly nMaxBlocksInHashMap: number = 100_000;
+    readonly hashMapSize: number = 200_003;
 
     constructor({
         device,
         nParticles,
-        gridResolutionX,
-        gridResolutionY,
-        gridResolutionZ,
     }: {
         device: GPUDevice,
         nParticles: number,
-        gridResolutionX: number,
-        gridResolutionY: number,
-        gridResolutionZ: number,
     }) {
         const particleDataBuffer = device.createBuffer({
             label: "MPM particle data buffer",
@@ -30,38 +28,66 @@ export class GpuMpmBufferManager {
         });
 
 
-        // these are split out to avoid single buffers from becoming too large
+        const blocksHashMapBuffer = device.createBuffer({
+            label: "MPM blocks hash map buffer",
+            size: this.hashMapSize * 16,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        const poolSize = this.nMaxBlocksInHashMap * 64 * 4;
+
+        const gridMassBuffer = device.createBuffer({
+            label: "MPM physical mass buffer",
+            size: poolSize,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
 
         const gridMomentumXBuffer = device.createBuffer({
-            label: "MPM grid momentum X buffer",
-            size: gridResolutionX * gridResolutionY * gridResolutionZ * 4,
+            label: "MPM physical momentum X buffer",
+            size: poolSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
         const gridMomentumYBuffer = device.createBuffer({
-            label: "MPM grid momentum Y buffer",
-            size: gridResolutionX * gridResolutionY * gridResolutionZ * 4,
+            label: "MPM physical momentum Y buffer",
+            size: poolSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
         const gridMomentumZBuffer = device.createBuffer({
-            label: "MPM grid momentum Z buffer",
-            size: gridResolutionX * gridResolutionY * gridResolutionZ * 4,
+            label: "MPM physical momentum Z buffer",
+            size: poolSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        const gridMassBuffer = device.createBuffer({
-            label: "MPM grid mass buffer",
-            size: gridResolutionX * gridResolutionY * gridResolutionZ * 4,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+
+        const nAllocatedBlocksBufer = device.createBuffer({
+            label: "MPM # allocated blocks buffer",
+            size: 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
         });
 
+        const indirectDispatchBuffer = device.createBuffer({
+            label: "MPM indirect dispatch buffer",
+            size: 12,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+        });
+
+        const activeBlockListBuffer = device.createBuffer({
+            label: "MPM active block list buffer",
+            size: this.nMaxBlocksInHashMap * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
 
         this.particleDataBuffer = particleDataBuffer;
+        this.pageTableBuffer = blocksHashMapBuffer;
+        this.gridMassBuffer = gridMassBuffer;
         this.gridMomentumXBuffer = gridMomentumXBuffer;
         this.gridMomentumYBuffer = gridMomentumYBuffer;
         this.gridMomentumZBuffer = gridMomentumZBuffer;
-        this.gridMassBuffer = gridMassBuffer;
+        this.nAllocatedBlocksBuffer = nAllocatedBlocksBufer;
+        this.indirectDispatchBuffer = indirectDispatchBuffer;
+        this.activeBlockListBuffer = activeBlockListBuffer;
 
         this.nParticles = nParticles;
     }

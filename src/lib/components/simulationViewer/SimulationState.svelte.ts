@@ -15,11 +15,11 @@ export class SimulationState {
     width = $state(300);
     height = $state(150);
 
-    nParticles = $state(100_000);
-    gridResolutionX = $state(384);
-    gridResolutionY = $state(384);
-    gridResolutionZ = $state(128);
-    simulationTimestepS = $state(1 / 144);
+    nParticles = $state(200_000);
+    gridResolutionX = $state(512);
+    gridResolutionY = $state(512);
+    gridResolutionZ = $state(192);
+    simulationTimestepS = $state(1 / 192);
     transformMat = $state(mat4.identity());
 
     moveForward  = $state(false); // W

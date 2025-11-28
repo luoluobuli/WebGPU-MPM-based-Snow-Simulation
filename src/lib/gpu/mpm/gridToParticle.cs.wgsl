@@ -1,8 +1,10 @@
-@group(1) @binding(0) var<storage, read_write> particleDataOut: array<ParticleData>;
-@group(1) @binding(1) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
-@group(1) @binding(2) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
-@group(1) @binding(3) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
-@group(1) @binding(4) var<storage, read_write> grid_mass: array<atomic<i32>>;
+@group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
+@group(1) @binding(3) var<storage, read_write> grid_mass: array<atomic<i32>>;
+@group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
+@group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
+@group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
+
+@group(2) @binding(0) var<storage, read_write> particleDataOut: array<ParticleData>;
 
 @compute
 @workgroup_size(256)
@@ -12,8 +14,6 @@ fn doGridToParticle(
     let threadIndex = gid.x;
     if threadIndex >= arrayLength(&particleDataOut) { return; }
 
-
-
     var particle = particleDataOut[threadIndex];
 
     let cellDims = calculateCellDims();
@@ -22,10 +22,8 @@ fn doGridToParticle(
     let cellWeights = calculateQuadraticBSplineCellWeights(cellFracPos);
     let cellWeightsDeriv = calculateQuadraticBSplineCellWeightDerivatives(cellFracPos);
 
-
-
     // enumerate the 3x3 neighborhood of cells around the cell that contains the particle
-    var newParticleVelocity = vec3f(0); // cumulatively keep track of the cell's velocities, weighted using our kernel above
+    var newParticleVelocity = vec3f(0); 
     var totalVelocityGradient = mat3x3f();
     for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
         for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
@@ -33,16 +31,19 @@ fn doGridToParticle(
                 let cell_number = startCellNumber + vec3i(offsetX, offsetY, offsetZ);
                 if !cellNumberInGridRange(cell_number) { continue; }
 
-                let cellIndex = linearizeCellIndex(vec3u(cell_number));
+                let block_number = calculateBlockNumberContainingCell(cell_number);
+                let block_index = retrieveBlockIndexFromHashMap(block_number);
+                if block_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
+
+                let cell_index_within_block = calculateCellIndexWithinBlock(cell_number);
+                let cell_index = block_index * 64u + cell_index_within_block;
                 
-                let cellMass = f32(atomicLoad(&grid_mass[cellIndex])) / uniforms.fixedPointScale;
+                let cellMass = f32(atomicLoad(&grid_mass[cell_index])) / uniforms.fixedPointScale;
                 if cellMass <= 0 { continue; }
 
-
-
-                let cellMomentumX = f32(atomicLoad(&grid_momentum_x[cellIndex])) / uniforms.fixedPointScale;
-                let cellMomentumY = f32(atomicLoad(&grid_momentum_y[cellIndex])) / uniforms.fixedPointScale;
-                let cellMomentumZ = f32(atomicLoad(&grid_momentum_z[cellIndex])) / uniforms.fixedPointScale;
+                let cellMomentumX = f32(atomicLoad(&grid_momentum_x[cell_index])) / uniforms.fixedPointScale;
+                let cellMomentumY = f32(atomicLoad(&grid_momentum_y[cell_index])) / uniforms.fixedPointScale;
+                let cellMomentumZ = f32(atomicLoad(&grid_momentum_z[cell_index])) / uniforms.fixedPointScale;
                 let cellVelocity = vec3f(cellMomentumX, cellMomentumY, cellMomentumZ) / cellMass;
 
                 
@@ -51,8 +52,6 @@ fn doGridToParticle(
                     * cellWeights[u32(offsetZ + 1)].z;
                     
                 newParticleVelocity += cellWeight * cellVelocity;
-
-
 
                 let cellWeightGradient = vec3f(
                     cellWeightsDeriv[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
@@ -69,18 +68,13 @@ fn doGridToParticle(
         }
     }
 
-
-
     particle.vel = newParticleVelocity;
     particle.pos += newParticleVelocity * uniforms.simulationTimestep;
     particle.deformationElastic += totalVelocityGradient * uniforms.simulationTimestep;
 
-    
     applyPlasticity(&particle);
     
-
-
-
+    // Boundary conditions
     if particle.pos.x < uniforms.gridMinCoords.x {
         particle.vel.x *= -0.5;
         particle.pos.x = uniforms.gridMinCoords.x;
@@ -107,9 +101,6 @@ fn doGridToParticle(
         particle.vel.z *= -0.5;
         particle.pos.z = uniforms.gridMaxCoords.z;
     }
-
-
-
 
     particleDataOut[threadIndex] = particle;
 }

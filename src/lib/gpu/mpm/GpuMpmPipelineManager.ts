@@ -2,14 +2,21 @@ import type { GpuUniformsBufferManager } from "../uniforms/GpuUniformsBufferMana
 import p2gModuleSrc from "./particleToGrid.cs.wgsl?raw";
 import gridUpdateModuleSrc from "./gridUpdate.cs.wgsl?raw";
 import g2pModuleSrc from "./gridToParticle.cs.wgsl?raw";
-import gridClearModuleSrc from "./gridClear.cs.wgsl?raw";
+import sparseGridPreludeSrc from "./sparseGridPrelude.wgsl?raw";
+import mapAffectedBlocksSrc from "./mapAffectedBlocks.wgsl?raw";
+import clearHashMapSrc from "./clearHashMap.wgsl?raw";
+import clearMappedBlocksSrc from "./clearMappedBlocks.wgsl?raw";
 import { attachPrelude } from "../shaderPrelude";
 
 export class GpuMpmPipelineManager {
-    readonly storageBindGroupLayout: GPUBindGroupLayout;
-    readonly storageBindGroup: GPUBindGroup;
+    readonly particleBindGroupLayout: GPUBindGroupLayout;
+    readonly particleDataBindGroup: GPUBindGroup;
+    readonly sparseGridBindGroupLayout: GPUBindGroupLayout;
+    readonly sparseGridBindGroup: GPUBindGroup;
 
-    readonly gridClearComputePipeline: GPUComputePipeline;
+    readonly clearHashMapPipeline: GPUComputePipeline;
+    readonly mapAffectedBlocksPipeline: GPUComputePipeline;
+    readonly clearMappedBlocksPipeline: GPUComputePipeline;
     readonly p2gComputePipeline: GPUComputePipeline;
     readonly gridComputePipeline: GPUComputePipeline;
     readonly g2pComputePipeline: GPUComputePipeline;
@@ -19,23 +26,61 @@ export class GpuMpmPipelineManager {
     constructor({
         device,
         particleDataBuffer,
+        pageTableBuffer,
+        gridMassBuffer,
         gridMomentumXBuffer,
         gridMomentumYBuffer,
         gridMomentumZBuffer,
-        gridMassBuffer,
+        allocatorBuffer,
+        indirectDispatchBuffer,
+        activeBlockListBuffer,
         uniformsManager,
     }: {
         device: GPUDevice,
         particleDataBuffer: GPUBuffer,
+        pageTableBuffer: GPUBuffer,
+        gridMassBuffer: GPUBuffer,
         gridMomentumXBuffer: GPUBuffer,
         gridMomentumYBuffer: GPUBuffer,
         gridMomentumZBuffer: GPUBuffer,
-        gridMassBuffer: GPUBuffer,
+        allocatorBuffer: GPUBuffer,
+        indirectDispatchBuffer: GPUBuffer,
+        activeBlockListBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
     }) {
-        const simulationStepStorageBindGroupLayout = device.createBindGroupLayout({
+        const sparseGridBindGroupLayout = device.createBindGroupLayout({
+            label: "MPM sparse grid bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+            ],
+        });
+
+        const sparseGridBindGroup = device.createBindGroup({
+            label: "MPM sparse grid bind group",
+            layout: sparseGridBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: pageTableBuffer } },
+                { binding: 1, resource: { buffer: allocatorBuffer } },
+                { binding: 2, resource: { buffer: activeBlockListBuffer } },
+                { binding: 3, resource: { buffer: gridMassBuffer } },
+                { binding: 4, resource: { buffer: gridMomentumXBuffer } },
+                { binding: 5, resource: { buffer: gridMomentumYBuffer } },
+                { binding: 6, resource: { buffer: gridMomentumZBuffer } },
+                { binding: 7, resource: { buffer: indirectDispatchBuffer } },
+            ],
+        });
+
+
+
+        const particleBindGroupLayout = device.createBindGroupLayout({
             label: "simulation step storage bind group layout",
-            
             entries: [
                 {
                     binding: 0,
@@ -44,45 +89,12 @@ export class GpuMpmPipelineManager {
                         type: "storage",
                     },
                 },
-
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage",
-                    },
-                },
-
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage",
-                    },
-                },
-
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage",
-                    },
-                },
-
-                {
-                    binding: 4,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage",
-                    },
-                },
             ],
         });
         
-        const simulationStepStorageBindGroup = device.createBindGroup({
+        const particleBindGroup = device.createBindGroup({
             label: "simulation step storage bind group",
-
-            layout: simulationStepStorageBindGroupLayout,
+            layout: particleBindGroupLayout,
             entries: [
                 {
                     binding: 0,
@@ -90,101 +102,98 @@ export class GpuMpmPipelineManager {
                         buffer: particleDataBuffer,
                     },
                 },
-
-                {
-                    binding: 1,
-                    resource: {
-                        buffer: gridMomentumXBuffer,
-                    },
-                },
-
-                {
-                    binding: 2,
-                    resource: {
-                        buffer: gridMomentumYBuffer,
-                    },
-                },
-
-                {
-                    binding: 3,
-                    resource: {
-                        buffer: gridMomentumZBuffer,
-                    },
-                },
-
-                {
-                    binding: 4,
-                    resource: {
-                        buffer: gridMassBuffer,
-                    },
-                },
             ],
         });
 
-        const simulationStepPipelineLayout = device.createPipelineLayout({
-            label: "simulation step pipeline layout",
-            bindGroupLayouts: [uniformsManager.bindGroupLayout, simulationStepStorageBindGroupLayout],
+
+        const sparseGridPipelineLayout = device.createPipelineLayout({
+            label: "sparse grid pipeline layout",
+            bindGroupLayouts: [uniformsManager.bindGroupLayout, sparseGridBindGroupLayout],
+        });
+
+        const particlePipelineLayout = device.createPipelineLayout({
+            label: "particle pipeline layout",
+            bindGroupLayouts: [uniformsManager.bindGroupLayout, sparseGridBindGroupLayout, particleBindGroupLayout],
         });
 
 
-        const gridClearModule = device.createShaderModule({
-            code: attachPrelude(gridClearModuleSrc),
-        });
-        const p2gModule = device.createShaderModule({
-            code: attachPrelude(p2gModuleSrc),
-        });
-        const gridUpdateModule = device.createShaderModule({
-            code: attachPrelude(gridUpdateModuleSrc),
-        });
-        const g2pModule = device.createShaderModule({
-            code: attachPrelude(g2pModuleSrc),
-        });
-        
 
-        this.gridClearComputePipeline = device.createComputePipeline({
-            label: "grid clear compute pipeline",
-            layout: simulationStepPipelineLayout,
-
+        this.clearHashMapPipeline = device.createComputePipeline({
+            label: "clear hash map pipeline",
+            layout: sparseGridPipelineLayout,
             compute: {
-                module: gridClearModule,
-                entryPoint: "doClearGrid",
+                module: device.createShaderModule({
+                    label: "clear hash map module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${clearHashMapSrc}`),
+                }),
+                entryPoint: "clearHashMap",
+            },
+        });
+
+        this.mapAffectedBlocksPipeline = device.createComputePipeline({
+            label: "map affected blocks pipeline",
+            layout: particlePipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "map affected blocks module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${mapAffectedBlocksSrc}`),
+                }),
+                entryPoint: "mapAffectedBlocks",
+            },
+        });
+
+        this.clearMappedBlocksPipeline = device.createComputePipeline({
+            label: "clear mapped blocks pipeline",
+            layout: sparseGridPipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "clear mapped blocks module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${clearMappedBlocksSrc}`),
+                }),
+                entryPoint: "clearMappedBlocks",
             },
         });
 
         this.p2gComputePipeline = device.createComputePipeline({
-            label: "particle to grid compute pipeline",
-            layout: simulationStepPipelineLayout,
-
+            label: "particle to grid pipeline",
+            layout: particlePipelineLayout,
             compute: {
-                module: p2gModule,
+                module: device.createShaderModule({
+                    label: "particle to grid module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${p2gModuleSrc}`),
+                }),
                 entryPoint: "doParticleToGrid",
             },
         });
 
         this.gridComputePipeline = device.createComputePipeline({
-            label: "grid update compute pipeline",
-            layout: simulationStepPipelineLayout,
-
+            label: "grid update pipeline",
+            layout: sparseGridPipelineLayout,
             compute: {
-                module: gridUpdateModule,
+                module: device.createShaderModule({
+                    label: "grid update module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${gridUpdateModuleSrc}`),
+                }),
                 entryPoint: "doGridUpdate",
             },
         });
 
         this.g2pComputePipeline = device.createComputePipeline({
-            label: "grid to particle compute pipeline",
-            layout: simulationStepPipelineLayout,
-
+            label: "grid to particle pipeline",
+            layout: particlePipelineLayout,
             compute: {
-                module: g2pModule,
+                module: device.createShaderModule({
+                    label: "grid to particle module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${g2pModuleSrc}`),
+                }),
                 entryPoint: "doGridToParticle",
             },
         });
 
-
-        this.storageBindGroupLayout = simulationStepStorageBindGroupLayout;
-        this.storageBindGroup = simulationStepStorageBindGroup;
-
+        this.particleBindGroupLayout = particleBindGroupLayout;
+        this.particleDataBindGroup = particleBindGroup;
+        this.sparseGridBindGroupLayout = sparseGridBindGroupLayout;
+        this.sparseGridBindGroup = sparseGridBindGroup;
         this.uniformsManager = uniformsManager;
     }
 
@@ -194,16 +203,41 @@ export class GpuMpmPipelineManager {
         dispatchX,
         dispatchY,
         dispatchZ,
+        useParticles = false,
     }: {
         computePassEncoder: GPUComputePassEncoder,
         pipeline: GPUComputePipeline,
-        dispatchX : number,
-        dispatchY? : number,
-        dispatchZ? : number,
+        dispatchX: number,
+        dispatchY?: number,
+        dispatchZ?: number,
+        useParticles?: boolean,
     }) {
         computePassEncoder.setPipeline(pipeline);
         computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
-        computePassEncoder.setBindGroup(1, this.storageBindGroup);
+        computePassEncoder.setBindGroup(1, this.sparseGridBindGroup);
+        if (useParticles) {
+            computePassEncoder.setBindGroup(2, this.particleDataBindGroup);
+        }
         computePassEncoder.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ);
+    }
+    
+    addIndirectDispatch({
+        computePassEncoder,
+        pipeline,
+        indirectBuffer,
+        useParticles = false,
+    }: {
+        computePassEncoder: GPUComputePassEncoder,
+        pipeline: GPUComputePipeline,
+        indirectBuffer: GPUBuffer,
+        useParticles?: boolean,
+    }) {
+        computePassEncoder.setPipeline(pipeline);
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.sparseGridBindGroup);
+        if (useParticles) {
+            computePassEncoder.setBindGroup(2, this.particleDataBindGroup);
+        }
+        computePassEncoder.dispatchWorkgroupsIndirect(indirectBuffer, 0);
     }
 }

@@ -41,6 +41,8 @@ export class GpuSnowPipelineRunner {
     private readonly volumetricRenderPipelineManager: GpuVolumetricRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
 
+    private readonly mpmManager: GpuMpmBufferManager;
+
     private readonly measurePerf: boolean;
     // debug
     // private readonly readbackBuffer : GPUBuffer;
@@ -106,10 +108,8 @@ export class GpuSnowPipelineRunner {
         const mpmManager = new GpuMpmBufferManager({
             device,
             nParticles,
-            gridResolutionX,
-            gridResolutionY,
-            gridResolutionZ,
         });
+        this.mpmManager = mpmManager;
 
         const meshManager = new GpuMeshBufferManager({device, vertices: meshVertices});
         uniformsManager.writeMeshMinCoords(meshManager.minCoords);
@@ -126,12 +126,6 @@ export class GpuSnowPipelineRunner {
         uniformsManager.writeColliderTransformMat(mat4.identity());
         uniformsManager.writeColliderVel([0.0, 0.0, 0.0]);
 
-        // debug
-        // this.readbackBuffer = device.createBuffer({
-        //         size: colliderManager.indicesBuffer.size,
-        //         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-        // });
-        
         // Compute
         const particleInitializePipelineManager = new GpuParticleInitializePipelineManager({
             device,
@@ -144,10 +138,14 @@ export class GpuSnowPipelineRunner {
         const mpmPipelineManager = new GpuMpmPipelineManager({
             device,
             particleDataBuffer: mpmManager.particleDataBuffer,
+            pageTableBuffer: mpmManager.pageTableBuffer,
+            gridMassBuffer: mpmManager.gridMassBuffer,
             gridMomentumXBuffer: mpmManager.gridMomentumXBuffer,
             gridMomentumYBuffer: mpmManager.gridMomentumYBuffer,
             gridMomentumZBuffer: mpmManager.gridMomentumZBuffer,
-            gridMassBuffer: mpmManager.gridMassBuffer,
+            allocatorBuffer: mpmManager.nAllocatedBlocksBuffer,
+            indirectDispatchBuffer: mpmManager.indirectDispatchBuffer,
+            activeBlockListBuffer: mpmManager.activeBlockListBuffer,
             uniformsManager,
         });
         this.mpmPipelineManager = mpmPipelineManager;
@@ -247,47 +245,74 @@ export class GpuSnowPipelineRunner {
 
     updateColliderVel(transform: [number, number, number]) {
         this.uniformsManager.writeColliderVel(transform);
-        // this.v = transform;
     }
 
     private async addSimulationStepsComputePass({
         commandEncoder,
-        nSteps,
+        nSimulationSteps,
     }: {
         commandEncoder: GPUCommandEncoder,
-        nSteps: number,
+        nSimulationSteps: number,
     }) {
         const computePassEncoder = commandEncoder.beginComputePass({
             label: "simulation step compute pass",
         });
         
-        for (let i = 0; i < nSteps; i++) {
+        const gridCellDispatchX = 256;
+        const gridCellDispatchY = Math.ceil(this.mpmManager.nMaxBlocksInHashMap / gridCellDispatchX);
+
+        for (let i = 0; i < nSimulationSteps; i++) {
+            // clear grid
+
+            // clear mapping table
             this.mpmPipelineManager.addDispatch({
                 computePassEncoder,
-                pipeline: this.mpmPipelineManager.gridClearComputePipeline,
-                dispatchX: Math.ceil(this.gridResolutionX / 8),
-                dispatchY: Math.ceil(this.gridResolutionY / 8),
-                dispatchZ: Math.ceil(this.gridResolutionZ / 4),
+                pipeline: this.mpmPipelineManager.clearHashMapPipeline,
+                dispatchX: Math.ceil(this.mpmManager.hashMapSize / 256),
             });
-            
+
+            // determine which blocks in a grid are populated
             this.mpmPipelineManager.addDispatch({
                 computePassEncoder,
+                pipeline: this.mpmPipelineManager.mapAffectedBlocksPipeline,
                 dispatchX: Math.ceil(this.nParticles / 256),
-                pipeline: this.mpmPipelineManager.p2gComputePipeline,
+                useParticles: true,
             });
+
+            // clear cells
+            this.mpmPipelineManager.addDispatch({
+                computePassEncoder,
+                pipeline: this.mpmPipelineManager.clearMappedBlocksPipeline,
+                dispatchX: gridCellDispatchX,
+                dispatchY: gridCellDispatchY,
+            });
+
+            
+            // particle-to-grid
+
+            this.mpmPipelineManager.addDispatch({
+                computePassEncoder,
+                pipeline: this.mpmPipelineManager.p2gComputePipeline,
+                dispatchX: Math.ceil(this.nParticles / 256),
+                useParticles: true,
+            });
+
+            // grid update
 
             this.mpmPipelineManager.addDispatch({
                 computePassEncoder,
                 pipeline: this.mpmPipelineManager.gridComputePipeline,
-                dispatchX: Math.ceil(this.gridResolutionX / 8),
-                dispatchY: Math.ceil(this.gridResolutionY / 8),
-                dispatchZ: Math.ceil(this.gridResolutionZ / 4),
+                dispatchX: gridCellDispatchX,
+                dispatchY: gridCellDispatchY,
             });
+
+            // grid-to-particle
 
             this.mpmPipelineManager.addDispatch({
                 computePassEncoder,
-                dispatchX: Math.ceil(this.nParticles / 256),
                 pipeline: this.mpmPipelineManager.g2pComputePipeline,
+                dispatchX: Math.ceil(this.nParticles / 256),
+                useParticles: true,
             });
         }
 
@@ -381,18 +406,6 @@ export class GpuSnowPipelineRunner {
                 label: "loop command encoder",
             });
 
-            // debug
-            // commandEncoder.copyBufferToBuffer(
-            //     this.rasterizeRenderPipelineManager.colliderManager.indicesBuffer, 0,
-            //     this.readbackBuffer, 0,
-            //     this.rasterizeRenderPipelineManager.colliderManager.indicesBuffer.size
-            // );
-            // await this.readbackBuffer.mapAsync(GPUMapMode.READ);
-            // const data = new Uint32Array(this.readbackBuffer.getMappedRange());
-            // console.log(data);
-            // this.readbackBuffer.unmap();
-            // console.log(this.v);
-
             // catch up the simulation to the current time
             let currentSimulationTime = simulationStartTime + nSimulationStep * simulationTimestepMs;
             let timeToSimulate = Date.now() - currentSimulationTime;
@@ -402,7 +415,7 @@ export class GpuSnowPipelineRunner {
             if (timeToSimulate <= MAX_SIMULATION_DRIFT_MS) {
                 this.addSimulationStepsComputePass({
                     commandEncoder,
-                    nSteps,
+                    nSimulationSteps: nSteps,
                 });
             }
             nSimulationStep += nSteps;

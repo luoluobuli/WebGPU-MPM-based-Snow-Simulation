@@ -7,7 +7,7 @@ const EXTINCTION_COEFFICIENT = 724.;
 const SCATTERING_ALBEDO = 0.95;
 const HENYEY_GREENSTEIN_ASYMMETRY = 0.5;
 const STEP_SIZE = 0.1;
-const MAX_STEPS = 256u;
+const N_MAX_STEPS = 256u;
 
 fn readDensity(worldPos: vec3f) -> f32 {
     if any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords) {
@@ -47,7 +47,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
     }
     
     let cellVolume = cellSize.x * cellSize.y * cellSize.z;
-    return mass / cellVolume * 0.00000005;
+    return mass / cellVolume * 0.000000005;
 }
 
 fn henyeyGreenstein(cosTheta: f32, g: f32) -> f32 {
@@ -81,10 +81,10 @@ fn aabbIntersectionDistances(
 fn raymarchShadow(pos: vec3f, light_dir: vec3f) -> f32 {
     var shadow_pos = pos;
     var shadow_transmittance = 1.0;
-    const SHADOW_STEPS = 50u;
+    const N_MAX_SHADOW_STEPS = 50u;
     const SHADOW_STEP_SIZE = STEP_SIZE;
 
-    for (var s = 0u; s < SHADOW_STEPS; s++) {
+    for (var s = 0u; s < N_MAX_SHADOW_STEPS; s++) {
         shadow_pos += light_dir * SHADOW_STEP_SIZE;
         let shadow_density = readDensity(shadow_pos);
         if shadow_density > 0.001 {
@@ -140,7 +140,7 @@ fn doVolumetricRaymarch(
     //     }
     // }
 
-    if (!ray_hits_volume) {
+    if !ray_hits_volume {
         textureStore(outputTexture, global_id.xy, vec4f(0, 0, 0, 0));
         return;
     }
@@ -159,7 +159,7 @@ fn doVolumetricRaymarch(
     var transmittance = 1.;
     var out_col = vec3f(0);
 
-    for (var i = 0u; i < MAX_STEPS; i++) {
+    for (var i = 0u; i < N_MAX_STEPS; i++) {
         if current_ray_distance >= distance_end || transmittance < 0.01 { break; }
 
         let pos = ray_origin + current_ray_distance * ray_dir;
