@@ -15,8 +15,9 @@ import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRende
 import { GpuVolumetricBufferManager } from "./volumetric/GpuVolumetricBufferManager";
 import { GpuVolumetricRenderPipelineManager } from "./volumetric/GpuVolumetricRenderPipelineManager";
 import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
+import { GpuSimulationMethodType } from "./GpuSimulationMethod";
 
-const MAX_SIMULATION_DRIFT_MS = 1_000;
+const MAX_SIMULATION_DRIFT_MS = 250;
 const FP_SCALE = 1024.0;
 
 export class GpuSnowPipelineRunner {
@@ -45,6 +46,7 @@ export class GpuSnowPipelineRunner {
     // private readonly readbackBuffer : GPUBuffer;
     // v : [number, number, number] = [0.0, 0.0, 0.0];
 
+    private readonly getSimulationMethodType: () => GpuSimulationMethodType;
     private readonly getRenderMethodType: () => GpuRenderMethodType;
 
     constructor({
@@ -59,6 +61,7 @@ export class GpuSnowPipelineRunner {
         camera,
         meshVertices,
         collider,
+        getSimulationMethodType,
         getRenderMethodType,
         measurePerf,
     }: {
@@ -73,6 +76,7 @@ export class GpuSnowPipelineRunner {
         camera: Camera,
         meshVertices: number[][],
         collider: ColliderGeometry,
+        getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
         measurePerf: boolean,
     }) {
@@ -200,6 +204,7 @@ export class GpuSnowPipelineRunner {
         this.volumetricRenderPipelineManager = volumetricRenderPipelineManager;
 
 
+        this.getSimulationMethodType = getSimulationMethodType;
         this.getRenderMethodType = getRenderMethodType;
 
         this.performanceMeasurementManager = measurePerf
@@ -259,62 +264,28 @@ export class GpuSnowPipelineRunner {
                 : undefined,
         });
         
-        const gridCellDispatchX = 256;
-        const gridCellDispatchY = Math.ceil(this.mpmManager.nMaxBlocksInHashMap / gridCellDispatchX);
+        const simulationMethodType = this.getSimulationMethodType();
 
         for (let i = 0; i < nSimulationSteps; i++) {
-            // clear grid
-
-            // clear mapping table
-            this.mpmPipelineManager.addDispatch({
-                computePassEncoder,
-                pipeline: this.mpmPipelineManager.clearHashMapPipeline,
-                dispatchX: Math.ceil(this.mpmManager.hashMapSize / 256),
-            });
-
-            // determine which blocks in a grid are populated
-            this.mpmPipelineManager.addDispatch({
-                computePassEncoder,
-                pipeline: this.mpmPipelineManager.mapAffectedBlocksPipeline,
-                dispatchX: Math.ceil(this.nParticles / 256),
-                useParticles: true,
-            });
-
-            // clear cells
-            this.mpmPipelineManager.addDispatch({
-                computePassEncoder,
-                pipeline: this.mpmPipelineManager.clearMappedBlocksPipeline,
-                dispatchX: gridCellDispatchX,
-                dispatchY: gridCellDispatchY,
-            });
-
-            
-            // particle-to-grid
-
-            this.mpmPipelineManager.addDispatch({
-                computePassEncoder,
-                pipeline: this.mpmPipelineManager.p2gComputePipeline,
-                dispatchX: Math.ceil(this.nParticles / 256),
-                useParticles: true,
-            });
-
-            // grid update
-
-            this.mpmPipelineManager.addDispatch({
-                computePassEncoder,
-                pipeline: this.mpmPipelineManager.gridComputePipeline,
-                dispatchX: gridCellDispatchX,
-                dispatchY: gridCellDispatchY,
-            });
-
-            // grid-to-particle
-
-            this.mpmPipelineManager.addDispatch({
-                computePassEncoder,
-                pipeline: this.mpmPipelineManager.g2pComputePipeline,
-                dispatchX: Math.ceil(this.nParticles / 256),
-                useParticles: true,
-            });
+            switch (simulationMethodType) {
+                case GpuSimulationMethodType.ExplicitMpm:
+                    this.mpmPipelineManager.addExplicitMpmDispatches({
+                        computePassEncoder,
+                        hashMapSize: this.mpmManager.hashMapSize,
+                        nBlocksInHashMap: this.mpmManager.nMaxBlocksInHashMap,
+                        nParticles: this.mpmManager.nParticles,
+                    });
+                    break;
+                    
+                case GpuSimulationMethodType.Pbmpm:
+                    this.mpmPipelineManager.addPbmpmDispatches({
+                        computePassEncoder,
+                        nParticles: this.mpmManager.nParticles,
+                        nBlocksInHashMap: this.mpmManager.nMaxBlocksInHashMap,
+                        hashMapSize: this.mpmManager.hashMapSize,
+                    });
+                    break;
+            }
         }
 
         computePassEncoder.end();

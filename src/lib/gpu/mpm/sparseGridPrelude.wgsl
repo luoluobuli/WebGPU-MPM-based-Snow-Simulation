@@ -19,7 +19,7 @@ fn calculateBlockNumberContainingCell(cell_number: vec3i) -> vec3i {
 }
 
 fn calculateCellIndexWithinBlock(cell_number: vec3i) -> u32 {
-    let cell_index_within_block = cell_number & vec3i(BLOCK_MASK);
+    let cell_index_within_block = cell_number & vec3i(i32(BLOCK_MASK));
     return u32(cell_index_within_block.x + cell_index_within_block.y * 4 + cell_index_within_block.z * 16);
 }
 

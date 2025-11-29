@@ -4,7 +4,7 @@
 @group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
 @group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
 
-@group(2) @binding(0) var<storage, read_write> particleDataOut: array<ParticleData>;
+@group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
 
 @compute
 @workgroup_size(256)
@@ -12,9 +12,9 @@ fn doGridToParticle(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
     let threadIndex = gid.x;
-    if threadIndex >= arrayLength(&particleDataOut) { return; }
+    if threadIndex >= arrayLength(&particle_data) { return; }
 
-    var particle = particleDataOut[threadIndex];
+    var particle = particle_data[threadIndex];
 
     let cellDims = calculateCellDims();
     let startCellNumber = calculateCellNumber(particle.pos, cellDims);
@@ -70,7 +70,7 @@ fn doGridToParticle(
 
     particle.vel = newParticleVelocity;
     particle.pos += newParticleVelocity * uniforms.simulationTimestep;
-    particle.deformationElastic += totalVelocityGradient * uniforms.simulationTimestep;
+    particle.deformationElastic += totalVelocityGradient * particle.deformationElastic * uniforms.simulationTimestep;
 
     applyPlasticity(&particle);
     
@@ -102,5 +102,5 @@ fn doGridToParticle(
         particle.pos.z = uniforms.gridMaxCoords.z;
     }
 
-    particleDataOut[threadIndex] = particle;
+    particle_data[threadIndex] = particle;
 }
