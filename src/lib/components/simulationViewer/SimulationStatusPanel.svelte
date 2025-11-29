@@ -5,6 +5,7 @@ import Separator from "$lib/components/generic/Separator.svelte";
 import Button from "$lib/components/generic/Button.svelte";
 import Hotkey from "$lib/components/headless/Hotkey.svelte";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
+import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 
 let {
     simulationState,
@@ -23,6 +24,32 @@ let {
 
     <Separator />
 
+    <h3>Simulation method</h3>
+
+    <div>
+        <input
+            type="radio"
+            name="simulation-method-type"
+            bind:group={simulationState.simulationMethodType}
+            value={GpuSimulationMethodType.ExplicitMpm}
+            id="simulation-method-type_explicit-mpm"
+        />
+        <label for="simulation-method-type_explicit-mpm">Explicit MPM</label>
+    </div>
+
+    <div>
+        <input
+            type="radio"
+            name="simulation-method-type"
+            bind:group={simulationState.simulationMethodType}
+            value={GpuSimulationMethodType.Pbmpm}
+            id="simulation-method-type_pbmpm"
+        />
+        <label for="simulation-method-type_pbmpm">PBMPM</label>
+    </div>
+
+    <Separator />
+
     <h3>Render method</h3>
 
     <div>
@@ -35,17 +62,6 @@ let {
         />
         <label for="render-method-type_points">Points</label>
     </div>
-
-    <!-- <div>
-        <input
-            type="radio"
-            name="render-method-type"
-            bind:group={simulationState.renderMethodType}
-            value={GpuRenderMethodType.Raymarch}
-            id="render-method-type_raymarch"
-        />
-        <label for="render-method-type_raymarch">Raymarch</label>
-    </div> -->
 
     <div>
         <input
