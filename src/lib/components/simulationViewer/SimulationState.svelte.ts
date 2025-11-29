@@ -10,6 +10,7 @@ import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import type { ColliderGeometry } from "../../gpu/collider/GpuColliderBufferManager";
+import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 
 export class SimulationState {
     width = $state(300);
@@ -29,6 +30,7 @@ export class SimulationState {
     moveUp       = $state(false); // Q
     moveDown     = $state(false); // E
 
+    simulationMethodType = $state(GpuSimulationMethodType.ExplicitMpm);
     renderMethodType = $state(GpuRenderMethodType.Volumetric);
 
     readonly orbit = new CameraOrbit();
@@ -160,6 +162,7 @@ export class SimulationState {
                 camera: state.camera,
                 meshVertices: vertices,
                 collider: collider,
+                getSimulationMethodType: () => state.simulationMethodType,
                 getRenderMethodType: () => state.renderMethodType,
                 measurePerf: supportsTimestamp,
             });

@@ -5,10 +5,10 @@
  * deformation matrices are updated to use a clamped amount of stretching in that direction.
  */
 fn applyPlasticity(
-    p: ptr<function, ParticleData>
+    particle: ptr<function, ParticleData>
 ) {
-    var dE = (*p).deformationElastic; // F_e
-    var dP = (*p).deformationPlastic; // F_p
+    var dE = (*particle).deformationElastic; // F_e
+    var dP = (*particle).deformationPlastic; // F_p
     // extract rotation and scale from the elastic deformation
     let rotation = calculatePolarDecompositionRotation(dE); // R
     // S = Rᵀ F_e  (<=  F_e = R S) 
@@ -42,7 +42,7 @@ fn applyPlasticity(
     let newDeformationElasticInv = mat3x3Inverse(newDeformationElastic);
     let deformation = (dE) * (dP);
     
-    (*p).deformationElastic = newDeformationElastic;
+    (*particle).deformationElastic = newDeformationElastic;
     // F_p = (F_e)⁻¹ F  (<=  F = F_e F_p)  
-    (*p).deformationPlastic = newDeformationElasticInv * deformation;
+    (*particle).deformationPlastic = newDeformationElasticInv * deformation;
 }
