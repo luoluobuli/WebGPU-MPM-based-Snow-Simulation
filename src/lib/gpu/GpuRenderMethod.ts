@@ -1,6 +1,5 @@
 export enum GpuRenderMethodType {
     Points,
-    Raymarch,
     Volumetric,
 }
 

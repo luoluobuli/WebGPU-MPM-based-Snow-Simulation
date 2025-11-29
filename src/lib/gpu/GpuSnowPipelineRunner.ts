@@ -4,7 +4,6 @@ import { GpuPointsRenderPipelineManager } from "./pointsRender/GpuPointsRenderPi
 import { GpuMpmPipelineManager } from "./mpm/GpuMpmPipelineManager";
 import { GpuUniformsBufferManager } from "./uniforms/GpuUniformsBufferManager";
 import { GpuMpmBufferManager } from "./mpm/GpuMpmBufferManager";
-import { GpuRaymarchRenderPipelineManager } from "./raymarchRender/GpuRaymarchRenderPipelineManager";
 import { GpuRenderMethodType } from "./GpuRenderMethod";
 import { GpuPerformanceMeasurementBufferManager } from "./performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 import { GpuMeshBufferManager } from "./particleInitialize/GpuMeshBufferManager";
@@ -18,7 +17,7 @@ import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
 import { GpuSimulationMethodType } from "./GpuSimulationMethod";
 
 const MAX_SIMULATION_DRIFT_MS = 250;
-const FP_SCALE = 1024.0;
+const FP_SCALE = 1024;
 
 export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;
@@ -32,7 +31,6 @@ export class GpuSnowPipelineRunner {
     private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
     private readonly mpmPipelineManager: GpuMpmPipelineManager;
     private readonly pointsRenderPipelineManager: GpuPointsRenderPipelineManager;
-    private readonly raymarchRenderPipelineManager: GpuRaymarchRenderPipelineManager;
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
     private readonly volumetricBufferManager: GpuVolumetricBufferManager;
@@ -167,15 +165,6 @@ export class GpuSnowPipelineRunner {
         });
         this.pointsRenderPipelineManager = pointsRenderPipelineManager;
 
-        const raymarchRenderPipelineManager = new GpuRaymarchRenderPipelineManager({
-            device,
-            format,
-            depthFormat: "depth24plus",
-            uniformsManager,
-            mpmManager,
-        });
-        this.raymarchRenderPipelineManager = raymarchRenderPipelineManager;
-
         const mpmGridRenderPipelineManager = new GpuMpmGridRenderPipelineManager({
             device,
             format,
@@ -190,7 +179,10 @@ export class GpuSnowPipelineRunner {
             gridResolutionX,
             gridResolutionY,
             gridResolutionZ,
-            screenDims: { width: camera.screenDims.width(), height: camera.screenDims.height() },
+            screenDims: {
+                width: camera.screenDims.width(),
+                height: camera.screenDims.height(),
+            },
         });
         this.volumetricBufferManager = volumetricBufferManager;
 
@@ -428,6 +420,10 @@ export class GpuSnowPipelineRunner {
                         }
 
                         onGpuTimeUpdate?.(times);
+                    })
+                    .catch(error => {
+                        console.error(error);
+                        stop();
                     });
             }
 
@@ -437,10 +433,12 @@ export class GpuSnowPipelineRunner {
 
         handle = requestAnimationFrame(loop);
 
-        return () => {
+        const stop = () => {
             cancelAnimationFrame(handle);
             canceled = true;
         };
+
+        return stop;
     }
 
     private selectRenderPipelineManager() {
@@ -448,12 +446,8 @@ export class GpuSnowPipelineRunner {
             case GpuRenderMethodType.Points:
                 return this.pointsRenderPipelineManager;
             
-            case GpuRenderMethodType.Raymarch:
-                return this.raymarchRenderPipelineManager;
-
             case GpuRenderMethodType.Volumetric:
                 return this.volumetricRenderPipelineManager;
-
         }
     }
 }
