@@ -41,3 +41,16 @@ fn retrieveBlockIndexFromHashMap(block_coord: vec3<i32>) -> u32 {
     }
     return GRID_HASH_MAP_BLOCK_INDEX_EMPTY;
 }
+
+fn calculateCellIndexFromCellNumber(cell_number: vec3i) -> u32 {
+    let block_number = calculateBlockNumberContainingCell(cell_number);
+    let block_index = retrieveBlockIndexFromHashMap(block_number);
+
+    // failsafe if something went wrong with allocation
+    if block_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY {
+        return GRID_HASH_MAP_BLOCK_INDEX_EMPTY;
+    }
+
+    let cell_index_within_block = calculateCellIndexWithinBlock(cell_number);
+    return block_index * 64u + cell_index_within_block;
+}

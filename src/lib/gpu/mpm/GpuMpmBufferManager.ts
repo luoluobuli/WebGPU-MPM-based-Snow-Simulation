@@ -6,6 +6,9 @@ export class GpuMpmBufferManager {
     readonly gridMomentumXBuffer: GPUBuffer;
     readonly gridMomentumYBuffer: GPUBuffer;
     readonly gridMomentumZBuffer: GPUBuffer;
+    readonly gridDisplacementXBuffer: GPUBuffer;
+    readonly gridDisplacementYBuffer: GPUBuffer;
+    readonly gridDisplacementZBuffer: GPUBuffer;
     readonly nAllocatedBlocksBuffer: GPUBuffer;
     // readonly nWorkgroupsBuffer: GPUBuffer;
     readonly mappedBlockIndexesBuffer: GPUBuffer;
@@ -60,6 +63,24 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
+        const gridDisplacementXBuffer = device.createBuffer({
+            label: "MPM physical displacement X buffer",
+            size: poolSize,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        const gridDisplacementYBuffer = device.createBuffer({
+            label: "MPM physical displacement Y buffer",
+            size: poolSize,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        const gridDisplacementZBuffer = device.createBuffer({
+            label: "MPM physical displacement Z buffer",
+            size: poolSize,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
 
         const nAllocatedBlocksBufer = device.createBuffer({
             label: "MPM # allocated blocks buffer",
@@ -85,6 +106,9 @@ export class GpuMpmBufferManager {
         this.gridMomentumXBuffer = gridMomentumXBuffer;
         this.gridMomentumYBuffer = gridMomentumYBuffer;
         this.gridMomentumZBuffer = gridMomentumZBuffer;
+        this.gridDisplacementXBuffer = gridDisplacementXBuffer;
+        this.gridDisplacementYBuffer = gridDisplacementYBuffer;
+        this.gridDisplacementZBuffer = gridDisplacementZBuffer;
         this.nAllocatedBlocksBuffer = nAllocatedBlocksBufer;
         // this.nWorkgroupsBuffer = nWorkgroupsBuffer;
         this.mappedBlockIndexesBuffer = mappedBlockIndexesBuffer;

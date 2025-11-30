@@ -35,6 +35,9 @@ export class GpuMpmPipelineManager {
         gridMomentumXBuffer,
         gridMomentumYBuffer,
         gridMomentumZBuffer,
+        gridDisplacementXBuffer,
+        gridDisplacementYBuffer,
+        gridDisplacementZBuffer,
         allocatorBuffer,
         // nWorkgroupsBuffer,
         mappedBlockIndexesBuffer,
@@ -47,6 +50,9 @@ export class GpuMpmPipelineManager {
         gridMomentumXBuffer: GPUBuffer,
         gridMomentumYBuffer: GPUBuffer,
         gridMomentumZBuffer: GPUBuffer,
+        gridDisplacementXBuffer: GPUBuffer,
+        gridDisplacementYBuffer: GPUBuffer,
+        gridDisplacementZBuffer: GPUBuffer,
         allocatorBuffer: GPUBuffer,
         // nWorkgroupsBuffer: GPUBuffer,
         mappedBlockIndexesBuffer: GPUBuffer,
@@ -62,7 +68,9 @@ export class GpuMpmPipelineManager {
                 { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-                // { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
             ],
         });
 
@@ -77,7 +85,9 @@ export class GpuMpmPipelineManager {
                 { binding: 4, resource: { buffer: gridMomentumXBuffer } },
                 { binding: 5, resource: { buffer: gridMomentumYBuffer } },
                 { binding: 6, resource: { buffer: gridMomentumZBuffer } },
-                // { binding: 7, resource: { buffer: nWorkgroupsBuffer } },
+                { binding: 7, resource: { buffer: gridDisplacementXBuffer } },
+                { binding: 8, resource: { buffer: gridDisplacementYBuffer } },
+                { binding: 9, resource: { buffer: gridDisplacementZBuffer } },
             ],
         });
 
