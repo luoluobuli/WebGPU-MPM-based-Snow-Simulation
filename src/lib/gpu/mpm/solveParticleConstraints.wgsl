@@ -16,8 +16,8 @@ fn solveParticleConstraints(
 
     let rotation = calculatePolarDecompositionRotation(particle.deformationElastic);
 
-    // inverse of the formula used to integrate deformation
-    particle.deformation_displacement = mat3x3Inverse(particle.deformationElastic) - rotation;
+    // // inverse of the formula used to integrate deformation
+    // particle.deformation_displacement = mat3x3Inverse(particle.deformationElastic) - rotation;
 
     particle_data[particle_index] = particle;
 }
