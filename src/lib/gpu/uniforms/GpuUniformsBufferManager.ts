@@ -59,8 +59,8 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 4, new Float32Array([fixedPointScale]));
     }
 
-    writeUsePbmpm(usePbmpm: number) {
-        this.device.queue.writeBuffer(this.buffer, 8, new Uint32Array([usePbmpm]));
+    writeUsePbmpm(usePbmpm: boolean) {
+        this.device.queue.writeBuffer(this.buffer, 8, new Uint32Array([usePbmpm ? 1 : 0]));
     }
 
     writeGridMinCoords(min: [number, number, number]) {

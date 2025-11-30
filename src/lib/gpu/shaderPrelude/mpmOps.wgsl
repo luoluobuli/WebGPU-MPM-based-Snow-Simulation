@@ -6,6 +6,7 @@ struct ParticleData {
     mass: f32, // 32
     deformationElastic: mat3x3f, // 80
     deformationPlastic: mat3x3f, // 128
+    deformationDisplacement: mat3x3f, // 176
 }
 
 

@@ -20,7 +20,7 @@ export class SimulationState {
     gridResolutionX = $state(512);
     gridResolutionY = $state(512);
     gridResolutionZ = $state(192);
-    simulationTimestepS = $state(1 / 192);
+    simulationTimestepS = $state(1 / 30);
     transformMat = $state(mat4.identity());
 
     moveForward  = $state(false); // W
@@ -30,7 +30,7 @@ export class SimulationState {
     moveUp       = $state(false); // Q
     moveDown     = $state(false); // E
 
-    simulationMethodType = $state(GpuSimulationMethodType.ExplicitMpm);
+    simulationMethodType = $state(GpuSimulationMethodType.Pbmpm);
     renderMethodType = $state(GpuRenderMethodType.Volumetric);
 
     readonly orbit = new CameraOrbit();
