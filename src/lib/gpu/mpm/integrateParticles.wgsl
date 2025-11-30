@@ -24,29 +24,29 @@ fn integrateParticles(
     
     // Boundary conditions
     if particle.pos.x < uniforms.gridMinCoords.x {
-        particle.vel.x *= -0.5;
+        particle.pos_displacement.x *= -0.5;
         particle.pos.x = uniforms.gridMinCoords.x;
     }
     if particle.pos.x >= uniforms.gridMaxCoords.x {
-        particle.vel.x *= -0.5;
+        particle.pos_displacement.x *= -0.5;
         particle.pos.x = uniforms.gridMaxCoords.x;
     }
 
     if particle.pos.y < uniforms.gridMinCoords.y {
-        particle.vel.y *= -0.5;
+        particle.pos_displacement.y *= -0.5;
         particle.pos.y = uniforms.gridMinCoords.y;
     }
     if particle.pos.y >= uniforms.gridMaxCoords.y {
-        particle.vel.y *= -0.5;
+        particle.pos_displacement.y *= -0.5;
         particle.pos.y = uniforms.gridMaxCoords.y;
     }
 
     if particle.pos.z < uniforms.gridMinCoords.z {
-        particle.vel.z *= -0.5;
+        particle.pos_displacement.z *= -0.5;
         particle.pos.z = uniforms.gridMinCoords.z;
     }
     if particle.pos.z >= uniforms.gridMaxCoords.z {
-        particle.vel.z *= -0.5;
+        particle.pos_displacement.z *= -0.5;
         particle.pos.z = uniforms.gridMaxCoords.z;
     }
 

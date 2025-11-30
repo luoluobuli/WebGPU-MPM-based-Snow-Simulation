@@ -21,6 +21,7 @@ fn doGridToParticle(
 
     let cellDims = calculateCellDims();
     let startCellNumber = calculateCellNumber(particle.pos, cellDims);
+    let cell_center_pos = uniforms.gridMinCoords + cellDims * (vec3f(startCellNumber) + vec3f(0.5));
     let cellFracPos = calculateFractionalPosFromCellMin(particle.pos, cellDims, startCellNumber);
     let cellWeights = calculateQuadraticBSplineCellWeights(cellFracPos);
     let cellWeightsDeriv = calculateQuadraticBSplineCellWeightDerivatives(cellFracPos);
@@ -152,7 +153,7 @@ fn doGridToParticle(
         }
 
         particle.pos_displacement = new_particle_displacement;
-        particle.deformation_displacement = total_displacement_gradient;
+        particle.deformation_displacement = total_displacement_gradient * 4;
 
 
         // particle_data[threadIndex].pos_displacement = newParticleVelocity * uniforms.simulationTimestep;
