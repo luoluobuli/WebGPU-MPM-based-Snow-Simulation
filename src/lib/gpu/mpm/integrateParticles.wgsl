@@ -14,8 +14,8 @@ fn integrateParticles(
 
     var particle = particle_data[particle_index];
 
-    let gravitational_acceleration = vec3f(0, 0, -9.81);
-    particle.pos_displacement += gravitational_acceleration * uniforms.simulationTimestep * uniforms.simulationTimestep;
+    // let gravitational_acceleration = vec3f(0, 0, -9.81);
+    // particle.pos_displacement += gravitational_acceleration * uniforms.simulationTimestep * uniforms.simulationTimestep;
 
     particle.pos += particle.pos_displacement;
     particle.deformationElastic = (mat3x3Identity() + particle.deformation_displacement) * particle.deformationElastic;
