@@ -122,13 +122,10 @@ fn doGridToParticle(
                     let cellMass = f32(atomicLoad(&grid_mass[cell_index])) / uniforms.fixedPointScale;
                     if cellMass <= 0 { continue; }
 
-                    let cell_mass_displacement = vec3f(
-                        f32(atomicLoad(&grid_mass_displacement_x[cell_index])) / uniforms.fixedPointScale,
-                        f32(atomicLoad(&grid_mass_displacement_y[cell_index])) / uniforms.fixedPointScale,
-                        f32(atomicLoad(&grid_mass_displacement_z[cell_index])) / uniforms.fixedPointScale,
-                    );
-                    
-                    let cell_displacement = cell_mass_displacement * (1 / cellMass);
+                    let cell_mass_displacement_x = f32(atomicLoad(&grid_mass_displacement_x[cell_index])) / uniforms.fixedPointScale;
+                    let cell_mass_displacement_y = f32(atomicLoad(&grid_mass_displacement_y[cell_index])) / uniforms.fixedPointScale;
+                    let cell_mass_displacement_z = f32(atomicLoad(&grid_mass_displacement_z[cell_index])) / uniforms.fixedPointScale;
+                    let cell_displacement = vec3f(cell_mass_displacement_x, cell_mass_displacement_y, cell_mass_displacement_z) / cellMass;
 
                     
                     let cellWeight = cellWeights[u32(offsetX + 1)].x
@@ -153,11 +150,8 @@ fn doGridToParticle(
         }
 
         particle.pos_displacement = new_particle_displacement;
-        particle.deformation_displacement = total_displacement_gradient * 4;
+        particle.deformation_displacement = total_displacement_gradient;
 
-
-        // particle_data[threadIndex].pos_displacement = newParticleVelocity * uniforms.simulationTimestep;
-        // let new_deformation_elastic = (mat3x3Identity() + totalVelocityGradient * uniforms.simulationTimestep) * particle.deformationElastic;
-        // particle_data[threadIndex].deformation_displacement = mat3x3Inverse(new_deformation_elastic) - mat3x3Identity();
+        particle_data[threadIndex] = particle;
     }
 }
