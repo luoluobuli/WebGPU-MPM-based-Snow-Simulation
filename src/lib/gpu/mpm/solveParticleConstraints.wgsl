@@ -11,4 +11,10 @@ fn solveParticleConstraints(
 ) {
     let particle_index = gid.x;
     if particle_index > arrayLength(&particle_data) { return; }
+
+    let particle = &particle_data[particle_index];
+
+    let deformation = (*particle).deformationElastic * (*particle).deformationPlastic;
+    // inverse of the formula used to integrate deformation
+    (*particle).deformation_displacement = mat3x3Inverse(deformation) - mat3x3Identity();
 }

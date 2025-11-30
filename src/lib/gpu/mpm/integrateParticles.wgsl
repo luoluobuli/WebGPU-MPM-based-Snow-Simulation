@@ -12,5 +12,42 @@ fn integrateParticles(
     let particle_index = gid.x;
     if particle_index > arrayLength(&particle_data) { return; }
 
-    let particle = &particle_data[particle_index];
+    var particle = particle_data[particle_index];
+
+    particle.vel = particle.pos_displacement / uniforms.simulationTimestep;
+
+    particle.pos += particle.pos_displacement;
+    particle.deformationElastic = (mat3x3Identity() + particle.deformation_displacement) * particle.deformationElastic;
+
+    applyPlasticity(&particle);
+    
+    // Boundary conditions
+    if particle.pos.x < uniforms.gridMinCoords.x {
+        particle.vel.x *= -0.5;
+        particle.pos.x = uniforms.gridMinCoords.x;
+    }
+    if particle.pos.x >= uniforms.gridMaxCoords.x {
+        particle.vel.x *= -0.5;
+        particle.pos.x = uniforms.gridMaxCoords.x;
+    }
+
+    if particle.pos.y < uniforms.gridMinCoords.y {
+        particle.vel.y *= -0.5;
+        particle.pos.y = uniforms.gridMinCoords.y;
+    }
+    if particle.pos.y >= uniforms.gridMaxCoords.y {
+        particle.vel.y *= -0.5;
+        particle.pos.y = uniforms.gridMaxCoords.y;
+    }
+
+    if particle.pos.z < uniforms.gridMinCoords.z {
+        particle.vel.z *= -0.5;
+        particle.pos.z = uniforms.gridMinCoords.z;
+    }
+    if particle.pos.z >= uniforms.gridMaxCoords.z {
+        particle.vel.z *= -0.5;
+        particle.pos.z = uniforms.gridMaxCoords.z;
+    }
+
+    particle_data[particle_index] = particle;
 }
