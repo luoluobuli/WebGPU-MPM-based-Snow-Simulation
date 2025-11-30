@@ -60,15 +60,15 @@ fn doParticleToGrid(
                         cellWeights[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeightsDeriv[u32(offsetZ + 1)].z
                     ) / cellDims;
                     
-                    // F = -V  Pᵀ  ∇w
-                    let stressForce = -particleVolume * stressTranspose * cellWeightGradient;
+                    // a = -V  Pᵀ  ∇w
+                    let stress_acceleration = -particleVolume * stressTranspose * cellWeightGradient;
 
                     // p = m v
                     let particleCurrentMomentum = particle.mass * particle.vel;
                     // dp = F dt
-                    let stressMomentum = stressForce * uniforms.simulationTimestep;
+                    let stress_velocity = stress_acceleration * uniforms.simulationTimestep;
                     
-                    let momentum = cellWeight * particleCurrentMomentum + stressMomentum;
+                    let momentum = cellWeight * (particleCurrentMomentum + particle.mass * stress_velocity);
 
                     atomicAdd(&grid_momentum_x[cell_index], i32(momentum.x * uniforms.fixedPointScale));
                     atomicAdd(&grid_momentum_y[cell_index], i32(momentum.y * uniforms.fixedPointScale));
@@ -101,20 +101,26 @@ fn doParticleToGrid(
                         cellWeights[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeightsDeriv[u32(offsetZ + 1)].z
                     ) / cellDims;
                     
-                    // F = -V  Pᵀ  ∇w
-                    let stressForce = -particleVolume * stressTranspose * cellWeightGradient;
+                    // a = -V  Pᵀ  ∇w
+                    let stress_acceleration = -particleVolume * stressTranspose * cellWeightGradient;
 
                     // p = m v
                     let particleCurrentMomentum = particle.mass * (particle.pos_displacement / uniforms.simulationTimestep);
                     // dp = F dt
-                    let stressMomentum = stressForce * uniforms.simulationTimestep;
-                    
-                    let momentum = cellWeight * particleCurrentMomentum + stressMomentum;
+                    let stress_velocity = stress_acceleration * uniforms.simulationTimestep;
+
+                    let weighted_mass = cellWeight * particle.mass;
+
+                    let cell_center_pos = uniforms.gridMinCoords + vec3f(cellDims) * (vec3f(cell_number) + vec3f(0.5));
+                    let cell_particle_offset = cell_center_pos - particle.pos;
+                    let affine_displacement = particle.deformation_displacement * cell_particle_offset;
+                    let momentum = weighted_mass * (particle.pos_displacement + affine_displacement) / uniforms.simulationTimestep;
+
 
                     atomicAdd(&grid_momentum_x[cell_index], i32(momentum.x * uniforms.fixedPointScale));
                     atomicAdd(&grid_momentum_y[cell_index], i32(momentum.y * uniforms.fixedPointScale));
                     atomicAdd(&grid_momentum_z[cell_index], i32(momentum.z * uniforms.fixedPointScale));
-                    atomicAdd(&grid_mass[cell_index], i32(cellWeight * particle.mass * uniforms.fixedPointScale));
+                    atomicAdd(&grid_mass[cell_index], i32(weighted_mass * uniforms.fixedPointScale));
 
                     // let cell_number = startCellNumber + vec3i(offsetX, offsetY, offsetZ);
                     // if !cellNumberInGridRange(cell_number) { continue; }
