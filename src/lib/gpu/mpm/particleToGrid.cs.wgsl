@@ -34,7 +34,7 @@ fn doParticleToGrid(
     let particleVolume = particle.mass * INVERSE_DENSITY; // V
 
     // enumerate the 3x3 neighborhood of cells around the cell that contains the particle
-    var newParticleVelocity = vec3f(0); 
+    var total_particle_stress_force = vec3f(0);
     for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
         for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
             for (var offsetX = -1i; offsetX <= 1i; offsetX++) {

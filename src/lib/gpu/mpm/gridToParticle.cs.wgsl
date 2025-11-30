@@ -105,4 +105,8 @@ fn doGridToParticle(
 
         particle_data[threadIndex] = particle;
     }
+
+    else {
+        particle_data[threadIndex].pos_displacement = newParticleVelocity * uniforms.simulationTimestep;
+    }
 }

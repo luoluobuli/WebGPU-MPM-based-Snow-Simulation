@@ -29,7 +29,9 @@ fn mat3x3Inverse(matrix: mat3x3f) -> mat3x3f {
 }
 
 
-// iterative polar decomposition approximates pure rotation R from F where F = R S
+/**
+ * iterative polar decomposition approximates pure rotation R from F where F = R S
+ */
 fn calculatePolarDecompositionRotation(deformation: mat3x3f) -> mat3x3f {
     var rotationGuess = deformation; // R_n
     
