@@ -93,7 +93,9 @@ fn doParticleToGrid(
                         * cellWeights[u32(offsetY + 1)].y
                         * cellWeights[u32(offsetZ + 1)].z;
 
-                    let displacement_contrib = particle.pos_displacement + particle.deformation_displacement * cellFracPos;
+                    let cell_center_pos = uniforms.gridMinCoords + cellDims * (vec3f(cell_number) + vec3f(0.5));
+                    let offset = particle.pos - cell_center_pos;
+                    let displacement_contrib = particle.pos_displacement + particle.deformation_displacement * offset;
 
                     let weighted_mass_displacement_contrib = cellWeight * particle.mass * displacement_contrib;
 
