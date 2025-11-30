@@ -245,6 +245,17 @@ export class GpuSnowPipelineRunner {
         commandEncoder: GPUCommandEncoder,
         nSimulationSteps: number,
     }) {
+        const simulationMethodType = this.getSimulationMethodType();
+
+        switch (simulationMethodType) {
+            case GpuSimulationMethodType.ExplicitMpm:
+                this.uniformsManager.writeUsePbmpm(false);
+                break;
+            case GpuSimulationMethodType.Pbmpm:
+                this.uniformsManager.writeUsePbmpm(true);
+                break;
+        }
+
         const computePassEncoder = commandEncoder.beginComputePass({
             label: "simulation step compute pass",
             timestampWrites: this.performanceMeasurementManager !== null
@@ -255,8 +266,6 @@ export class GpuSnowPipelineRunner {
                 }
                 : undefined,
         });
-        
-        const simulationMethodType = this.getSimulationMethodType();
 
         for (let i = 0; i < nSimulationSteps; i++) {
             switch (simulationMethodType) {
