@@ -101,4 +101,7 @@ fn scatterParticles(
     (*particle).mass = 10;
     (*particle).deformationElastic = mat3x3Identity();
     (*particle).deformationPlastic = mat3x3Identity();
+
+    (*particle).pos_displacement = vec3f(5, 0, 5) * uniforms.simulationTimestep;
+    (*particle).deformation_displacement = mat3x3Identity();
 }
