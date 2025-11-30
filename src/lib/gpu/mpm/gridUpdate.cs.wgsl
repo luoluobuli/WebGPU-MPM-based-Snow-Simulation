@@ -110,7 +110,7 @@ fn doGridUpdate(
         atomicStore(&grid_momentum_z[cell_index], i32(newMomentum.z));
     }
     
-    // else {
+    else {
         // let cell_mass_displacement = vec3f(
         //     f32(atomicLoad(&grid_mass_displacement_x[cell_index])) / uniforms.fixedPointScale,
         //     f32(atomicLoad(&grid_mass_displacement_y[cell_index])) / uniforms.fixedPointScale,
@@ -120,5 +120,5 @@ fn doGridUpdate(
         // let cell_mass = f32(atomicLoad(&grid_mass[cell_index])) / uniforms.fixedPointScale;
 
         // let cell_displacement = cell_mass_displacement * (1 / cell_mass);
-    // }
+    }
 }
