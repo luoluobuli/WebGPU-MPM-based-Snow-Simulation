@@ -29,10 +29,11 @@ fn solveParticleConstraints(
     let corrected_deformation_displacement = target_blended * mat3x3Inverse(particle.deformationElastic) - mat3x3Identity();
 
 
-    // let volumeScaleFac = determinant(particle.deformationPlastic); // J
+    let volumeScaleFac = determinant(particle.deformationPlastic); // J
+    // const HARDENING_COEFFICIENT = 10.;
     
     let deformation_displacement_diff = corrected_deformation_displacement - particle.deformation_displacement;
-    // let elasticity_relaxation = 1 - max(0, 0.5 * exp(HARDENING_COEFFICIENT * (1 - volumeScaleFac)));
+    // let elasticity_relaxation = 1 - max(0, 0.25 * exp(HARDENING_COEFFICIENT * (1 - volumeScaleFac)));
     let elasticity_relaxation = 0.95;
     particle.deformation_displacement += elasticity_relaxation * deformation_displacement_diff;
 

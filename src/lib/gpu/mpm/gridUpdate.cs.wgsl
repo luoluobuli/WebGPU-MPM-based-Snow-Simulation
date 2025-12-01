@@ -118,7 +118,7 @@ fn doGridUpdate(
 
         var cell_velocity = cell_momentum / cell_mass;
 
-        let gravitational_acceleration = vec3f(0, 0, -9.81) / 2;
+        let gravitational_acceleration = vec3f(0, 0, -9.81);
         cell_velocity += gravitational_acceleration * uniforms.simulationTimestep;
         
         // ----------- Collision ------------
@@ -147,7 +147,7 @@ fn doGridUpdate(
             if (nLen > 1e-6) {
                 normal = normal / nLen;
 
-                var v_rel = cell_velocity - uniforms.colliderVelocity * 100.0;
+                var v_rel = cell_velocity - uniforms.colliderVelocity * 1000.0;
                 let vn = dot(v_rel, normal);
 
                 if (vn < 0.0) {
@@ -157,7 +157,7 @@ fn doGridUpdate(
                     let friction = 0.3;
                     v_rel = vT * (1.0 - friction);
                 }
-                cell_velocity = v_rel + uniforms.colliderVelocity * 100.0; 
+                cell_velocity = v_rel + uniforms.colliderVelocity * 1000.0; 
             }
             else {
                 cell_velocity = vec3f(0.0, 0.0, 0.0);

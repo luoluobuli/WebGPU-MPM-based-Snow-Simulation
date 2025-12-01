@@ -8,7 +8,7 @@ let {
     onKeyUp,
 }: {
     key: string,
-    pressTarget: Snippet<[{
+    pressTarget?: Snippet<[{
         keyHeld: boolean,
     }]>,
     onKeyDown?: () => void,
@@ -34,4 +34,4 @@ let keyHeld = $state(false);
     }}
 />
 
-{@render pressTarget({keyHeld})}
+{@render pressTarget?.({keyHeld})}
