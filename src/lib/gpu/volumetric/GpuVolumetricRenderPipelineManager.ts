@@ -2,6 +2,7 @@ import { attachPrelude } from "../shaderPrelude";
 import type { GpuUniformsBufferManager } from "../uniforms/GpuUniformsBufferManager";
 import type { GpuVolumetricBufferManager } from "./GpuVolumetricBufferManager";
 import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
+import type { GpuEnvironmentTextureManager } from "../environmentMap/GpuEnvironmentTextureManager";
 import calculateGridMassSrc from "./calculateGridMass.wgsl?raw";
 import volumetricRaymarchSrc from "./volumetricRaymarch.cs.wgsl?raw";
 import volumetricVertexSrc from "./volumetricVertex.wgsl?raw";
@@ -21,7 +22,9 @@ export class GpuVolumetricRenderPipelineManager {
 
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly volumetricBufferManager: GpuVolumetricBufferManager;
+    private readonly environmentTextureManager: GpuEnvironmentTextureManager;
     private readonly raymarchBindGroupLayout: GPUBindGroupLayout;
+    private readonly sampler: GPUSampler;
 
     constructor({
         device,
@@ -29,15 +32,23 @@ export class GpuVolumetricRenderPipelineManager {
         uniformsManager,
         volumetricBufferManager,
         mpmBufferManager,
+        environmentTextureManager,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
         uniformsManager: GpuUniformsBufferManager,
         volumetricBufferManager: GpuVolumetricBufferManager,
         mpmBufferManager: GpuMpmBufferManager,
+        environmentTextureManager: GpuEnvironmentTextureManager,
     }) {
         this.uniformsManager = uniformsManager;
         this.volumetricBufferManager = volumetricBufferManager;
+        this.environmentTextureManager = environmentTextureManager;
+
+        this.sampler = device.createSampler({
+            magFilter: "linear",
+            minFilter: "linear",
+        });
 
 
 
@@ -53,6 +64,21 @@ export class GpuVolumetricRenderPipelineManager {
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "storage" },
+                },
+            ],
+        });
+
+        this.massCalulationBindGroup = device.createBindGroup({
+            label: "volumetric mass calculation bind group",
+            layout: massCalulationBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: { buffer: mpmBufferManager.particleDataBuffer },
+                },
+                {
+                    binding: 1,
+                    resource: { buffer: volumetricBufferManager.massGridBuffer },
                 },
             ],
         });
@@ -119,6 +145,16 @@ export class GpuVolumetricRenderPipelineManager {
                     viewDimension: "2d",
                 },
             },
+            {
+                binding: 3,
+                visibility: GPUShaderStage.COMPUTE,
+                texture: { sampleType: "float" },
+            },
+            {
+                binding: 4,
+                visibility: GPUShaderStage.COMPUTE,
+                sampler: { type: "filtering" },
+            },
         ],
         });
         this.raymarchBindGroupLayout = raymarchBindGroupLayout;
@@ -138,6 +174,14 @@ export class GpuVolumetricRenderPipelineManager {
                 {
                     binding: 2,
                     resource: this.volumetricBufferManager.depthTextureView,
+                },
+                {
+                    binding: 3,
+                    resource: this.environmentTextureManager.environmentTexture.createView(),
+                },
+                {
+                    binding: 4,
+                    resource: this.sampler,
                 },
             ],
         });
@@ -307,6 +351,14 @@ export class GpuVolumetricRenderPipelineManager {
                 {
                     binding: 2,
                     resource: this.volumetricBufferManager.depthTextureView,
+                },
+                {
+                    binding: 3,
+                    resource: this.environmentTextureManager.environmentTexture.createView(),
+                },
+                {
+                    binding: 4,
+                    resource: this.sampler,
                 },
             ],
         });

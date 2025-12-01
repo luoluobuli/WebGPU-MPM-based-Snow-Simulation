@@ -197,15 +197,6 @@ export class GpuSnowPipelineRunner {
         });
         this.volumetricBufferManager = volumetricBufferManager;
 
-        const volumetricRenderPipelineManager = new GpuVolumetricRenderPipelineManager({
-            device,
-            format,
-            uniformsManager,
-            volumetricBufferManager,
-            mpmBufferManager: mpmManager,
-        });
-        this.volumetricRenderPipelineManager = volumetricRenderPipelineManager;
-
 
         const environmentTextureManager = new GpuEnvironmentTextureManager({
             device,
@@ -219,6 +210,16 @@ export class GpuSnowPipelineRunner {
             format,
         });
         this.environmentRenderPipelineManager = environmentRenderPipelineManager;
+
+        const volumetricRenderPipelineManager = new GpuVolumetricRenderPipelineManager({
+            device,
+            format,
+            uniformsManager,
+            volumetricBufferManager,
+            mpmBufferManager: mpmManager,
+            environmentTextureManager,
+        });
+        this.volumetricRenderPipelineManager = volumetricRenderPipelineManager;
 
 
         this.getSimulationMethodType = getSimulationMethodType;

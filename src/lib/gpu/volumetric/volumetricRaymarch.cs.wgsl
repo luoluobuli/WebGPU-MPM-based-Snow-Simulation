@@ -1,6 +1,8 @@
 @group(1) @binding(0) var<storage, read_write> mass_grid: array<atomic<u32>>;
 @group(1) @binding(1) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 @group(1) @binding(2) var depthTexture: texture_storage_2d<r32float, write>;
+@group(1) @binding(3) var environmentTexture: texture_2d<f32>;
+@group(1) @binding(4) var environmentSampler: sampler;
 
 const EXTINCTION_COEFFICIENT = 724.;
 const SCATTERING_ALBEDO = 0.95;
@@ -109,27 +111,17 @@ fn doVolumetricRaymarch(
     let ray_origin = ray.origin;
     let ray_dir = ray.dir;
 
-    let light_dir = normalize(vec3f(0.25, 0.5, 1));
-    let light_col = vec3f(3.2, 3.8, 4);
-    const AMBIENT_LIGHT_COL = vec3f(0.01);
+    let light_dir = normalize(vec3f(0.125, 0.25, 0.125));
+    
+    let light_col = vec3f(1, 0.6, 0.1) * 8;
+    
+    let ambient_col = vec3f(0, 0.05, 0.075);
 
     let distance_bounds = aabbIntersectionDistances(ray_origin, ray_dir, uniforms.gridMinCoords, uniforms.gridMaxCoords);
     let distance_near = distance_bounds.x;
     let distance_far = distance_bounds.y;
 
     let ray_hits_volume = distance_near <= distance_far && distance_far >= 0;
-
-    // let ground_z = uniforms.gridMinCoords.z;
-    // var t_ground = 1e20;
-    // var hit_ground = false;
-    
-    // if (abs(ray_dir.z) > 1e-5) {
-    //     let t = (ground_z - ray_origin.z) / ray_dir.z;
-    //     if (t > 0.0) {
-    //         t_ground = t;
-    //         hit_ground = true;
-    //     }
-    // }
 
     if !ray_hits_volume {
         textureStore(outputTexture, global_id.xy, vec4f(0, 0, 0, 0));
@@ -141,9 +133,6 @@ fn doVolumetricRaymarch(
     let distance_start = volume_start;
     var distance_end = distance_far;
     
-    // if (hit_ground && t_ground < distance_end) {
-    //     distance_end = t_ground;
-    // }
     let jitter = f32(hash2(global_id.xy)) / f32(0xFFFFFFFF);
     var current_ray_distance = distance_start + jitter * STEP_SIZE;
 
@@ -171,11 +160,11 @@ fn doVolumetricRaymarch(
             // exponential assuming a constant density, since every step can be thought of as an independent trial
             // in a geometric probability distribution
             let stepTransmittance = exp(-local_extinction * STEP_SIZE); // T
-            let phase = twoLobeHenyeyGreenstein(dot(ray_dir, light_dir), 0.5, 0.2); // P
+            let phase = twoLobeHenyeyGreenstein(dot(ray_dir, light_dir), 0.5, 0.5); // P
             
             let shadow_transmittance = raymarchShadow(pos, light_dir);
 
-            let light = AMBIENT_LIGHT_COL + light_col * phase * shadow_transmittance;
+            let light = ambient_col + light_col * phase * shadow_transmittance;
             let light_addition_fac = light * local_scattering * (1 - stepTransmittance) / max(local_extinction, 0.0001);
             
             out_col += transmittance * light_addition_fac;
@@ -184,16 +173,6 @@ fn doVolumetricRaymarch(
 
         current_ray_distance += STEP_SIZE;
     }
-
-
-    // if (hit_ground && transmittance > 0) {
-    //     let pos = ray_origin + t_ground * ray_dir;
-    //     let shadow = raymarchShadow(pos, light_dir);
-    //     let ground_albedo = vec3f(0.2);
-    //     let ground_col = ground_albedo * (AMBIENT_LIGHT_COL + light_col * shadow * max(0, light_dir.z));
-    //     out_col += transmittance * ground_col;
-    //     transmittance = 0;
-    // }
 
     let alpha = 1 - transmittance;
     textureStore(outputTexture, global_id.xy, vec4f(
