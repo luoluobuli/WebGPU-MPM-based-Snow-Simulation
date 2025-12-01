@@ -16,11 +16,12 @@ export class SimulationState {
     width = $state(300);
     height = $state(150);
 
-    nParticles = $state(500_000);
+    nParticles = $state(100_000);
     gridResolutionX = $state(512);
     gridResolutionY = $state(512);
     gridResolutionZ = $state(192);
-    simulationTimestepS = $state(1 / 192);
+    explicitMpmSimulationTimestepS = $state(1 / 192);
+    pbmpmSimulationTimestepS = $state(1 / 30);
     transformMat = $state(mat4.identity());
 
     moveForward  = $state(false); // W
@@ -158,7 +159,8 @@ export class SimulationState {
                 gridResolutionX: state.gridResolutionX,
                 gridResolutionY: state.gridResolutionY,
                 gridResolutionZ: state.gridResolutionZ,
-                simulationTimestepS: state.simulationTimestepS,
+                explicitMpmSimulationTimestepS: state.explicitMpmSimulationTimestepS,
+                pbmpmSimulationTimestepS: state.pbmpmSimulationTimestepS,
                 camera: state.camera,
                 meshVertices: vertices,
                 collider: collider,

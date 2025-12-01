@@ -121,7 +121,7 @@ fn doGridUpdate(
 
         var cell_velocity = cell_momentum / cell_mass;
 
-        let gravitational_acceleration = vec3f(0, 0, -9.81);
+        let gravitational_acceleration = vec3f(0, 0, -9.81) / 4;
         cell_velocity += gravitational_acceleration * uniforms.simulationTimestep;
 
         let new_momentum = cell_velocity * cell_mass * uniforms.fixedPointScale;

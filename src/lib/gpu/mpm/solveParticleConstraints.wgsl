@@ -14,45 +14,24 @@ fn solveParticleConstraints(
 
     var particle = particle_data[particle_index];
 
+    // this is the inverse of the formula used to integrate deformation
+    let trial_deformation_elastic = (mat3x3Identity() + particle.deformation_displacement) * particle.deformationElastic; 
+    let trial_rotation = calculatePolarDecompositionRotation(trial_deformation_elastic);
+
+    var target_volume = determinant(trial_deformation_elastic);
+    target_volume = clamp(target_volume, 0.1, 10); 
     
-    // PBMPM Affine Correction
-    // Apply viscosity and volume preservation to D before transfer
-    var D = particle.deformation_displacement;
+    let volume_scale = pow(abs(target_volume), -0.33333333);
+    let target_scaled = trial_rotation * volume_scale;
+
+    let blend_factor = 0.99; 
+    let target_blended = blend_factor * target_scaled + (1.0 - blend_factor) * trial_rotation;
+
+    let corrected_deformation_displacement = target_blended * mat3x3Inverse(particle.deformationElastic) - mat3x3Identity();
     
-    // Viscosity
-    let viscosity = 1.0; // Hardcoded for now, could be a uniform
-    let deviatoric = -1.0 * (D + transpose(D));
-    D += viscosity * 0.5 * deviatoric;
-
-    // Volume Preservation
-    let J = determinant(particle.deformationElastic);
-    // trace(D)
-    let traceD = D[0][0] + D[1][1] + D[2][2];
-    let alpha = 0.5 * (1.0 / (J + 1e-3) - traceD - 1.0);
-    let volumeRelax = 0.2; // Hardcoded for now
-    
-    // Add alpha * Identity
-    D[0][0] += volumeRelax * alpha;
-    D[1][1] += volumeRelax * alpha;
-    D[2][2] += volumeRelax * alpha;
-
-    particle.deformation_displacement = D;
-
-
-    // let rotation = calculatePolarDecompositionRotation(particle.deformationElastic);
-
-
-
-    // // inverse of the formula used to integrate deformation
-    // let candidate_deformation_displacement = rotation * mat3x3Inverse(particle.deformationElastic) - mat3x3Identity();
-
-
-    // let elasticity_relaxation = 0.5;
-    // particle.deformation_displacement = particle.deformation_displacement * elasticity_relaxation
-    //     + candidate_deformation_displacement * (1 - elasticity_relaxation);
-
-
-
+    let deformation_displacement_diff = corrected_deformation_displacement - particle.deformation_displacement;
+    let elasticity_relaxation = 0.5; 
+    particle.deformation_displacement += elasticity_relaxation * deformation_displacement_diff;
 
     particle_data[particle_index] = particle;
 }
