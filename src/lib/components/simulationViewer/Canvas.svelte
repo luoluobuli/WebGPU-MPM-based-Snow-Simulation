@@ -17,9 +17,7 @@ let {
 >
     <Draggable
         onDown={() => {
-            requestAnimationFrame(() => {
-                canvas?.requestPointerLock();
-            });
+            canvas?.requestPointerLock();
         }}
 
         onDrag={async ({ movement, button, pointerEvent }) => {
@@ -37,9 +35,7 @@ let {
         }}
 
         onUp={() => {
-            requestAnimationFrame(() => {
-                document.exitPointerLock();
-            });
+            document.exitPointerLock();
         }}
     >
         {#snippet dragTarget({ onpointerdown })}

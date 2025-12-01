@@ -326,6 +326,7 @@ export class GpuSnowPipelineRunner {
     async addRenderPass(commandEncoder: GPUCommandEncoder) {
         this.uniformsManager.writeViewProjMat(this.camera.viewProjMat);
         this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
+        this.uniformsManager.writeTime(Date.now());
 
         if (this.getRenderMethodType() === GpuRenderMethodType.Volumetric) {
             commandEncoder.clearBuffer(this.volumetricBufferManager.massGridBuffer);

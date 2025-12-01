@@ -4,7 +4,7 @@ struct Uniforms {
     simulationTimestep: f32, // 4
     fixedPointScale: f32, // 8
     use_pbmpm: u32, // 12
-    // 16
+    time: u32, // 16
     gridMinCoords: vec3f, // 28
     // 32
     gridMaxCoords: vec3f, // 44
