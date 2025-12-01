@@ -12,6 +12,8 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
     readonly uniformsManager: GpuUniformsBufferManager;
     readonly mpmManager: GpuMpmBufferManager;
 
+    private readonly bindGroup: GPUBindGroup;
+
     constructor({
         device,
         format,
@@ -25,6 +27,46 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
         uniformsManager: GpuUniformsBufferManager,
         mpmManager: GpuMpmBufferManager,
     }) {
+        const bindGroupLayout = device.createBindGroupLayout({
+            label: "points render pipeline bind group layout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                    buffer: {
+                        type: "uniform",
+                    }
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: "read-only-storage",
+                    },
+                },
+            ],
+        });
+
+        const bindGroup = device.createBindGroup({
+            label: "points render pipeline bind group",
+            layout: bindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: {
+                        buffer: uniformsManager.buffer,
+                    }
+                },
+                {
+                    binding: 1,
+                    resource: {
+                        buffer: mpmManager.particleDataBuffer,
+                    },
+                },
+            ],
+        });
+
+
         const vertexModule = device.createShaderModule({
             label: "points vertex module",
             code: attachPrelude(`${preludeSrc}${pointsVertexModuleSrc}`),
@@ -36,7 +78,7 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
         
         const renderPipelineLayout = device.createPipelineLayout({
             label: "points render pipeline",
-            bindGroupLayouts: [uniformsManager.bindGroupLayout],
+            bindGroupLayouts: [bindGroupLayout],
         });
         this.renderPipeline = device.createRenderPipeline({
             label: "points render pipeline",
@@ -55,7 +97,7 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
                                 format: "float32x4",
                             },
                         ],
-                        arrayStride: 96,
+                        arrayStride: 192,
                         stepMode: "vertex",
                     },
                 ],
@@ -84,10 +126,12 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
 
         this.uniformsManager = uniformsManager;
         this.mpmManager = mpmManager;
+
+        this.bindGroup = bindGroup;
     }
 
     addDraw(renderPassEncoder: GPURenderPassEncoder) {
-        renderPassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        renderPassEncoder.setBindGroup(0, this.bindGroup);
         renderPassEncoder.setVertexBuffer(0, this.mpmManager.particleDataBuffer);
         renderPassEncoder.setPipeline(this.renderPipeline);
         renderPassEncoder.draw(this.mpmManager.nParticles);
