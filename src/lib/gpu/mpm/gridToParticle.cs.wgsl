@@ -69,6 +69,7 @@ fn doGridToParticle(
         particle.vel = newParticleVelocity;
         particle.pos += newParticleVelocity * uniforms.simulationTimestep;
         particle.deformationElastic = (mat3x3Identity() + totalVelocityGradient * uniforms.simulationTimestep) * particle.deformationElastic;
+        particle.pos_displacement = newParticleVelocity * uniforms.simulationTimestep;
 
         applyPlasticity(&particle);
         
@@ -99,6 +100,7 @@ fn doGridToParticle(
             particle.vel.z *= -0.5;
             particle.pos.z = uniforms.gridMaxCoords.z;
         }
+
 
         particle_data[threadIndex] = particle;
     }
@@ -148,6 +150,9 @@ fn doGridToParticle(
 
         particle.pos_displacement =  newParticleVelocity * uniforms.simulationTimestep;
         particle.deformation_displacement = totalVelocityGradient * uniforms.simulationTimestep;
+
+        // temp
+        particle.vel = newParticleVelocity;
 
         particle_data[threadIndex] = particle;
     }

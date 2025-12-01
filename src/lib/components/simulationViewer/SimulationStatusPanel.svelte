@@ -24,43 +24,6 @@ let {
 
     <Separator />
 
-    <h3>Simulation method</h3>
-
-    <div>
-        <input
-            type="radio"
-            name="simulation-method-type"
-            bind:group={simulationState.simulationMethodType}
-            value={GpuSimulationMethodType.ExplicitMpm}
-            id="simulation-method-type_explicit-mpm"
-        />
-        <label for="simulation-method-type_explicit-mpm">Explicit MPM</label>
-    </div>
-
-    <div>
-        <input
-            type="radio"
-            name="simulation-method-type"
-            bind:group={simulationState.simulationMethodType}
-            value={GpuSimulationMethodType.Pbmpm}
-            id="simulation-method-type_pbmpm"
-        />
-        <label for="simulation-method-type_pbmpm">PBMPM</label>
-    </div>
-
-    <Separator />
-
-    <div>
-        <input
-            type="checkbox"
-            bind:checked={simulationState.oneSimulationStepPerFrame}
-            id="one-simulation-step-per-frame"
-        />
-        <label for="one-simulation-step-per-frame">Limit to 1 simulation step per frame</label>
-    </div>
-
-    <Separator />
-
     <h3>Render method</h3>
 
     <div>
@@ -124,26 +87,66 @@ let {
     </dl>
 
     <Separator />
+    <Separator />
 
     <h3>Simulation controls</h3>
 
     <div>
         <Hotkey
             key="r"
-            onKeyUp={() => simulationState.reset()}
+            onKeyUp={() => simulationState.restart()}
         >
             {#snippet pressTarget({keyHeld})}
                 <Button
                     {keyHeld}
-                    onclick={() => simulationState.reset()}
+                    onclick={() => simulationState.restart()}
                 >Restart (R)</Button>
             {/snippet}
         </Hotkey>
     </div>
 
+    <Separator />
+
+    <h4>Simulation method</h4>
+
+    <div>
+        <input
+            type="radio"
+            name="simulation-method-type"
+            bind:group={simulationState.simulationMethodType}
+            value={GpuSimulationMethodType.ExplicitMpm}
+            id="simulation-method-type_explicit-mpm"
+        />
+        <label for="simulation-method-type_explicit-mpm">Explicit MPM</label>
+    </div>
+
+    <div>
+        <input
+            type="radio"
+            name="simulation-method-type"
+            bind:group={simulationState.simulationMethodType}
+            value={GpuSimulationMethodType.Pbmpm}
+            id="simulation-method-type_pbmpm"
+        />
+        <label for="simulation-method-type_pbmpm">PBMPM</label>
+    </div>
+    
+    <Separator />
+
+    <div>
+        <input
+            type="checkbox"
+            bind:checked={simulationState.oneSimulationStepPerFrame}
+            id="one-simulation-step-per-frame"
+        />
+        <label for="one-simulation-step-per-frame">Limit to 1 simulation step per frame</label>
+    </div>
+
+    <Separator />
+    
     <div>
         <div>
-            <label for="simulation-timestep">Simulation timestep</label>
+            <h4><label for="simulation-timestep">Simulation timestep</label></h4>
 
             <labeled-range>
                 {#if simulationState.simulationMethodType === GpuSimulationMethodType.ExplicitMpm}
@@ -179,43 +182,35 @@ let {
 
     </div>
 
-    <Hotkey key="q">
-        {#snippet pressTarget({ keyHeld })}
-            {simulationState.moveForward = keyHeld}
-        {/snippet}
-    </Hotkey>
+    <Hotkey key="q"
+        onKeyUp={() => simulationState.moveForward = false}
+        onKeyDown={() => simulationState.moveForward = true}
+    />
 
-    <Hotkey key="e">
-        {#snippet pressTarget({ keyHeld })}
-            {simulationState.moveBackward = keyHeld}
-        {/snippet}
-    </Hotkey>
+    <Hotkey key="e"
+        onKeyUp={() => simulationState.moveBackward = false}
+        onKeyDown={() => simulationState.moveBackward = true}
+    />
 
-    <Hotkey key="a">
-        {#snippet pressTarget({ keyHeld })}
-            {simulationState.moveLeft = keyHeld}
-        {/snippet}
-    </Hotkey>
+    <Hotkey key="a"
+        onKeyUp={() => simulationState.moveLeft = false}
+        onKeyDown={() => simulationState.moveLeft = true}
+    />
 
-    <Hotkey key="d">
-        {#snippet pressTarget({ keyHeld })}
-            {simulationState.moveRight = keyHeld}
-        {/snippet}
-    </Hotkey>
+    <Hotkey key="d"
+        onKeyUp={() => simulationState.moveRight = false}
+        onKeyDown={() => simulationState.moveRight = true}
+    />
 
-    <Hotkey key="w">
-        {#snippet pressTarget({ keyHeld })}
-            {simulationState.moveUp = keyHeld}
-        {/snippet}
-    </Hotkey>
+    <Hotkey key="w"
+        onKeyUp={() => simulationState.moveUp = false}
+        onKeyDown={() => simulationState.moveUp = true}
+    />
 
-    <Hotkey key="s">
-        {#snippet pressTarget({ keyHeld })}
-            {simulationState.moveDown = keyHeld}
-        {/snippet}
-    </Hotkey>
-
-
+    <Hotkey key="s"
+        onKeyUp={() => simulationState.moveDown = false}
+        onKeyDown={() => simulationState.moveDown = true}
+    />
 
 </simulation-status-panel>
 
@@ -243,6 +238,10 @@ simulation-status-panel {
 
 h3 {
     font-size: 1.25rem;
+}
+
+h4 {
+    font-size: 1.125rem;
 }
 
 labeled-range {

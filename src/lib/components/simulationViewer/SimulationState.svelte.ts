@@ -21,7 +21,7 @@ export class SimulationState {
     gridResolutionX = $state(512);
     gridResolutionY = $state(512);
     gridResolutionZ = $state(192);
-    explicitMpmSimulationTimestepS = $state(1 / 384);
+    explicitMpmSimulationTimestepS = $state(1 / 192);
     pbmpmSimulationTimestepS = $state(1 / 384);
     transformMat = $state(mat4.identity());
 
@@ -69,7 +69,7 @@ export class SimulationState {
     }
 
 
-    async reset() {
+    async restart() {
         if (this.runner === null || this.device === null) return;
 
         this.stopSimulation?.();
@@ -177,7 +177,7 @@ export class SimulationState {
                 measurePerf: supportsTimestamp,
             });
 
-            state.reset();
+            state.restart();
         });
 
         onDestroy(() => {
