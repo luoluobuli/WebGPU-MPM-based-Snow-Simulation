@@ -21,19 +21,19 @@ fn doParticleToGrid(
     let startCellNumber = calculateCellNumber(particle.pos, cellDims);
     let cellFracPos = calculateFractionalPosFromCellMin(particle.pos, cellDims, startCellNumber);
     let cellWeights = calculateQuadraticBSplineCellWeights(cellFracPos);
-    let cellWeightsDeriv = calculateQuadraticBSplineCellWeightDerivatives(cellFracPos);
-
-    var shearResistance = SHEAR_RESISTANCE; // μ
-    var volumetricResistance = VOLUME_RESISTANCE; // λ
-    hardenLameParameters(particle.deformationPlastic, &shearResistance, &volumetricResistance);
-    let stress = calculateStressFirstPiolaKirchhoff(particle.deformationElastic, shearResistance, volumetricResistance); // P
-    let stressTranspose = transpose(stress);
-
-    const DENSITY_KG_PER_M3 = 400.;
-    const INVERSE_DENSITY = 1 / DENSITY_KG_PER_M3;
-    let particleVolume = particle.mass * INVERSE_DENSITY; // V
 
     if uniforms.use_pbmpm == 0 {
+        let cellWeightsDeriv = calculateQuadraticBSplineCellWeightDerivatives(cellFracPos);
+
+        var shearResistance = SHEAR_RESISTANCE; // μ
+        var volumetricResistance = VOLUME_RESISTANCE; // λ
+        hardenLameParameters(particle.deformationPlastic, &shearResistance, &volumetricResistance);
+        let stress = calculateStressFirstPiolaKirchhoff(particle.deformationElastic, shearResistance, volumetricResistance); // P
+        let stressTranspose = transpose(stress);
+
+        const DENSITY_KG_PER_M3 = 400.;
+        const INVERSE_DENSITY = 1 / DENSITY_KG_PER_M3;
+        let particleVolume = particle.mass * INVERSE_DENSITY; // V
 
         // enumerate the 3x3 neighborhood of cells around the cell that contains the particle
         for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
@@ -91,20 +91,6 @@ fn doParticleToGrid(
                         * cellWeights[u32(offsetY + 1)].y
                         * cellWeights[u32(offsetZ + 1)].z;
 
-                    // ∇w (gradient wrt fractional pos)
-                    let cellWeightGradient = vec3f(
-                        cellWeightsDeriv[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
-                        cellWeights[u32(offsetX + 1)].x * cellWeightsDeriv[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
-                        cellWeights[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeightsDeriv[u32(offsetZ + 1)].z
-                    ) / cellDims;
-                    
-                    // a = -V  Pᵀ  ∇w
-                    let stress_acceleration = -particleVolume * stressTranspose * cellWeightGradient;
-
-                    // p = m v
-                    let particleCurrentMomentum = particle.mass * (particle.pos_displacement / uniforms.simulationTimestep);
-                    // dp = F dt
-                    let stress_velocity = stress_acceleration * uniforms.simulationTimestep;
 
                     let weighted_mass = cellWeight * particle.mass;
 

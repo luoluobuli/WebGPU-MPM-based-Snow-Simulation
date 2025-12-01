@@ -127,17 +127,57 @@ let {
 
     <h3>Simulation controls</h3>
 
-    <Hotkey
-        key="r"
-        onKeyUp={() => simulationState.reset()}
-    >
-        {#snippet pressTarget({keyHeld})}
-            <Button
-                {keyHeld}
-                onclick={() => simulationState.reset()}
-            >Reset (R)</Button>
-        {/snippet}
-    </Hotkey>
+    <div>
+        <Hotkey
+            key="r"
+            onKeyUp={() => simulationState.reset()}
+        >
+            {#snippet pressTarget({keyHeld})}
+                <Button
+                    {keyHeld}
+                    onclick={() => simulationState.reset()}
+                >Restart (R)</Button>
+            {/snippet}
+        </Hotkey>
+    </div>
+
+    <div>
+        <div>
+            <label for="simulation-timestep">Simulation timestep</label>
+
+            <labeled-range>
+                {#if simulationState.simulationMethodType === GpuSimulationMethodType.ExplicitMpm}
+                    <input
+                        type="range"
+                        bind:value={simulationState.explicitMpmSimulationTimestepS}
+                        min={1 / 5000}
+                        max={1 / 96}
+                        step={1e-4}
+                        id="simulation-timestep"
+                    />
+                {:else if simulationState.simulationMethodType === GpuSimulationMethodType.Pbmpm}
+                    <input
+                        type="range"
+                        bind:value={simulationState.pbmpmSimulationTimestepS}
+                        min={1 / 5000}
+                        max={1 / 96}
+                        step={1e-4}
+                        id="simulation-timestep"
+                    />
+                {/if}
+
+                <span>
+                    {#if simulationState.simulationMethodType === GpuSimulationMethodType.ExplicitMpm}
+                        {simulationState.explicitMpmSimulationTimestepS.toFixed(4)}
+                    {:else if simulationState.simulationMethodType === GpuSimulationMethodType.Pbmpm}
+                        {simulationState.pbmpmSimulationTimestepS.toFixed(4)}
+                    {/if}
+                    s
+                </span>
+            </labeled-range>
+        </div>
+
+    </div>
 
     <Hotkey key="q">
         {#snippet pressTarget({ keyHeld })}
@@ -185,6 +225,12 @@ simulation-status-panel {
     margin: 0.5rem;
     padding: 1rem;
 
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.5rem;
+    overflow-y: auto;
+
     line-height: 1.25;
 
     color: oklch(1 0 0);
@@ -197,6 +243,11 @@ simulation-status-panel {
 
 h3 {
     font-size: 1.5rem;
-    margin-bottom: 1rem;
+}
+
+labeled-range {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
 }
 </style>
