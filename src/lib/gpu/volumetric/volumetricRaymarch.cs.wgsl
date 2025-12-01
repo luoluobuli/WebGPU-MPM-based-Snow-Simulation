@@ -81,7 +81,7 @@ fn aabbIntersectionDistances(
 }
 
 fn raymarchShadow(pos: vec3f, light_dir: vec3f) -> f32 {
-    let jitter = f32(hash3(bitcast<vec3u>(pos))) / f32(0xFFFFFFFF); // needed to prevent banding
+    let jitter = f32(hash4(vec4u(bitcast<vec3u>(pos), uniforms.time))) / f32(0xFFFFFFFF); // needed to prevent banding
 
     var shadow_pos = pos + light_dir * SHADOW_STEP_SIZE * jitter;
     var shadow_transmittance = 1.;
@@ -113,7 +113,7 @@ fn doVolumetricRaymarch(
     let ray_origin = ray.origin;
     let ray_dir = ray.dir;
 
-    let light_dir = normalize(vec3f(0.2, 0.1, 0.12));
+    let light_dir = normalize(vec3f(0.225, 0.1, 0.12));
     
     let light_col = vec3f(1, 0.6, 0.1) * 16;
     
@@ -151,7 +151,7 @@ fn doVolumetricRaymarch(
     let distance_start = volume_start;
     var distance_end = min(distance_far, distance_ground);
     
-    let jitter = f32(hash2(global_id.xy)) / f32(0xFFFFFFFF); // needed to prevent banding
+    let jitter = f32(hash3(vec3u(global_id.xy, uniforms.time))) / f32(0xFFFFFFFF); // needed to prevent banding
     var current_ray_distance = distance_start + jitter * STEP_SIZE;
 
     var transmittance = 1.;
