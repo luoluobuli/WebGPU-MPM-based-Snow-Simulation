@@ -50,6 +50,17 @@ let {
 
     <Separator />
 
+    <div>
+        <input
+            type="checkbox"
+            bind:checked={simulationState.simulationMatchesPhysicalTime}
+            id="simulation-matches-physical-time"
+        />
+        <label for="simulation-matches-physical-time">Simulation matches physical time</label>
+    </div>
+
+    <Separator />
+
     <h3>Render method</h3>
 
     <div>

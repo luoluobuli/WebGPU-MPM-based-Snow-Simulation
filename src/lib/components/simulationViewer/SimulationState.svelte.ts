@@ -1,6 +1,6 @@
 import { mat4 } from "wgpu-matrix";
 import { onDestroy, onMount } from "svelte";
-import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner";
+import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner.svelte";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
 import modelUrl from "$lib/assets/models/monkey.glb?url";
@@ -18,12 +18,14 @@ export class SimulationState {
     height = $state(150);
 
     nParticles = $state(120_000);
-    gridResolutionX = $state(384);
-    gridResolutionY = $state(384);
-    gridResolutionZ = $state(128);
+    gridResolutionX = $state(512);
+    gridResolutionY = $state(512);
+    gridResolutionZ = $state(192);
     explicitMpmSimulationTimestepS = $state(1 / 192);
-    pbmpmSimulationTimestepS = $state(1 / 192);
+    pbmpmSimulationTimestepS = $state(1 / 384);
     transformMat = $state(mat4.identity());
+
+    simulationMatchesPhysicalTime = $state(false);
 
     moveForward  = $state(false); // W
     moveBackward = $state(false); // S
@@ -170,6 +172,7 @@ export class SimulationState {
                 collider: collider,
                 getSimulationMethodType: () => state.simulationMethodType,
                 getRenderMethodType: () => state.renderMethodType,
+                simulationMatchesPhysicalTime: () => state.simulationMatchesPhysicalTime,
                 environmentImageBitmap,
                 measurePerf: supportsTimestamp,
             });
