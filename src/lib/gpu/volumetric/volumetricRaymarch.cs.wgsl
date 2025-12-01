@@ -9,7 +9,7 @@ const SCATTERING_ALBEDO = 0.95;
 const STEP_SIZE = 0.1;
 const N_MAX_STEPS = 256u;
 const SHADOW_STEP_SIZE = STEP_SIZE;
-const N_MAX_SHADOW_STEPS = 32u;
+const N_MAX_SHADOW_STEPS = 48u;
 
 fn readDensity(worldPos: vec3f) -> f32 {
     if any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords) {
@@ -49,7 +49,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
     }
     
     let cellVolume = cellSize.x * cellSize.y * cellSize.z;
-    return mass / cellVolume * 0.00000005;
+    return mass / cellVolume * 0.00000002;
 }
 
 fn henyeyGreenstein(ray_light_dot: f32, asymmetry: f32) -> f32 {
@@ -81,7 +81,9 @@ fn aabbIntersectionDistances(
 }
 
 fn raymarchShadow(pos: vec3f, light_dir: vec3f) -> f32 {
-    var shadow_pos = pos;
+    let jitter = f32(hash3(bitcast<vec3u>(pos))) / f32(0xFFFFFFFF); // needed to prevent banding
+
+    var shadow_pos = pos + light_dir * SHADOW_STEP_SIZE * jitter;
     var shadow_transmittance = 1.;
 
     for (var s = 0u; s < N_MAX_SHADOW_STEPS; s++) {
@@ -113,7 +115,7 @@ fn doVolumetricRaymarch(
 
     let light_dir = normalize(vec3f(0.2, 0.1, 0.12));
     
-    let light_col = vec3f(1, 0.6, 0.1) * 24;
+    let light_col = vec3f(1, 0.6, 0.1) * 16;
     
     let ambient_col = vec3f(0, 0.05, 0.075);
 
@@ -149,7 +151,7 @@ fn doVolumetricRaymarch(
     let distance_start = volume_start;
     var distance_end = min(distance_far, distance_ground);
     
-    let jitter = f32(hash2(global_id.xy)) / f32(0xFFFFFFFF);
+    let jitter = f32(hash2(global_id.xy)) / f32(0xFFFFFFFF); // needed to prevent banding
     var current_ray_distance = distance_start + jitter * STEP_SIZE;
 
     var transmittance = 1.;
