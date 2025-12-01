@@ -5,9 +5,6 @@
 @group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
 @group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
 @group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
-@group(1) @binding(7) var<storage, read_write> grid_mass_displacement_x: array<atomic<i32>>;
-@group(1) @binding(8) var<storage, read_write> grid_mass_displacement_y: array<atomic<i32>>;
-@group(1) @binding(9) var<storage, read_write> grid_mass_displacement_z: array<atomic<i32>>;
 
 fn cubeSDF(p: vec3<f32>, minB: vec3<f32>, maxB: vec3<f32>) -> f32 {
     // distance outside cube
@@ -173,15 +170,5 @@ fn doGridUpdate(
         atomicStore(&grid_momentum_x[cell_index], i32(new_momentum.x));
         atomicStore(&grid_momentum_y[cell_index], i32(new_momentum.y));
         atomicStore(&grid_momentum_z[cell_index], i32(new_momentum.z));
-
-        // let cell_mass_displacement = vec3f(
-        //     f32(atomicLoad(&grid_mass_displacement_x[cell_index])) / uniforms.fixedPointScale,
-        //     f32(atomicLoad(&grid_mass_displacement_y[cell_index])) / uniforms.fixedPointScale,
-        //     f32(atomicLoad(&grid_mass_displacement_z[cell_index])) / uniforms.fixedPointScale,
-        // );
-
-        // let cell_mass = f32(atomicLoad(&grid_mass[cell_index])) / uniforms.fixedPointScale;
-
-        // let cell_displacement = cell_mass_displacement * (1 / cell_mass);
     }
 }

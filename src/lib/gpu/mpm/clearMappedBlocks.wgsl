@@ -3,9 +3,6 @@
 @group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
 @group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
 @group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
-@group(1) @binding(7) var<storage, read_write> grid_mass_displacement_x: array<atomic<i32>>;
-@group(1) @binding(8) var<storage, read_write> grid_mass_displacement_y: array<atomic<i32>>;
-@group(1) @binding(9) var<storage, read_write> grid_mass_displacement_z: array<atomic<i32>>;
 
 @compute
 @workgroup_size(64) // 64 = # cells in a 4×4×4 block
@@ -24,7 +21,4 @@ fn clearMappedBlocks(
     atomicStore(&grid_momentum_x[cell_index], 0);
     atomicStore(&grid_momentum_y[cell_index], 0);
     atomicStore(&grid_momentum_z[cell_index], 0);
-    atomicStore(&grid_mass_displacement_x[cell_index], 0);
-    atomicStore(&grid_mass_displacement_y[cell_index], 0);
-    atomicStore(&grid_mass_displacement_z[cell_index], 0);
 }

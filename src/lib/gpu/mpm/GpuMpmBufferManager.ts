@@ -6,9 +6,6 @@ export class GpuMpmBufferManager {
     readonly gridMomentumXBuffer: GPUBuffer;
     readonly gridMomentumYBuffer: GPUBuffer;
     readonly gridMomentumZBuffer: GPUBuffer;
-    readonly gridDisplacementXBuffer: GPUBuffer;
-    readonly gridDisplacementYBuffer: GPUBuffer;
-    readonly gridDisplacementZBuffer: GPUBuffer;
     readonly nAllocatedBlocksBuffer: GPUBuffer;
     // readonly nWorkgroupsBuffer: GPUBuffer;
     readonly mappedBlockIndexesBuffer: GPUBuffer;
@@ -106,9 +103,6 @@ export class GpuMpmBufferManager {
         this.gridMomentumXBuffer = gridMomentumXBuffer;
         this.gridMomentumYBuffer = gridMomentumYBuffer;
         this.gridMomentumZBuffer = gridMomentumZBuffer;
-        this.gridDisplacementXBuffer = gridDisplacementXBuffer;
-        this.gridDisplacementYBuffer = gridDisplacementYBuffer;
-        this.gridDisplacementZBuffer = gridDisplacementZBuffer;
         this.nAllocatedBlocksBuffer = nAllocatedBlocksBufer;
         // this.nWorkgroupsBuffer = nWorkgroupsBuffer;
         this.mappedBlockIndexesBuffer = mappedBlockIndexesBuffer;
