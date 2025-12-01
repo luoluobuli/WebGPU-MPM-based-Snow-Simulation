@@ -1,6 +1,5 @@
 @group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
 @group(1) @binding(1) var<storage, read_write> n_allocated_blocks: atomic<u32>;
-// @group(1) @binding(7) var<storage, read_write> indirect_dispatch: array<u32>;
 
 @compute
 @workgroup_size(256)
