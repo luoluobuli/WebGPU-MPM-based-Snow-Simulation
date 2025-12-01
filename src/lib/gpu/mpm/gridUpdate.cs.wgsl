@@ -121,8 +121,52 @@ fn doGridUpdate(
 
         var cell_velocity = cell_momentum / cell_mass;
 
-        let gravitational_acceleration = vec3f(0, 0, -9.81) / 4;
+        let gravitational_acceleration = vec3f(0, 0, -9.81) / 2;
         cell_velocity += gravitational_acceleration * uniforms.simulationTimestep;
+        
+        // ----------- Collision ------------
+        let minB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
+        let maxB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMaxCoords, 1.0)).xyz;
+
+
+
+        let cell_number_within_block_z = i32(cell_index_within_block / 16u);
+        let cell_number_within_block_y = i32((cell_index_within_block / 4u) % 4u);
+        let cell_number_within_block_x = i32(cell_index_within_block % 4u);
+        
+        let cell_number = block_number * 4 + vec3i(cell_number_within_block_x, cell_number_within_block_y, cell_number_within_block_z);
+        
+        let cellDims = calculateCellDims();
+        let cellWorldPos = uniforms.gridMinCoords + (vec3f(cell_number) + vec3<f32>(0.5, 0.5, 0.5)) * cellDims;
+
+
+
+        let dist = cubeSDF(cellWorldPos, minB, maxB);
+        if (dist < 0.05) {
+            let projected = clamp(cellWorldPos, minB, maxB);
+            var normal = cellWorldPos - projected;
+            let nLen = length(normal);
+
+            if (nLen > 1e-6) {
+                normal = normal / nLen;
+
+                var v_rel = cell_velocity - uniforms.colliderVelocity * 100.0;
+                let vn = dot(v_rel, normal);
+
+                if (vn < 0.0) {
+                    let vN = vn * normal;
+                    let vT = v_rel - vN;
+
+                    let friction = 0.3;
+                    v_rel = vT * (1.0 - friction);
+                }
+                cell_velocity = v_rel + uniforms.colliderVelocity * 100.0; 
+            }
+            else {
+                cell_velocity = vec3f(0.0, 0.0, 0.0);
+            }
+        }
+        // ----------------------------------
 
         let new_momentum = cell_velocity * cell_mass * uniforms.fixedPointScale;
 

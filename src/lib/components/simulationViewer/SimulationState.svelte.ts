@@ -18,9 +18,9 @@ export class SimulationState {
     height = $state(150);
 
     nParticles = $state(120_000);
-    gridResolutionX = $state(512);
-    gridResolutionY = $state(512);
-    gridResolutionZ = $state(192);
+    gridResolutionX = $state(384);
+    gridResolutionY = $state(384);
+    gridResolutionZ = $state(128);
     explicitMpmSimulationTimestepS = $state(1 / 192);
     pbmpmSimulationTimestepS = $state(1 / 192);
     transformMat = $state(mat4.identity());

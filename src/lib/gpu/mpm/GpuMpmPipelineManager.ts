@@ -342,7 +342,7 @@ export class GpuMpmPipelineManager {
         const gridCellDispatchX = 256;
         const gridCellDispatchY = Math.ceil(nBlocksInHashMap / gridCellDispatchX);
 
-        const nSolveConstraintIterations = 4;
+        const nSolveConstraintIterations = 2;
 
         for (let i = 0; i < nSolveConstraintIterations; i++) {
             // solve constraints
