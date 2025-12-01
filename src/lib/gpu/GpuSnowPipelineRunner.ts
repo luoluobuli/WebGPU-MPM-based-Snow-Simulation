@@ -15,6 +15,8 @@ import { GpuVolumetricBufferManager } from "./volumetric/GpuVolumetricBufferMana
 import { GpuVolumetricRenderPipelineManager } from "./volumetric/GpuVolumetricRenderPipelineManager";
 import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
 import { GpuSimulationMethodType } from "./GpuSimulationMethod";
+import { GpuEnvironmentRenderPipelineManager } from "./environmentMap/GpuEnvironmentRenderPipelineManager";
+import { GpuEnvironmentTextureManager } from "./environmentMap/GpuEnvironmentTextureManager";
 
 const MAX_SIMULATION_DRIFT_MS = 250;
 const FP_SCALE = 1024;
@@ -37,6 +39,7 @@ export class GpuSnowPipelineRunner {
     private readonly volumetricBufferManager: GpuVolumetricBufferManager;
     private readonly volumetricRenderPipelineManager: GpuVolumetricRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
+    private readonly environmentRenderPipelineManager: GpuEnvironmentRenderPipelineManager;
 
     private readonly mpmManager: GpuMpmBufferManager;
 
@@ -63,6 +66,7 @@ export class GpuSnowPipelineRunner {
         collider,
         getSimulationMethodType,
         getRenderMethodType,
+        environmentImageBitmap,
         measurePerf,
     }: {
         device: GPUDevice,
@@ -79,6 +83,7 @@ export class GpuSnowPipelineRunner {
         collider: ColliderGeometry,
         getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
+        environmentImageBitmap: ImageBitmap,
         measurePerf: boolean,
     }) {
         this.device = device;
@@ -200,6 +205,20 @@ export class GpuSnowPipelineRunner {
             mpmBufferManager: mpmManager,
         });
         this.volumetricRenderPipelineManager = volumetricRenderPipelineManager;
+
+
+        const environmentTextureManager = new GpuEnvironmentTextureManager({
+            device,
+            imageBitmap: environmentImageBitmap,
+        });
+
+        const environmentRenderPipelineManager = new GpuEnvironmentRenderPipelineManager({
+            device,
+            uniformsManager,
+            textureManager: environmentTextureManager,
+            format,
+        });
+        this.environmentRenderPipelineManager = environmentRenderPipelineManager;
 
 
         this.getSimulationMethodType = getSimulationMethodType;
@@ -335,7 +354,7 @@ export class GpuSnowPipelineRunner {
             label: "particles render pass",
             colorAttachments: [
                 {
-                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                    clearValue: { r: 0, g: 0, b: 0, a: 0 },
                     loadOp: "clear",
                     storeOp: "store",
                     view: this.context.getCurrentTexture().createView(),
@@ -358,6 +377,7 @@ export class GpuSnowPipelineRunner {
 
         this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
         this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
+        this.environmentRenderPipelineManager.addDraw(renderPassEncoder);
         this.selectRenderPipelineManager().addDraw(renderPassEncoder);
 
         renderPassEncoder.end();

@@ -11,12 +11,13 @@ import { ElapsedTime } from "./ElapsedTime.svelte";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import type { ColliderGeometry } from "../../gpu/collider/GpuColliderBufferManager";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
+import { loadEnvironmentMap } from "$lib/gpu/environmentMap/loadEnvironmentMap";
 
 export class SimulationState {
     width = $state(300);
     height = $state(150);
 
-    nParticles = $state(500_000);
+    nParticles = $state(150_000);
     gridResolutionX = $state(512);
     gridResolutionY = $state(512);
     gridResolutionZ = $state(192);
@@ -148,6 +149,9 @@ export class SimulationState {
                 //transform: state.transformMat,
             };
 
+            onStatusChange?.("loading environment...");
+            const environmentImageBitmap = await loadEnvironmentMap();
+
             state.width = innerWidth;
             state.height = innerHeight;
 
@@ -166,6 +170,7 @@ export class SimulationState {
                 collider: collider,
                 getSimulationMethodType: () => state.simulationMethodType,
                 getRenderMethodType: () => state.renderMethodType,
+                environmentImageBitmap,
                 measurePerf: supportsTimestamp,
             });
 

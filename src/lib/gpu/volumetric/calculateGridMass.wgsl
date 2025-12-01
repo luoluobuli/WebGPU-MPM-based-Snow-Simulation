@@ -41,7 +41,7 @@ fn calculateGridMass(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
                 let cell_index = linearizeCellIndex(cell_number);
 
-                let mass_contribution = u32(particle.mass * weight * MASS_FIXED_POINT_SCALE);
+                let mass_contribution = u32(particle.mass * weight * uniforms.fixedPointScale);
                 atomicAdd(&mass_grid[cell_index], mass_contribution);
             }
         }
