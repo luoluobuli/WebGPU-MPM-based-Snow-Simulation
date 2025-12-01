@@ -59,7 +59,7 @@ fn scatterParticles(
     let particle = &particles[threadIndex];
     
 
-    let mass1 = f32(hash1(threadIndex)) / f32(0xFFFFFFFF) * 3;
+    let mass1 = f32(hash1(threadIndex)) / f32(0xFFFFFFFF) * 20;
 
     (*particle).pos = candidatePos;
     (*particle)._hom = 1;

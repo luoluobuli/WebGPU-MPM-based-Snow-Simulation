@@ -34,7 +34,7 @@ fn solveParticleConstraints(
     
     let deformation_displacement_diff = corrected_deformation_displacement - particle.deformation_displacement;
     // let elasticity_relaxation = 1 - max(0, 0.25 * exp(HARDENING_COEFFICIENT * (1 - volumeScaleFac)));
-    let elasticity_relaxation = 0.95;
+    let elasticity_relaxation = 0.99;
     particle.deformation_displacement += elasticity_relaxation * deformation_displacement_diff;
 
     particle_data[particle_index] = particle;
