@@ -23,7 +23,8 @@ export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;
     private readonly context: GPUCanvasContext;
     private readonly nParticles: number;
-    private readonly simulationTimestepS: number;
+    private readonly explicitMpmSimulationTimestepS: number;
+    private readonly pbmpmSimulationTimestepS: number;
     private readonly camera: Camera;
     private depthTextureView: GPUTextureView;
 
@@ -55,7 +56,8 @@ export class GpuSnowPipelineRunner {
         gridResolutionX,
         gridResolutionY,
         gridResolutionZ,
-        simulationTimestepS,
+        explicitMpmSimulationTimestepS,
+        pbmpmSimulationTimestepS,
         camera,
         meshVertices,
         collider,
@@ -70,7 +72,8 @@ export class GpuSnowPipelineRunner {
         gridResolutionX: number,
         gridResolutionY: number,
         gridResolutionZ: number,
-        simulationTimestepS: number,
+        explicitMpmSimulationTimestepS: number,
+        pbmpmSimulationTimestepS: number,
         camera: Camera,
         meshVertices: number[][],
         collider: ColliderGeometry,
@@ -81,7 +84,8 @@ export class GpuSnowPipelineRunner {
         this.device = device;
         this.context = context;
         this.nParticles = nParticles;
-        this.simulationTimestepS = simulationTimestepS;
+        this.explicitMpmSimulationTimestepS = explicitMpmSimulationTimestepS;
+        this.pbmpmSimulationTimestepS = pbmpmSimulationTimestepS;
 
         this.camera = camera;
 
@@ -95,7 +99,6 @@ export class GpuSnowPipelineRunner {
         const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
 
-        uniformsManager.writeSimulationTimestepS(simulationTimestepS);
         uniformsManager.writeGridResolution([gridResolutionX, gridResolutionY, gridResolutionZ]);
         uniformsManager.writeFixedPointScale(FP_SCALE);
         uniformsManager.writeGridMinCoords([-5, -5, 0]);
@@ -253,9 +256,12 @@ export class GpuSnowPipelineRunner {
         switch (simulationMethodType) {
             case GpuSimulationMethodType.ExplicitMpm:
                 this.uniformsManager.writeUsePbmpm(false);
+                this.uniformsManager.writeSimulationTimestepS(this.explicitMpmSimulationTimestepS);
                 break;
+                
             case GpuSimulationMethodType.Pbmpm:
                 this.uniformsManager.writeUsePbmpm(true);
+                this.uniformsManager.writeSimulationTimestepS(this.pbmpmSimulationTimestepS);
                 break;
         }
 
@@ -375,7 +381,7 @@ export class GpuSnowPipelineRunner {
         let handle = 0;
         let canceled = false;
 
-        const simulationTimestepMs = this.simulationTimestepS * 1_000;
+        const simulationTimestepMs = this.selectSimulationTimestepS() * 1_000;
 
 
         let nSimulationStep = 0;
@@ -460,6 +466,16 @@ export class GpuSnowPipelineRunner {
             
             case GpuRenderMethodType.Volumetric:
                 return this.volumetricRenderPipelineManager;
+        }
+    }
+
+    private selectSimulationTimestepS() {
+        switch (this.getSimulationMethodType()) {
+            case GpuSimulationMethodType.ExplicitMpm:
+                return this.explicitMpmSimulationTimestepS;
+
+            case GpuSimulationMethodType.Pbmpm:
+                return this.pbmpmSimulationTimestepS;
         }
     }
 }
