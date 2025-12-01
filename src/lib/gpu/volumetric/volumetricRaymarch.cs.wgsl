@@ -49,7 +49,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
     }
     
     let cellVolume = cellSize.x * cellSize.y * cellSize.z;
-    return mass / cellVolume * 0.0000001;
+    return mass / cellVolume * 0.00000002;
 }
 
 fn henyeyGreenstein(ray_light_dot: f32, asymmetry: f32) -> f32 {
@@ -115,7 +115,7 @@ fn doVolumetricRaymarch(
 
     let light_dir = normalize(vec3f(0.225, 0.1, 0.12));
     
-    let light_col = vec3f(1, 0.6, 0.1) * 16;
+    let light_col = vec3f(1, 0.8, 0.3) * 8;
     
     let ambient_col = vec3f(0, 0.05, 0.075);
 

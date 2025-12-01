@@ -23,13 +23,13 @@ fn solveParticleConstraints(
     let volume_scale = pow(abs(target_volume), -0.3333333);
     let target_scaled = trial_rotation * volume_scale;
 
-    let blend_factor = 0.99;
+    let blend_factor = 0.95;
     let target_blended = blend_factor * target_scaled + (1 - blend_factor) * trial_rotation;
 
     let corrected_deformation_displacement = target_blended * mat3x3Inverse(particle.deformationElastic) - mat3x3Identity();
     
     let deformation_displacement_diff = corrected_deformation_displacement - particle.deformation_displacement;
-    let elasticity_relaxation = 0.99; 
+    let elasticity_relaxation = 0.95; 
     particle.deformation_displacement += elasticity_relaxation * deformation_displacement_diff;
 
     particle_data[particle_index] = particle;
