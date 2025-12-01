@@ -8,6 +8,8 @@ const EXTINCTION_COEFFICIENT = 724.;
 const SCATTERING_ALBEDO = 0.95;
 const STEP_SIZE = 0.1;
 const N_MAX_STEPS = 256u;
+const SHADOW_STEP_SIZE = STEP_SIZE;
+const N_MAX_SHADOW_STEPS = 64u;
 
 fn readDensity(worldPos: vec3f) -> f32 {
     if any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords) {
@@ -56,7 +58,7 @@ fn henyeyGreenstein(ray_light_dot: f32, asymmetry: f32) -> f32 {
     return (1 - asymmetry2) / (4 * PI * pow(denom, 1.5));
 }
 
-fn twoLobeHenyeyGreenstein(ray_light_dot: f32, asymmetry_forward: f32, asymmetry_backward: f32) -> f32 {
+fn doubleHenyeyGreenstein(ray_light_dot: f32, asymmetry_forward: f32, asymmetry_backward: f32) -> f32 {
     let forward_scatter = henyeyGreenstein(ray_light_dot, asymmetry_forward);
     let backward_scatter = henyeyGreenstein(ray_light_dot, -asymmetry_backward);
     return backward_scatter + forward_scatter;
@@ -81,8 +83,6 @@ fn aabbIntersectionDistances(
 fn raymarchShadow(pos: vec3f, light_dir: vec3f) -> f32 {
     var shadow_pos = pos;
     var shadow_transmittance = 1.;
-    const N_MAX_SHADOW_STEPS = 50u;
-    const SHADOW_STEP_SIZE = STEP_SIZE;
 
     for (var s = 0u; s < N_MAX_SHADOW_STEPS; s++) {
         shadow_pos += light_dir * SHADOW_STEP_SIZE;
@@ -111,15 +111,30 @@ fn doVolumetricRaymarch(
     let ray_origin = ray.origin;
     let ray_dir = ray.dir;
 
-    let light_dir = normalize(vec3f(0.125, 0.25, 0.125));
+    let light_dir = normalize(vec3f(0.2, 0.1, 0.12));
     
-    let light_col = vec3f(1, 0.6, 0.1) * 8;
+    let light_col = vec3f(1, 0.6, 0.1) * 24;
     
     let ambient_col = vec3f(0, 0.05, 0.075);
 
     let distance_bounds = aabbIntersectionDistances(ray_origin, ray_dir, uniforms.gridMinCoords, uniforms.gridMaxCoords);
     let distance_near = distance_bounds.x;
     let distance_far = distance_bounds.y;
+    
+    let ground_z = uniforms.gridMinCoords.z;
+    var distance_ground = 1e20;
+    var hit_ground = false;
+    
+    if abs(ray_dir.z) > 1e-4 {
+        let candidate_distance_ground = (ground_z - ray_origin.z) / ray_dir.z;
+        if candidate_distance_ground > 0 {
+            let hit_pos = ray_origin + candidate_distance_ground * ray_dir;
+            if all(hit_pos.xy >= uniforms.gridMinCoords.xy) && all(hit_pos.xy <= uniforms.gridMaxCoords.xy) {
+                distance_ground = candidate_distance_ground;
+                hit_ground = true;
+            }
+        }
+    }
 
     let ray_hits_volume = distance_near <= distance_far && distance_far >= 0;
 
@@ -128,10 +143,11 @@ fn doVolumetricRaymarch(
         return;
     }
 
+
     let volume_start = max(0, distance_near);
 
     let distance_start = volume_start;
-    var distance_end = distance_far;
+    var distance_end = min(distance_far, distance_ground);
     
     let jitter = f32(hash2(global_id.xy)) / f32(0xFFFFFFFF);
     var current_ray_distance = distance_start + jitter * STEP_SIZE;
@@ -148,7 +164,6 @@ fn doVolumetricRaymarch(
         let density = readDensity(pos);
 
         if density > 0.001 {
-            // Record depth at first significant hit
             if !depth_written {
                 recorded_depth = current_ray_distance;
                 depth_written = true;
@@ -160,7 +175,7 @@ fn doVolumetricRaymarch(
             // exponential assuming a constant density, since every step can be thought of as an independent trial
             // in a geometric probability distribution
             let stepTransmittance = exp(-local_extinction * STEP_SIZE); // T
-            let phase = twoLobeHenyeyGreenstein(dot(ray_dir, light_dir), 0.5, 0.5); // P
+            let phase = doubleHenyeyGreenstein(dot(ray_dir, light_dir), 0.5, 0.5); // P
             
             let shadow_transmittance = raymarchShadow(pos, light_dir);
 
@@ -172,6 +187,19 @@ fn doVolumetricRaymarch(
         }
 
         current_ray_distance += STEP_SIZE;
+    }
+
+    if hit_ground && transmittance > 0.01 {
+        let pos = ray_origin + distance_ground * ray_dir;
+        let shadow = raymarchShadow(pos, light_dir);
+        let ground_albedo = vec3f(0.05);
+        let ground_col = ambient_col + ground_albedo * (light_col * shadow * max(0.0, light_dir.z));
+        out_col += transmittance * ground_col;
+        transmittance = 0.0;
+
+        if !depth_written {
+            recorded_depth = distance_ground;
+        }
     }
 
     let alpha = 1 - transmittance;
