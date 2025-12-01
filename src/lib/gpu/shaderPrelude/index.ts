@@ -6,6 +6,7 @@ import mpmOpsModuleSrc from "./mpmOps.wgsl?raw";
 import stressTensorOpsModuleSrc from "./stressTensorOps.wgsl?raw";
 import plasticityOpsModuleSrc from "./plasticityOps.wgsl?raw";
 import cameraOpsModuleSrc from "./cameraOps.wgsl?raw";
+import triangleOpsModuleSrc from "./triangleOps.wgsl?raw";
 
 export const prelude = `\
 ${constantsModuleSrc}
@@ -16,6 +17,7 @@ ${mpmOpsModuleSrc}
 ${stressTensorOpsModuleSrc}
 ${plasticityOpsModuleSrc}
 ${cameraOpsModuleSrc}
+${triangleOpsModuleSrc}
 `;
 
 export const attachPrelude = (moduleSrc: string) => `\
