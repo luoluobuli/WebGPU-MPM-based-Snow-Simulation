@@ -147,7 +147,7 @@ fn doGridUpdate(
             if (nLen > 1e-6) {
                 normal = normal / nLen;
 
-                var v_rel = cell_velocity - uniforms.colliderVelocity * 300.0;
+                var v_rel = cell_velocity - uniforms.colliderVelocity * 500.0;
                 let vn = dot(v_rel, normal);
 
                 if (vn < 0.0) {
@@ -157,7 +157,7 @@ fn doGridUpdate(
                     let friction = 0.3;
                     v_rel = vT * (1.0 - friction);
                 }
-                cell_velocity = v_rel + uniforms.colliderVelocity * 300.0; 
+                cell_velocity = v_rel + uniforms.colliderVelocity * 500.0; 
             }
             else {
                 cell_velocity = vec3f(0.0, 0.0, 0.0);
