@@ -57,15 +57,15 @@ fn doParticleToGrid(
                         cellWeights[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeightsDeriv[u32(offsetZ + 1)].z
                     ) / cellDims;
                     
-                    // a = -V  Pᵀ  ∇w
-                    let stress_acceleration = -particleVolume * stressTranspose * cellWeightGradient;
+                    // f = -V  Pᵀ  ∇w
+                    let stress_force = -particleVolume * stressTranspose * cellWeightGradient;
 
                     // p = m v
                     let particleCurrentMomentum = particle.mass * particle.vel;
                     // dp = F dt
-                    let stress_velocity = stress_acceleration * uniforms.simulationTimestep;
+                    let stress_momentum = stress_force * uniforms.simulationTimestep;
                     
-                    let momentum = cellWeight * (particleCurrentMomentum + particle.mass * stress_velocity);
+                    let momentum = cellWeight * (particleCurrentMomentum) + stress_momentum;
 
                     atomicAdd(&grid_momentum_x[cell_index], i32(momentum.x * uniforms.fixedPointScale));
                     atomicAdd(&grid_momentum_y[cell_index], i32(momentum.y * uniforms.fixedPointScale));
