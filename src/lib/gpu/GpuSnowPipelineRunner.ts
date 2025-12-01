@@ -356,11 +356,9 @@ export class GpuSnowPipelineRunner {
                 : undefined,
         });
 
+        this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
+        this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
         this.selectRenderPipelineManager().addDraw(renderPassEncoder);
-        if (this.getRenderMethodType() !== GpuRenderMethodType.Volumetric) {
-            this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
-            this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
-        }
 
         renderPassEncoder.end();
     }
