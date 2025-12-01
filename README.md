@@ -3,9 +3,11 @@ This project contains a snow simulation engine using the **material point method
 
 You can [view this demo online](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/) so long as your browser supports WebGPU!
 
-[![suzanne made of snow being thrown against a wall and a box collider](./docs/mpm-high-grid-size.gif)](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/)
+[![suzanne being hit with snow](./docs/cover.png)](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/)
+<!-- [![suzanne made of snow being thrown against a wall and a box collider](./docs/mpm-high-grid-size.gif)](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/) -->
 
 ## Features
+1. **Position-based MPM (PBMPM)** for numerical stability
 1. **Explicit MPM** for cohesion, alongside:
     1. **Elastic deformation and stress forces** to simulate soft materials
         |![elastic deformation with a high grid size](./docs/elastic-high-grid.gif)|
@@ -17,9 +19,9 @@ You can [view this demo online](https://luoluobuli.github.io/WebGPU-MPM-based-Sn
 2. **Rigid colliders** for particles to interact with a more interesting scene
     |![snow suzanne with collider rendered](./docs/collider-wire.gif)|![suzanne deforming plastically against the collider](./docs/collider-low-grid.gif)|
     |-|-|
-3. **Raymarching** for smoother particle rendering
-    |![raymarched blob with collider](./docs/raymarch-sample-1.png)|![raymarched suzanne](./docs/raymarch-sample-2.png)|![raymarched blob with collider from another angle](./docs/raymarch-sample-3.png)|
-    |-|-|-|
+3. **Volumetric raymarching** for fluffy material rendering
+    |![raymarched snow clumps with collider](./docs/volume-raymarch-1.png)|![raymarched torus knot](./docs/volume-raymarch-2.png)|
+    |-|-|
 
 ## Code
 This is a SvelteKit project with a simulation powered by WebGPU.
