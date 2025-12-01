@@ -2,7 +2,6 @@
 @group(1) @binding(1) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 @group(1) @binding(2) var depthTexture: texture_storage_2d<r32float, write>;
 
-const PI = 3.1415926;
 const EXTINCTION_COEFFICIENT = 724.;
 const SCATTERING_ALBEDO = 0.95;
 const STEP_SIZE = 0.1;
@@ -36,7 +35,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
                 
                 let cell_index = linearizeCellIndex(cell_number);
                 
-                let val = f32(atomicLoad(&mass_grid[cell_index])) / MASS_FIXED_POINT_SCALE;
+                let val = f32(atomicLoad(&mass_grid[cell_index])) / uniforms.fixedPointScale;
                 
                 let weight = weights[x].x * weights[y].y * weights[z].z;
                 
@@ -106,16 +105,9 @@ fn doVolumetricRaymarch(
     }
 
     let uv = vec2f(global_id.xy) / vec2f(texture_dims);
-    let uvNormalized = vec2f(uv.x, 1 - uv.y) * 2 - 1;
-    
-    let nearPosHom = uniforms.viewProjInvMat * vec4f(uvNormalized, 0, 1);
-    let nearPos = nearPosHom.xyz / nearPosHom.w;
-    
-    let farPosHom = uniforms.viewProjInvMat * vec4f(uvNormalized, 1, 1);
-    let farPos = farPosHom.xyz / farPosHom.w;
-
-    let ray_origin = nearPos;
-    let ray_dir = normalize(farPos - nearPos);
+    let ray = calculateViewRay(uv, texture_dims);
+    let ray_origin = ray.origin;
+    let ray_dir = ray.dir;
 
     let light_dir = normalize(vec3f(0.25, 0.5, 1));
     let light_col = vec3f(3.2, 3.8, 4);
@@ -208,8 +200,8 @@ fn doVolumetricRaymarch(
         pow(out_col.r, 1/2.2),
         pow(out_col.g, 1/2.2),
         pow(out_col.b, 1/2.2),
-        alpha,
-    ));
+        1,
+    ) * alpha);
     
     textureStore(depthTexture, global_id.xy, vec4f(recorded_depth, 0, 0, 0));
 }
