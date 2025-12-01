@@ -41,7 +41,7 @@ fn hardenLameParameters(
     baseShearResistance: ptr<function, f32>, // μ_0
     baseVolumetricResistance: ptr<function, f32>, // λ_0
 ) {
-    const HARDENING_COEFFICIENT = 10.; // ξ
+    const HARDENING_COEFFICIENT = 5.; // ξ
 
     let volumeScaleFac = determinant(deformationPlastic); // J
 
