@@ -111,9 +111,9 @@ fn doParticleToGrid(
 
                     let weighted_mass = cellWeight * particle.mass;
 
-                    let cell_center_pos = uniforms.gridMinCoords + vec3f(cellDims) * (vec3f(cell_number) + vec3f(0.5));
-                    let cell_particle_offset = cell_center_pos - particle.pos;
+                    let cell_particle_offset = vec3f(cell_number) - (vec3f(startCellNumber) + cellFracPos) + 0.5;
                     let affine_displacement = particle.deformation_displacement * cell_particle_offset;
+
                     let momentum = weighted_mass * (particle.pos_displacement + affine_displacement) / uniforms.simulationTimestep;
 
 

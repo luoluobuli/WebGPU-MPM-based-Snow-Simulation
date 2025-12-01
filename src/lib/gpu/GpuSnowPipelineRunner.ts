@@ -244,6 +244,8 @@ export class GpuSnowPipelineRunner {
     }
 
     scatterParticlesInMeshVolume() {
+        this.uniformsManager.writeSimulationTimestepS(this.selectSimulationTimestepS());
+
         const commandEncoder = this.device.createCommandEncoder({
             label: "particle scatter command encoder",
         });
