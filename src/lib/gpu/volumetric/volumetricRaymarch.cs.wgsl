@@ -9,7 +9,7 @@ const SCATTERING_ALBEDO = 0.95;
 const STEP_SIZE = 0.1;
 const N_MAX_STEPS = 256u;
 const SHADOW_STEP_SIZE = STEP_SIZE;
-const N_MAX_SHADOW_STEPS = 48u;
+const N_MAX_SHADOW_STEPS = 64u;
 
 fn readDensity(worldPos: vec3f) -> f32 {
     if any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords) {

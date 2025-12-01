@@ -25,8 +25,8 @@ export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;
     private readonly context: GPUCanvasContext;
     private readonly nParticles: number;
-    private readonly explicitMpmSimulationTimestepS: number;
-    private readonly pbmpmSimulationTimestepS: number;
+    private readonly explicitMpmSimulationTimestepS: () => number;
+    private readonly pbmpmSimulationTimestepS: () => number;
     private readonly camera: Camera;
     private depthTextureView: GPUTextureView;
 
@@ -78,8 +78,8 @@ export class GpuSnowPipelineRunner {
         gridResolutionX: number,
         gridResolutionY: number,
         gridResolutionZ: number,
-        explicitMpmSimulationTimestepS: number,
-        pbmpmSimulationTimestepS: number,
+        explicitMpmSimulationTimestepS: () => number,
+        pbmpmSimulationTimestepS: () => number,
         camera: Camera,
         meshVertices: number[][],
         collider: ColliderGeometry,
@@ -106,11 +106,6 @@ export class GpuSnowPipelineRunner {
 
         const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
-        $effect.root(() => {
-            $effect(() => this.uniformsManager.writeViewProjMat(this.camera.viewProjMat));
-            $effect(() => this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat));
-            return () => {};
-        });
 
         uniformsManager.writeGridResolution([gridResolutionX, gridResolutionY, gridResolutionZ]);
         uniformsManager.writeFixedPointScale(FP_SCALE);
@@ -236,6 +231,13 @@ export class GpuSnowPipelineRunner {
             : null;
 
         this.measurePerf = measurePerf;
+
+        $effect.root(() => {
+            $effect(() => this.uniformsManager.writeViewProjMat(this.camera.viewProjMat));
+            $effect(() => this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat));
+            $effect(() => this.uniformsManager.writeSimulationTimestepS(this.selectedSimulationTimestepS));
+            return () => {};
+        });
     }
 
     resizeTextures(width: number, height: number) {
@@ -250,8 +252,8 @@ export class GpuSnowPipelineRunner {
     }
 
     scatterParticlesInMeshVolume() {
-        this.uniformsManager.writeSimulationTimestepS(this.selectSimulationTimestepS());
-
+        this.uniformsManager.writeSimulationTimestepS(this.selectedSimulationTimestepS);
+        
         const commandEncoder = this.device.createCommandEncoder({
             label: "particle scatter command encoder",
         });
@@ -284,12 +286,10 @@ export class GpuSnowPipelineRunner {
         switch (simulationMethodType) {
             case GpuSimulationMethodType.ExplicitMpm:
                 this.uniformsManager.writeUsePbmpm(false);
-                this.uniformsManager.writeSimulationTimestepS(this.explicitMpmSimulationTimestepS);
                 break;
                 
             case GpuSimulationMethodType.Pbmpm:
                 this.uniformsManager.writeUsePbmpm(true);
-                this.uniformsManager.writeSimulationTimestepS(this.pbmpmSimulationTimestepS);
                 break;
         }
 
@@ -407,7 +407,7 @@ export class GpuSnowPipelineRunner {
         let handle = 0;
         let canceled = false;
 
-        const simulationTimestepMs = this.selectSimulationTimestepS() * 1_000;
+        const simulationTimestepMs = this.selectedSimulationTimestepS * 1_000;
 
 
         let nSimulationStep = 0;
@@ -506,13 +506,13 @@ export class GpuSnowPipelineRunner {
         }
     }
 
-    private selectSimulationTimestepS() {
+    selectedSimulationTimestepS = $derived.by(() => {
         switch (this.getSimulationMethodType()) {
             case GpuSimulationMethodType.ExplicitMpm:
-                return this.explicitMpmSimulationTimestepS;
+                return this.explicitMpmSimulationTimestepS();
 
             case GpuSimulationMethodType.Pbmpm:
-                return this.pbmpmSimulationTimestepS;
+                return this.pbmpmSimulationTimestepS();
         }
-    }
+    });
 }
