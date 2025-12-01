@@ -152,7 +152,7 @@ let {
                         bind:value={simulationState.explicitMpmSimulationTimestepS}
                         min={1 / 5000}
                         max={1 / 96}
-                        step={1e-4}
+                        step={1e-12}
                         id="simulation-timestep"
                     />
                 {:else if simulationState.simulationMethodType === GpuSimulationMethodType.Pbmpm}
@@ -161,16 +161,16 @@ let {
                         bind:value={simulationState.pbmpmSimulationTimestepS}
                         min={1 / 5000}
                         max={1 / 96}
-                        step={1e-4}
+                        step={1e-12}
                         id="simulation-timestep"
                     />
                 {/if}
 
                 <span>
                     {#if simulationState.simulationMethodType === GpuSimulationMethodType.ExplicitMpm}
-                        {simulationState.explicitMpmSimulationTimestepS.toFixed(4)}
+                        <sup>1</sup>⁄<sub>{(1 / simulationState.explicitMpmSimulationTimestepS).toFixed(1)}</sub>
                     {:else if simulationState.simulationMethodType === GpuSimulationMethodType.Pbmpm}
-                        {simulationState.pbmpmSimulationTimestepS.toFixed(4)}
+                        <sup>1</sup>⁄<sub>{(1 / simulationState.pbmpmSimulationTimestepS).toFixed(1)}</sub>
                     {/if}
                     s
                 </span>
@@ -228,7 +228,7 @@ simulation-status-panel {
     display: flex;
     align-items: stretch;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.25rem;
     overflow-y: auto;
 
     line-height: 1.25;
@@ -242,7 +242,7 @@ simulation-status-panel {
 }
 
 h3 {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
 }
 
 labeled-range {
