@@ -108,9 +108,18 @@ export class GpuVolumetricRenderPipelineManager {
                         access: "write-only",
                         format: "rgba8unorm",
                         viewDimension: "2d",
-                    },
                 },
-            ],
+            },
+            {
+                binding: 2,
+                visibility: GPUShaderStage.COMPUTE,
+                storageTexture: {
+                    access: "write-only",
+                    format: "r32float",
+                    viewDimension: "2d",
+                },
+            },
+        ],
         });
         this.raymarchBindGroupLayout = raymarchBindGroupLayout;
 
@@ -126,9 +135,12 @@ export class GpuVolumetricRenderPipelineManager {
                     binding: 1,
                     resource: this.volumetricBufferManager.outputTextureView,
                 },
+                {
+                    binding: 2,
+                    resource: this.volumetricBufferManager.depthTextureView,
+                },
             ],
         });
-
 
 
 
@@ -160,6 +172,16 @@ export class GpuVolumetricRenderPipelineManager {
                 {
                     binding: 0,
                     visibility: GPUShaderStage.FRAGMENT,
+                    buffer: { type: "uniform" },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: { sampleType: "unfilterable-float" },
+                },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.FRAGMENT,
                     texture: { sampleType: "unfilterable-float" },
                 },
             ],
@@ -171,7 +193,15 @@ export class GpuVolumetricRenderPipelineManager {
             entries: [
                 {
                     binding: 0,
+                    resource: this.uniformsManager.buffer,
+                },
+                {
+                    binding: 1,
                     resource: this.volumetricBufferManager.outputTextureView,
+                },
+                {
+                    binding: 2,
+                    resource: this.volumetricBufferManager.depthTextureView,
                 },
             ],
         });
@@ -185,7 +215,7 @@ export class GpuVolumetricRenderPipelineManager {
             label: "volumetric render pipeline",
             layout: renderPipelineLayout,
             vertex: {
-                module: device.createShaderModule({ code: `${preludeSrc}\n${volumetricVertexSrc}` }),
+                module: device.createShaderModule({ code: attachPrelude(`${preludeSrc}\n${volumetricVertexSrc}`) }),
                 entryPoint: "vert",
                 buffers: [
                     {
@@ -195,7 +225,7 @@ export class GpuVolumetricRenderPipelineManager {
                 ],
             },
             fragment: {
-                module: device.createShaderModule({ code: `${preludeSrc}\n${volumetricFragmentSrc}` }),
+                module: device.createShaderModule({ code: attachPrelude(`${preludeSrc}\n${volumetricFragmentSrc}`) }),
                 entryPoint: "frag",
                 targets: [
                     {
@@ -274,6 +304,10 @@ export class GpuVolumetricRenderPipelineManager {
                     binding: 1,
                     resource: this.volumetricBufferManager.outputTextureView,
                 },
+                {
+                    binding: 2,
+                    resource: this.volumetricBufferManager.depthTextureView,
+                },
             ],
         });
 
@@ -284,7 +318,15 @@ export class GpuVolumetricRenderPipelineManager {
             entries: [
                 {
                     binding: 0,
+                    resource: this.uniformsManager.buffer,
+                },
+                {
+                    binding: 1,
                     resource: this.volumetricBufferManager.outputTextureView,
+                },
+                {
+                    binding: 2,
+                    resource: this.volumetricBufferManager.depthTextureView,
                 },
             ],
         });

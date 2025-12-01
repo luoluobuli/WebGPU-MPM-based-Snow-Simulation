@@ -3,6 +3,8 @@ export class GpuVolumetricBufferManager {
     massGridBuffer: GPUBuffer;
     outputTexture: GPUTexture;
     outputTextureView: GPUTextureView;
+    depthTexture: GPUTexture;
+    depthTextureView: GPUTextureView;
     readonly gridResolution: [number, number, number];
 
     constructor({
@@ -33,10 +35,19 @@ export class GpuVolumetricBufferManager {
             usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
         });
         this.outputTextureView = this.outputTexture.createView();
+
+        this.depthTexture = device.createTexture({
+            label: "volumetric depth texture",
+            size: [screenDims.width, screenDims.height],
+            format: "r32float",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
+        });
+        this.depthTextureView = this.depthTexture.createView();
     }
 
     resize(device: GPUDevice, width: number, height: number) {
         this.outputTexture.destroy();
+        this.depthTexture.destroy();
         
         this.outputTexture = device.createTexture({
             label: "volumetric output texture",
@@ -45,5 +56,13 @@ export class GpuVolumetricBufferManager {
             usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
         });
         this.outputTextureView = this.outputTexture.createView();
+
+        this.depthTexture = device.createTexture({
+            label: "volumetric depth texture",
+            size: [width, height],
+            format: "r32float",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
+        });
+        this.depthTextureView = this.depthTexture.createView();
     }
 }
