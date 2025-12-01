@@ -1,5 +1,6 @@
 @group(1) @binding(0) var<storage, read_write> mass_grid: array<atomic<u32>>;
 @group(1) @binding(1) var outputTexture: texture_storage_2d<rgba8unorm, write>;
+@group(1) @binding(2) var depthTexture: texture_storage_2d<r32float, write>;
 
 const PI = 3.1415926;
 const EXTINCTION_COEFFICIENT = 724.;
@@ -156,6 +157,8 @@ fn doVolumetricRaymarch(
 
     var transmittance = 1.;
     var out_col = vec3f(0);
+    var depth_written = false;
+    var recorded_depth = 1e20;
 
     for (var i = 0u; i < N_MAX_STEPS; i++) {
         if current_ray_distance >= distance_end || transmittance < 0.01 { break; }
@@ -164,6 +167,12 @@ fn doVolumetricRaymarch(
         let density = readDensity(pos);
 
         if density > 0.001 {
+            // Record depth at first significant hit
+            if !depth_written {
+                recorded_depth = current_ray_distance;
+                depth_written = true;
+            }
+            
             let local_extinction = EXTINCTION_COEFFICIENT * density; // σ_t
             let local_scattering = local_extinction * SCATTERING_ALBEDO; // σ_s
             
@@ -201,4 +210,6 @@ fn doVolumetricRaymarch(
         pow(out_col.b, 1/2.2),
         alpha,
     ));
+    
+    textureStore(depthTexture, global_id.xy, vec4f(recorded_depth, 0, 0, 0));
 }
