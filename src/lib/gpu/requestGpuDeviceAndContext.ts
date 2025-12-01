@@ -39,7 +39,7 @@ export const requestGpuDeviceAndContext = async ({
     }
 
     device.lost.then(() => {
-        onErr?.("gpu device was lost");
+        onErr?.("gpu device was lost. please reload the page!");
     });
 
 

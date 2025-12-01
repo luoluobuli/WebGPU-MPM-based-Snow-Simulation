@@ -50,6 +50,7 @@ export class GpuSnowPipelineRunner {
 
     private readonly getSimulationMethodType: () => GpuSimulationMethodType;
     private readonly getRenderMethodType: () => GpuRenderMethodType;
+    private readonly simulationMatchesPhysicalTime: () => boolean;
 
     constructor({
         device,
@@ -66,6 +67,7 @@ export class GpuSnowPipelineRunner {
         collider,
         getSimulationMethodType,
         getRenderMethodType,
+        simulationMatchesPhysicalTime,
         environmentImageBitmap,
         measurePerf,
     }: {
@@ -83,6 +85,7 @@ export class GpuSnowPipelineRunner {
         collider: ColliderGeometry,
         getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
+        simulationMatchesPhysicalTime: () => boolean,
         environmentImageBitmap: ImageBitmap,
         measurePerf: boolean,
     }) {
@@ -103,6 +106,13 @@ export class GpuSnowPipelineRunner {
 
         const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
+        $effect.root(() => {
+            $effect(() => {
+                this.uniformsManager.writeViewProjMat(this.camera.viewProjMat);
+                this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
+            });
+            return () => {};
+        });
 
         uniformsManager.writeGridResolution([gridResolutionX, gridResolutionY, gridResolutionZ]);
         uniformsManager.writeFixedPointScale(FP_SCALE);
@@ -224,6 +234,7 @@ export class GpuSnowPipelineRunner {
 
         this.getSimulationMethodType = getSimulationMethodType;
         this.getRenderMethodType = getRenderMethodType;
+        this.simulationMatchesPhysicalTime = simulationMatchesPhysicalTime;
 
         this.performanceMeasurementManager = measurePerf
             ? new GpuPerformanceMeasurementBufferManager({device})
@@ -326,8 +337,6 @@ export class GpuSnowPipelineRunner {
     private prerenderPassRan = false;
 
     async addRenderPass(commandEncoder: GPUCommandEncoder) {
-        this.uniformsManager.writeViewProjMat(this.camera.viewProjMat);
-        this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
         this.uniformsManager.writeTime(Date.now());
 
         if (this.getRenderMethodType() === GpuRenderMethodType.Volumetric) {
@@ -431,15 +440,27 @@ export class GpuSnowPipelineRunner {
             let currentSimulationTime = simulationStartTime + nSimulationStep * simulationTimestepMs;
             let timeToSimulate = Date.now() - currentSimulationTime;
 
-            const nSteps = Math.ceil(timeToSimulate / simulationTimestepMs);
-            // if drifting too much, drop simulation steps 
-            if (timeToSimulate <= MAX_SIMULATION_DRIFT_MS) {
+            let nSteps = Math.ceil(timeToSimulate / simulationTimestepMs);
+            if (this.simulationMatchesPhysicalTime()) {
+                // if drifting too much, drop simulation steps 
+                if (timeToSimulate <= MAX_SIMULATION_DRIFT_MS) {
+                    this.addSimulationStepsComputePass({
+                        commandEncoder,
+                        nSimulationSteps: nSteps,
+                    });
+                }
+                nSimulationStep += nSteps;
+            }
+            else {
+                nSteps = Math.min(1, nSteps);
+
                 this.addSimulationStepsComputePass({
                     commandEncoder,
                     nSimulationSteps: nSteps,
                 });
+                nSimulationStep += nSteps;
             }
-            nSimulationStep += nSteps;
+            
 
 
             this.addRenderPass(commandEncoder);
