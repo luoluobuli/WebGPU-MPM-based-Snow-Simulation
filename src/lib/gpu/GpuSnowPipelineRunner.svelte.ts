@@ -50,7 +50,7 @@ export class GpuSnowPipelineRunner {
 
     private readonly getSimulationMethodType: () => GpuSimulationMethodType;
     private readonly getRenderMethodType: () => GpuRenderMethodType;
-    private readonly simulationMatchesPhysicalTime: () => boolean;
+    private readonly oneSimulationStepPerFrame: () => boolean;
 
     constructor({
         device,
@@ -67,7 +67,7 @@ export class GpuSnowPipelineRunner {
         collider,
         getSimulationMethodType,
         getRenderMethodType,
-        simulationMatchesPhysicalTime,
+        oneSimulationStepPerFrame,
         environmentImageBitmap,
         measurePerf,
     }: {
@@ -85,7 +85,7 @@ export class GpuSnowPipelineRunner {
         collider: ColliderGeometry,
         getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
-        simulationMatchesPhysicalTime: () => boolean,
+        oneSimulationStepPerFrame: () => boolean,
         environmentImageBitmap: ImageBitmap,
         measurePerf: boolean,
     }) {
@@ -107,10 +107,8 @@ export class GpuSnowPipelineRunner {
         const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
         $effect.root(() => {
-            $effect(() => {
-                this.uniformsManager.writeViewProjMat(this.camera.viewProjMat);
-                this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat);
-            });
+            $effect(() => this.uniformsManager.writeViewProjMat(this.camera.viewProjMat));
+            $effect(() => this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat));
             return () => {};
         });
 
@@ -234,7 +232,7 @@ export class GpuSnowPipelineRunner {
 
         this.getSimulationMethodType = getSimulationMethodType;
         this.getRenderMethodType = getRenderMethodType;
-        this.simulationMatchesPhysicalTime = simulationMatchesPhysicalTime;
+        this.oneSimulationStepPerFrame = oneSimulationStepPerFrame;
 
         this.performanceMeasurementManager = measurePerf
             ? new GpuPerformanceMeasurementBufferManager({device})
@@ -441,7 +439,16 @@ export class GpuSnowPipelineRunner {
             let timeToSimulate = Date.now() - currentSimulationTime;
 
             let nSteps = Math.ceil(timeToSimulate / simulationTimestepMs);
-            if (this.simulationMatchesPhysicalTime()) {
+            nSimulationStep += nSteps;
+            if (this.oneSimulationStepPerFrame()) {
+                nSteps = Math.min(1, nSteps);
+
+                this.addSimulationStepsComputePass({
+                    commandEncoder,
+                    nSimulationSteps: nSteps,
+                });
+            }
+            else {
                 // if drifting too much, drop simulation steps 
                 if (timeToSimulate <= MAX_SIMULATION_DRIFT_MS) {
                     this.addSimulationStepsComputePass({
@@ -449,16 +456,6 @@ export class GpuSnowPipelineRunner {
                         nSimulationSteps: nSteps,
                     });
                 }
-                nSimulationStep += nSteps;
-            }
-            else {
-                nSteps = Math.min(1, nSteps);
-
-                this.addSimulationStepsComputePass({
-                    commandEncoder,
-                    nSimulationSteps: nSteps,
-                });
-                nSimulationStep += nSteps;
             }
             
 

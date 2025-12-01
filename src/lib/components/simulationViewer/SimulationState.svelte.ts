@@ -17,15 +17,15 @@ export class SimulationState {
     width = $state(300);
     height = $state(150);
 
-    nParticles = $state(120_000);
+    nParticles = $state(500_000);
     gridResolutionX = $state(512);
     gridResolutionY = $state(512);
     gridResolutionZ = $state(192);
-    explicitMpmSimulationTimestepS = $state(1 / 192);
+    explicitMpmSimulationTimestepS = $state(1 / 384);
     pbmpmSimulationTimestepS = $state(1 / 384);
     transformMat = $state(mat4.identity());
 
-    simulationMatchesPhysicalTime = $state(false);
+    oneSimulationStepPerFrame = $state(true);
 
     moveForward  = $state(false); // W
     moveBackward = $state(false); // S
@@ -172,7 +172,7 @@ export class SimulationState {
                 collider: collider,
                 getSimulationMethodType: () => state.simulationMethodType,
                 getRenderMethodType: () => state.renderMethodType,
-                simulationMatchesPhysicalTime: () => state.simulationMatchesPhysicalTime,
+                oneSimulationStepPerFrame: () => state.oneSimulationStepPerFrame,
                 environmentImageBitmap,
                 measurePerf: supportsTimestamp,
             });

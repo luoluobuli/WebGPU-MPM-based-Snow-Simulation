@@ -53,10 +53,10 @@ let {
     <div>
         <input
             type="checkbox"
-            bind:checked={simulationState.simulationMatchesPhysicalTime}
-            id="simulation-matches-physical-time"
+            bind:checked={simulationState.oneSimulationStepPerFrame}
+            id="one-simulation-step-per-frame"
         />
-        <label for="simulation-matches-physical-time">Simulation matches physical time</label>
+        <label for="one-simulation-step-per-frame">Limit to 1 simulation step per frame</label>
     </div>
 
     <Separator />
