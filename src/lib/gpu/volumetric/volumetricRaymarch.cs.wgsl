@@ -113,11 +113,11 @@ fn doVolumetricRaymarch(
     let ray_origin = ray.origin;
     let ray_dir = ray.dir;
 
-    let light_dir = normalize(vec3f(0.225, 0.1, 0.12));
+    let light_dir = normalize(vec3f(0.2, 0.18, 0.9));
     
-    let light_col = vec3f(1, 0.8, 0.3) * 8;
+    let light_col = vec3f(0.95, 0.995, 1) * 12;
     
-    let ambient_col = vec3f(0, 0.05, 0.075);
+    let ambient_col = vec3f(0, 0.1, 0.2);
 
     let distance_bounds = aabbIntersectionDistances(ray_origin, ray_dir, uniforms.gridMinCoords, uniforms.gridMaxCoords);
     let distance_near = distance_bounds.x;
