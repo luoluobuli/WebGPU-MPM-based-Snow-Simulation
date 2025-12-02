@@ -1,4 +1,4 @@
-import environmentMapUrl from "$lib/assets/qwantani_sunset_puresky_2k.png?url";
+import environmentMapUrl from "$lib/assets/qwantani_moon_noon_puresky_2k.png?url";
 // import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 
 export const loadEnvironmentMap = async () => {
