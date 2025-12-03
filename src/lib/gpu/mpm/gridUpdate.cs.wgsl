@@ -1,10 +1,10 @@
 @group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
-@group(1) @binding(1) var<storage, read_write> n_allocated_blocks: atomic<u32>;
+@group(1) @binding(1) var<storage, read_write> n_allocated_blocks: u32;
 @group(1) @binding(2) var<storage, read_write> mapped_block_indexes: array<u32>; // Stores indices into PageTable
-@group(1) @binding(3) var<storage, read_write> grid_mass: array<atomic<i32>>;
-@group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
-@group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
-@group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
+@group(1) @binding(3) var<storage, read_write> grid_mass: array<i32>;
+@group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<i32>;
+@group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<i32>;
+@group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<i32>;
 
 fn cubeSDF(p: vec3<f32>, minB: vec3<f32>, maxB: vec3<f32>) -> f32 {
     // distance outside cube
@@ -33,7 +33,7 @@ fn doGridUpdate(
     let block_index = wid.y * 256 + wid.x;
     if block_index >= N_MAX_BLOCKS_IN_HASH_MAP { return; }
     
-    let count = atomicLoad(&n_allocated_blocks);
+    let count = n_allocated_blocks;
     if block_index >= count { return; }
     
     let mapped_block_index = mapped_block_indexes[block_index];
@@ -42,13 +42,13 @@ fn doGridUpdate(
     let cell_index_within_block = lid.x;
     let cell_index = block_index * 64u + cell_index_within_block;
     
-    let cellMass = f32(atomicLoad(&grid_mass[cell_index])) / uniforms.fixedPointScale;
+    let cellMass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
     if cellMass <= 0.0 { return; }
 
     if uniforms.use_pbmpm == 0 {
-        let momX = f32(atomicLoad(&grid_momentum_x[cell_index])) / uniforms.fixedPointScale;
-        let momY = f32(atomicLoad(&grid_momentum_y[cell_index])) / uniforms.fixedPointScale;
-        let momZ = f32(atomicLoad(&grid_momentum_z[cell_index])) / uniforms.fixedPointScale;
+        let momX = f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale;
+        let momY = f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale;
+        let momZ = f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale;
 
         var v = vec3f(momX, momY, momZ) / cellMass;
 
@@ -102,19 +102,19 @@ fn doGridUpdate(
 
         let newMomentum = v * cellMass * uniforms.fixedPointScale;
 
-        atomicStore(&grid_momentum_x[cell_index], i32(newMomentum.x));
-        atomicStore(&grid_momentum_y[cell_index], i32(newMomentum.y));
-        atomicStore(&grid_momentum_z[cell_index], i32(newMomentum.z));
+        grid_momentum_x[cell_index] = i32(newMomentum.x);
+        grid_momentum_y[cell_index] = i32(newMomentum.y);
+        grid_momentum_z[cell_index] = i32(newMomentum.z);
     }
     
     else {
         let cell_momentum = vec3f(
-            f32(atomicLoad(&grid_momentum_x[cell_index])) / uniforms.fixedPointScale,
-            f32(atomicLoad(&grid_momentum_y[cell_index])) / uniforms.fixedPointScale,
-            f32(atomicLoad(&grid_momentum_z[cell_index])) / uniforms.fixedPointScale,
+            f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale,
+            f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale,
+            f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale,
         );
 
-        let cell_mass = f32(atomicLoad(&grid_mass[cell_index])) / uniforms.fixedPointScale;
+        let cell_mass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
 
         var cell_velocity = cell_momentum / cell_mass;
 
@@ -167,8 +167,8 @@ fn doGridUpdate(
 
         let new_momentum = cell_velocity * cell_mass * uniforms.fixedPointScale;
 
-        atomicStore(&grid_momentum_x[cell_index], i32(new_momentum.x));
-        atomicStore(&grid_momentum_y[cell_index], i32(new_momentum.y));
-        atomicStore(&grid_momentum_z[cell_index], i32(new_momentum.z));
+        grid_momentum_x[cell_index] = i32(new_momentum.x);
+        grid_momentum_y[cell_index] = i32(new_momentum.y);
+        grid_momentum_z[cell_index] = i32(new_momentum.z);
     }
 }

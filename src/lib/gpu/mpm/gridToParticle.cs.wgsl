@@ -1,8 +1,8 @@
 @group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
-@group(1) @binding(3) var<storage, read_write> grid_mass: array<atomic<i32>>;
-@group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
-@group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
-@group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
+@group(1) @binding(3) var<storage, read_write> grid_mass: array<i32>;
+@group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<i32>;
+@group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<i32>;
+@group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<i32>;
 
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
 
@@ -36,12 +36,12 @@ fn doGridToParticle(
                     let cell_index = calculateCellIndexFromCellNumber(cell_number);
                     if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                     
-                    let cellMass = f32(atomicLoad(&grid_mass[cell_index])) / uniforms.fixedPointScale;
+                    let cellMass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
                     if cellMass <= 0 { continue; }
 
-                    let cellMomentumX = f32(atomicLoad(&grid_momentum_x[cell_index])) / uniforms.fixedPointScale;
-                    let cellMomentumY = f32(atomicLoad(&grid_momentum_y[cell_index])) / uniforms.fixedPointScale;
-                    let cellMomentumZ = f32(atomicLoad(&grid_momentum_z[cell_index])) / uniforms.fixedPointScale;
+                    let cellMomentumX = f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale;
+                    let cellMomentumY = f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale;
+                    let cellMomentumZ = f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale;
                     let cellVelocity = vec3f(cellMomentumX, cellMomentumY, cellMomentumZ) / cellMass;
 
                     
@@ -118,12 +118,12 @@ fn doGridToParticle(
                     let cell_index = calculateCellIndexFromCellNumber(cell_number);
                     if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                     
-                    let cellMass = f32(atomicLoad(&grid_mass[cell_index])) / uniforms.fixedPointScale;
+                    let cellMass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
                     if cellMass <= 0 { continue; }
 
-                    let cellMomentumX = f32(atomicLoad(&grid_momentum_x[cell_index])) / uniforms.fixedPointScale;
-                    let cellMomentumY = f32(atomicLoad(&grid_momentum_y[cell_index])) / uniforms.fixedPointScale;
-                    let cellMomentumZ = f32(atomicLoad(&grid_momentum_z[cell_index])) / uniforms.fixedPointScale;
+                    let cellMomentumX = f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale;
+                    let cellMomentumY = f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale;
+                    let cellMomentumZ = f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale;
                     let cellVelocity = vec3f(cellMomentumX, cellMomentumY, cellMomentumZ) / cellMass;
 
                     
