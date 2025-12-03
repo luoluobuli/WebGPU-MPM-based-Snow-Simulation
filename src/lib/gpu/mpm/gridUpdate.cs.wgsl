@@ -118,7 +118,7 @@ fn doGridUpdate(
 
         var cell_velocity = cell_momentum / cell_mass;
 
-        let gravitational_acceleration = vec3f(0, 0, -9.81) / 2;
+        let gravitational_acceleration = vec3f(0, 0, -9.81) / 3;
         cell_velocity += gravitational_acceleration * uniforms.simulationTimestep;
         
         // ----------- Collision ------------
