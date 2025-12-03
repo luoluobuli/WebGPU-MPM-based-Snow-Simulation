@@ -332,6 +332,22 @@ export class GpuMpmPipelineManager {
 
         const nSolveConstraintIterations = 3;
 
+        // determine which blocks in a grid are populated
+
+        // clear mapping table
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.clearHashMapPipeline,
+            dispatchX: Math.ceil(hashMapSize / 256),
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.mapAffectedBlocksPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
         for (let i = 0; i < nSolveConstraintIterations; i++) {
             // solve constraints
             this.addDispatch({
@@ -342,23 +358,6 @@ export class GpuMpmPipelineManager {
             });
 
             // clear grid
-
-            // clear mapping table
-            this.addDispatch({
-                computePassEncoder,
-                pipeline: this.clearHashMapPipeline,
-                dispatchX: Math.ceil(hashMapSize / 256),
-            });
-
-            // determine which blocks in a grid are populated
-            this.addDispatch({
-                computePassEncoder,
-                pipeline: this.mapAffectedBlocksPipeline,
-                dispatchX: Math.ceil(nParticles / 256),
-                useParticles: true,
-            });
-
-            // clear cells
             this.addDispatch({
                 computePassEncoder,
                 pipeline: this.clearMappedBlocksPipeline,

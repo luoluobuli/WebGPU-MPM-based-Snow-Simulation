@@ -1,5 +1,5 @@
 @group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
-@group(1) @binding(1) var<storage, read_write> n_allocated_blocks: atomic<u32>;
+@group(1) @binding(1) var<storage, read_write> n_allocated_blocks: u32;
 
 @compute
 @workgroup_size(256)
@@ -9,7 +9,7 @@ fn clearHashMap(
     let thread_index = gid.x;
     
     if thread_index == 0u {
-        atomicStore(&n_allocated_blocks, 0u);
+        n_allocated_blocks = 0u;
     }
 
     if thread_index >= arrayLength(&hash_map_entries) { return; }
