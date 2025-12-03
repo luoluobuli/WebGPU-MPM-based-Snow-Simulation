@@ -19,7 +19,7 @@ import { GpuEnvironmentRenderPipelineManager } from "./environmentMap/GpuEnviron
 import { GpuEnvironmentTextureManager } from "./environmentMap/GpuEnvironmentTextureManager";
 
 const MAX_SIMULATION_DRIFT_MS = 250;
-const FP_SCALE = 1024;
+const FP_SCALE = 65536;
 
 export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;

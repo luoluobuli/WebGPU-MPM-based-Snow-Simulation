@@ -20,7 +20,7 @@ export class SimulationState {
     nParticles = $state(500_000);
     gridResolutionX = $state(512);
     gridResolutionY = $state(512);
-    gridResolutionZ = $state(192);
+    gridResolutionZ = $state(196);
     explicitMpmSimulationTimestepS = $state(1 / 192);
     pbmpmSimulationTimestepS = $state(1 / 384);
     transformMat = $state(mat4.identity());

@@ -55,11 +55,18 @@ fn scatterParticles(
         if pointInsideMesh(candidatePos, nTriangles) { break; }
     }
 
+    let noiseScale = 0.1;
+    let noiseFreq = 16.0;
+    let dx = fbm(candidatePos * noiseFreq);
+    let dy = fbm(candidatePos * noiseFreq + vec3f(100, 200, 300));
+    let dz = fbm(candidatePos * noiseFreq + vec3f(-300, -200, -100));
+    candidatePos += (vec3f(dx, dy, dz) - 0.5) * noiseScale;
+
 
     let particle = &particles[threadIndex];
     
 
-    let mass1 = f32(hash1(threadIndex)) / f32(0xFFFFFFFF) * 20;
+    let mass1 = f32(hash1(threadIndex)) / f32(0xFFFFFFFF);
 
     (*particle).pos = candidatePos;
     (*particle)._hom = 1;

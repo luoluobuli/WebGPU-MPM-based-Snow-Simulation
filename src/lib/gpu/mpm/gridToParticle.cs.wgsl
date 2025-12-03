@@ -148,7 +148,7 @@ fn doGridToParticle(
             }
         }
 
-        particle.pos_displacement =  newParticleVelocity * uniforms.simulationTimestep;
+        particle.pos_displacement = newParticleVelocity * uniforms.simulationTimestep;
         particle.deformation_displacement = totalVelocityGradient * uniforms.simulationTimestep;
 
         // temp
