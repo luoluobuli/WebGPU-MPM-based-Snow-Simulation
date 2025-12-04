@@ -18,7 +18,7 @@ fn integrateParticles(
     // particle.pos_displacement += gravitational_acceleration * uniforms.simulationTimestep * uniforms.simulationTimestep;
 
     particle.pos += particle.pos_displacement;
-    particle.deformationElastic = (mat3x3Identity() + particle.deformation_displacement) * particle.deformationElastic;
+    particle.deformationElastic = (IDENTITY_MAT3 + particle.deformation_displacement) * particle.deformationElastic;
 
     applyPlasticity(&particle);
     

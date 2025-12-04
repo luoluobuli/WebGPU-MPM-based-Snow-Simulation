@@ -9,6 +9,9 @@ export class GpuMpmBufferManager {
     readonly nAllocatedBlocksBuffer: GPUBuffer;
     // readonly nWorkgroupsBuffer: GPUBuffer;
     readonly mappedBlockIndexesBuffer: GPUBuffer;
+    readonly blockParticleCountsBuffer: GPUBuffer;
+    readonly blockParticleOffsetsBuffer: GPUBuffer;
+    readonly sortedParticleIndicesBuffer: GPUBuffer;
 
     readonly nParticles: number;
     readonly nMaxBlocksInHashMap: number = 100_000;
@@ -97,6 +100,24 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
+        const blockParticleCountsBuffer = device.createBuffer({
+            label: "MPM block particle counts buffer",
+            size: this.nMaxBlocksInHashMap * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+        });
+
+        const blockParticleOffsetsBuffer = device.createBuffer({
+            label: "MPM block particle offsets buffer",
+            size: this.nMaxBlocksInHashMap * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+        });
+
+        const sortedParticleIndicesBuffer = device.createBuffer({
+            label: "MPM sorted particle indices buffer",
+            size: nParticles * 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
         this.particleDataBuffer = particleDataBuffer;
         this.pageTableBuffer = blocksHashMapBuffer;
         this.gridMassBuffer = gridMassBuffer;
@@ -106,6 +127,9 @@ export class GpuMpmBufferManager {
         this.nAllocatedBlocksBuffer = nAllocatedBlocksBufer;
         // this.nWorkgroupsBuffer = nWorkgroupsBuffer;
         this.mappedBlockIndexesBuffer = mappedBlockIndexesBuffer;
+        this.blockParticleCountsBuffer = blockParticleCountsBuffer;
+        this.blockParticleOffsetsBuffer = blockParticleOffsetsBuffer;
+        this.sortedParticleIndicesBuffer = sortedParticleIndicesBuffer;
 
         this.nParticles = nParticles;
     }

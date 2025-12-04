@@ -6,29 +6,31 @@
 @group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<atomic<i32>>;
 
 @group(2) @binding(0) var<storage, read_write> particleDataIn: array<ParticleData>;
+@group(2) @binding(1) var<storage, read_write> sortedParticleIndices: array<u32>;
 
 @compute
 @workgroup_size(256)
 fn doParticleToGrid(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
-    let threadIndex = gid.x;
-    if threadIndex >= arrayLength(&particleDataIn) { return; }
+    let thread_index = gid.x;
+    if thread_index >= arrayLength(&particleDataIn) { return; }
 
-    let particle = particleDataIn[threadIndex];
+    let particle_index = sortedParticleIndices[thread_index];
+    let particle = particleDataIn[particle_index];
 
-    let cellDims = calculateCellDims();
-    let startCellNumber = calculateCellNumber(particle.pos, cellDims);
-    let cellFracPos = calculateFractionalPosFromCellMin(particle.pos, cellDims, startCellNumber);
-    let cellWeights = calculateQuadraticBSplineCellWeights(cellFracPos);
+    let cell_dims = calculateCellDims();
+    let start_cell_number = calculateCellNumber(particle.pos, cell_dims);
+    let cell_frac_pos = calculateFractionalPosFromCellMin(particle.pos, cell_dims, start_cell_number);
+    let cell_weights = calculateQuadraticBSplineCellWeights(cell_frac_pos);
 
     if uniforms.use_pbmpm == 0 {
-        let cellWeightsDeriv = calculateQuadraticBSplineCellWeightDerivatives(cellFracPos);
+        let cell_weights_deriv = calculateQuadraticBSplineCellWeightDerivatives(cell_frac_pos);
 
-        var shearResistance = SHEAR_RESISTANCE; // μ
-        var volumetricResistance = VOLUME_RESISTANCE; // λ
-        hardenLameParameters(particle.deformationPlastic, &shearResistance, &volumetricResistance);
-        let stress = calculateStressFirstPiolaKirchhoff(particle.deformationElastic, shearResistance, volumetricResistance); // P
+        var shear_resistance = SHEAR_RESISTANCE; // μ
+        var volumetric_resistance = VOLUME_RESISTANCE; // λ
+        hardenLameParameters(particle.deformationPlastic, &shear_resistance, &volumetric_resistance);
+        let stress = calculateStressFirstPiolaKirchhoff(particle.deformationElastic, shear_resistance, volumetric_resistance); // P
         let stressTranspose = transpose(stress);
 
         const DENSITY_KG_PER_M3 = 400.;
@@ -39,62 +41,62 @@ fn doParticleToGrid(
         for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
             for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
                 for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
-                    let cell_number = startCellNumber + vec3i(offsetX, offsetY, offsetZ);
+                    let cell_number = start_cell_number + vec3i(offsetX, offsetY, offsetZ);
                     if !cellNumberInGridRange(cell_number) { continue; }
 
                     let cell_index = calculateCellIndexFromCellNumber(cell_number);
                     if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                     
                     // w
-                    let cellWeight = cellWeights[u32(offsetX + 1)].x
-                        * cellWeights[u32(offsetY + 1)].y
-                        * cellWeights[u32(offsetZ + 1)].z;
+                    let cell_weight = cell_weights[u32(offsetX + 1)].x
+                        * cell_weights[u32(offsetY + 1)].y
+                        * cell_weights[u32(offsetZ + 1)].z;
 
                     // ∇w (gradient wrt fractional pos)
-                    let cellWeightGradient = vec3f(
-                        cellWeightsDeriv[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
-                        cellWeights[u32(offsetX + 1)].x * cellWeightsDeriv[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
-                        cellWeights[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeightsDeriv[u32(offsetZ + 1)].z
-                    ) / cellDims;
+                    let cell_weight_gradient = vec3f(
+                        cell_weights_deriv[u32(offsetX + 1)].x * cell_weights[u32(offsetY + 1)].y * cell_weights[u32(offsetZ + 1)].z,
+                        cell_weights[u32(offsetX + 1)].x * cell_weights_deriv[u32(offsetY + 1)].y * cell_weights[u32(offsetZ + 1)].z,
+                        cell_weights[u32(offsetX + 1)].x * cell_weights[u32(offsetY + 1)].y * cell_weights_deriv[u32(offsetZ + 1)].z
+                    ) / cell_dims;
                     
                     // f = -V  Pᵀ  ∇w
-                    let stress_force = -particleVolume * stressTranspose * cellWeightGradient;
+                    let stress_force = -particleVolume * stressTranspose * cell_weight_gradient;
 
                     // p = m v
-                    let particleCurrentMomentum = particle.mass * particle.vel;
+                    let particle_current_momentum = particle.mass * particle.vel;
                     // dp = F dt
                     let stress_momentum = stress_force * uniforms.simulationTimestep;
                     
-                    let momentum = cellWeight * (particleCurrentMomentum) + stress_momentum;
+                    let momentum = cell_weight * (particle_current_momentum) + stress_momentum;
 
                     atomicAdd(&grid_momentum_x[cell_index], i32(momentum.x * uniforms.fixedPointScale));
                     atomicAdd(&grid_momentum_y[cell_index], i32(momentum.y * uniforms.fixedPointScale));
                     atomicAdd(&grid_momentum_z[cell_index], i32(momentum.z * uniforms.fixedPointScale));
-                    atomicAdd(&grid_mass[cell_index], i32(cellWeight * particle.mass * uniforms.fixedPointScale));
+                    atomicAdd(&grid_mass[cell_index], i32(cell_weight * particle.mass * uniforms.fixedPointScale));
                 }
             }
         }
     }
 
     else {
-        let particle_cell_pos = vec3f(startCellNumber) + cellFracPos - 0.5;
+        let particle_cell_pos = vec3f(start_cell_number) + cell_frac_pos - 0.5;
 
         for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
             for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
                 for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
-                    let cell_number = startCellNumber + vec3i(offsetX, offsetY, offsetZ);
+                    let cell_number = start_cell_number + vec3i(offsetX, offsetY, offsetZ);
                     if !cellNumberInGridRange(cell_number) { continue; }
 
                     let cell_index = calculateCellIndexFromCellNumber(cell_number);
                     if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                     
                     // w
-                    let cellWeight = cellWeights[u32(offsetX + 1)].x
-                        * cellWeights[u32(offsetY + 1)].y
-                        * cellWeights[u32(offsetZ + 1)].z;
+                    let cell_weight = cell_weights[u32(offsetX + 1)].x
+                        * cell_weights[u32(offsetY + 1)].y
+                        * cell_weights[u32(offsetZ + 1)].z;
 
 
-                    let weighted_mass = cellWeight * particle.mass;
+                    let weighted_mass = cell_weight * particle.mass;
 
                     let cell_particle_offset = vec3f(cell_number) - particle_cell_pos;
                     let affine_displacement = particle.deformation_displacement * cell_particle_offset;

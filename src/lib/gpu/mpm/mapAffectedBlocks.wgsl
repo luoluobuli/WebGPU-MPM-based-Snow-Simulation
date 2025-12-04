@@ -5,10 +5,10 @@
 
 fn allocateBlock(block_number: vec3i) {
     let hashed_index = hash3(bitcast<vec3u>(block_number));
+    var candidate_hash_map_index = hashed_index % HASH_MAP_SIZE;
     
     for (var i = 0u; i < N_HASH_MAP_CANDIDATE_INDEX_ATTEMPTS; i++) {
         // we'll try to insert something into the hash table at this index
-        let candidate_hash_map_index = (hashed_index + i) % HASH_MAP_SIZE;
         
         // check what's in the hash table here...
         var current_allocated_block_index = atomicLoad(&hash_map_entries[candidate_hash_map_index].block_index);
@@ -42,7 +42,7 @@ fn allocateBlock(block_number: vec3i) {
         
         // if the index is reserved, wait for it to free up (spin loop lol)
         var n_spin_loop_iterations = 0u;
-        while current_allocated_block_index == GRID_HASH_MAP_BLOCK_INDEX_RESERVED && n_spin_loop_iterations < 64 {
+        while current_allocated_block_index == GRID_HASH_MAP_BLOCK_INDEX_RESERVED && n_spin_loop_iterations < 32 {
             current_allocated_block_index = atomicLoad(&hash_map_entries[candidate_hash_map_index].block_index);
             n_spin_loop_iterations++;
         }
@@ -56,6 +56,7 @@ fn allocateBlock(block_number: vec3i) {
         if all(block_number_in_page_table == block_number) { return; }
 
         // there's already another block here, probe another index
+        candidate_hash_map_index = select(candidate_hash_map_index + 1, 0, candidate_hash_map_index + 1 >= HASH_MAP_SIZE);
     }
 }
 

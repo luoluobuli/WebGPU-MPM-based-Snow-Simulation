@@ -153,7 +153,11 @@ export class GpuSnowPipelineRunner {
             allocatorBuffer: mpmManager.nAllocatedBlocksBuffer,
             // nWorkgroupsBuffer: mpmManager.nWorkgroupsBuffer,
             mappedBlockIndexesBuffer: mpmManager.mappedBlockIndexesBuffer,
+            blockParticleCountsBuffer: mpmManager.blockParticleCountsBuffer,
+            blockParticleOffsetsBuffer: mpmManager.blockParticleOffsetsBuffer,
+            sortedParticleIndicesBuffer: mpmManager.sortedParticleIndicesBuffer,
             uniformsManager,
+            mpmManager,
         });
         this.mpmPipelineManager = mpmPipelineManager;
 
@@ -455,7 +459,6 @@ export class GpuSnowPipelineRunner {
                 }
             }
             
-
 
             this.addRenderPass(commandEncoder);
 

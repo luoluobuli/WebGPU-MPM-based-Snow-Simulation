@@ -5,71 +5,74 @@
 @group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<i32>;
 
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
+@group(2) @binding(1) var<storage, read_write> sortedParticleIndices: array<u32>;
 
 @compute
 @workgroup_size(256)
 fn doGridToParticle(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
-    let threadIndex = gid.x;
-    if threadIndex >= arrayLength(&particle_data) { return; }
+    let thread_index = gid.x;
+    if thread_index >= arrayLength(&particle_data) { return; }
 
-    var particle = particle_data[threadIndex];
+    let particle_index = sortedParticleIndices[thread_index];
+    var particle = particle_data[particle_index];
 
-    let cellDims = calculateCellDims();
-    let startCellNumber = calculateCellNumber(particle.pos, cellDims);
-    let cell_center_pos = uniforms.gridMinCoords + cellDims * (vec3f(startCellNumber) + vec3f(0.5));
-    let cellFracPos = calculateFractionalPosFromCellMin(particle.pos, cellDims, startCellNumber);
-    let cellWeights = calculateQuadraticBSplineCellWeights(cellFracPos);
-    let cellWeightsDeriv = calculateQuadraticBSplineCellWeightDerivatives(cellFracPos);
+    let cell_dims = calculateCellDims();
+    let start_cell_number = calculateCellNumber(particle.pos, cell_dims);
+    let cell_center_pos = uniforms.gridMinCoords + cell_dims * (vec3f(start_cell_number) + vec3f(0.5));
+    let cell_frac_pos = calculateFractionalPosFromCellMin(particle.pos, cell_dims, start_cell_number);
+    let cell_weights = calculateQuadraticBSplineCellWeights(cell_frac_pos);
 
     if uniforms.use_pbmpm == 0 {
+        let cell_weights_deriv = calculateQuadraticBSplineCellWeightDerivatives(cell_frac_pos);
+
         // enumerate the 3x3 neighborhood of cells around the cell that contains the particle
-        var newParticleVelocity = vec3f(0); 
-        var totalVelocityGradient = mat3x3f();
+        var new_particle_velocity = vec3f(0); 
+        var total_velocity_gradient = mat3x3f();
         for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
             for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
                 for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
-                    let cell_number = startCellNumber + vec3i(offsetX, offsetY, offsetZ);
+                    let cell_number = start_cell_number + vec3i(offsetX, offsetY, offsetZ);
                     if !cellNumberInGridRange(cell_number) { continue; }
 
                     let cell_index = calculateCellIndexFromCellNumber(cell_number);
                     if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                     
-                    let cellMass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
-                    if cellMass <= 0 { continue; }
+                    let cell_mass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
+                    if cell_mass <= 0 { continue; }
 
-                    let cellMomentumX = f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale;
-                    let cellMomentumY = f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale;
-                    let cellMomentumZ = f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale;
-                    let cellVelocity = vec3f(cellMomentumX, cellMomentumY, cellMomentumZ) / cellMass;
+                    let cell_momentum_x = f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale;
+                    let cell_momentum_y = f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale;
+                    let cell_momentum_z = f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale;
+                    let cell_velocity = vec3f(cell_momentum_x, cell_momentum_y, cell_momentum_z) / cell_mass;
 
                     
-                    let cellWeight = cellWeights[u32(offsetX + 1)].x
-                        * cellWeights[u32(offsetY + 1)].y
-                        * cellWeights[u32(offsetZ + 1)].z;
+                    let cell_weight = cell_weights[u32(offsetX + 1)].x
+                        * cell_weights[u32(offsetY + 1)].y
+                        * cell_weights[u32(offsetZ + 1)].z;
                         
-                    newParticleVelocity += cellWeight * cellVelocity;
+                    new_particle_velocity += cell_weight * cell_velocity;
 
-                    let cellWeightGradient = vec3f(
-                        cellWeightsDeriv[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
-                        cellWeights[u32(offsetX + 1)].x * cellWeightsDeriv[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
-                        cellWeights[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeightsDeriv[u32(offsetZ + 1)].z,
+                    let cell_weight_gradient = vec3f(
+                        cell_weights_deriv[u32(offsetX + 1)].x * cell_weights[u32(offsetY + 1)].y * cell_weights[u32(offsetZ + 1)].z,
+                        cell_weights[u32(offsetX + 1)].x * cell_weights_deriv[u32(offsetY + 1)].y * cell_weights[u32(offsetZ + 1)].z,
+                        cell_weights[u32(offsetX + 1)].x * cell_weights[u32(offsetY + 1)].y * cell_weights_deriv[u32(offsetZ + 1)].z,
                     );
 
-                    totalVelocityGradient += mat3x3f(
-                        cellWeightGradient.x * cellVelocity,
-                        cellWeightGradient.y * cellVelocity,
-                        cellWeightGradient.z * cellVelocity,
+                    total_velocity_gradient += mat3x3f(
+                        cell_weight_gradient.x * cell_velocity,
+                        cell_weight_gradient.y * cell_velocity,
+                        cell_weight_gradient.z * cell_velocity,
                     );
                 }
             }
         }
 
-        particle.vel = newParticleVelocity;
-        particle.pos += newParticleVelocity * uniforms.simulationTimestep;
-        particle.deformationElastic = (mat3x3Identity() + totalVelocityGradient * uniforms.simulationTimestep) * particle.deformationElastic;
-        particle.pos_displacement = newParticleVelocity * uniforms.simulationTimestep;
+        particle.vel = new_particle_velocity;
+        particle.pos += new_particle_velocity * uniforms.simulationTimestep;
+        particle.deformationElastic = (IDENTITY_MAT3 + total_velocity_gradient * uniforms.simulationTimestep) * particle.deformationElastic;
+        particle.pos_displacement = new_particle_velocity * uniforms.simulationTimestep;
 
         applyPlasticity(&particle);
         
@@ -102,58 +105,56 @@ fn doGridToParticle(
         }
 
 
-        particle_data[threadIndex] = particle;
+        particle_data[particle_index] = particle;
     }
 
     else {
+        let particle_cell_pos = vec3f(start_cell_number) + cell_frac_pos - 0.5;
+
         // enumerate the 3x3 neighborhood of cells around the cell that contains the particle
-        var newParticleVelocity = vec3f(0); 
-        var totalVelocityGradient = mat3x3f();
+        var new_particle_velocity = vec3f(0); 
+        var B = mat3x3f(
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+        );
+
         for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
             for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
                 for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
-                    let cell_number = startCellNumber + vec3i(offsetX, offsetY, offsetZ);
+                    let cell_number = start_cell_number + vec3i(offsetX, offsetY, offsetZ);
                     if !cellNumberInGridRange(cell_number) { continue; }
 
                     let cell_index = calculateCellIndexFromCellNumber(cell_number);
                     if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                     
-                    let cellMass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
-                    if cellMass <= 0 { continue; }
+                    let cell_mass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
+                    if cell_mass <= 0 { continue; }
 
-                    let cellMomentumX = f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale;
-                    let cellMomentumY = f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale;
-                    let cellMomentumZ = f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale;
-                    let cellVelocity = vec3f(cellMomentumX, cellMomentumY, cellMomentumZ) / cellMass;
+                    let cell_momentum_x = f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale;
+                    let cell_momentum_y = f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale;
+                    let cell_momentum_z = f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale;
+                    let cell_velocity = vec3f(cell_momentum_x, cell_momentum_y, cell_momentum_z) / cell_mass;
 
                     
-                    let cellWeight = cellWeights[u32(offsetX + 1)].x
-                        * cellWeights[u32(offsetY + 1)].y
-                        * cellWeights[u32(offsetZ + 1)].z;
+                    let cell_weight = cell_weights[u32(offsetX + 1)].x
+                        * cell_weights[u32(offsetY + 1)].y
+                        * cell_weights[u32(offsetZ + 1)].z;
                         
-                    newParticleVelocity += cellWeight * cellVelocity;
+                    new_particle_velocity += cell_weight * cell_velocity;
 
-                    let cellWeightGradient = vec3f(
-                        cellWeightsDeriv[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
-                        cellWeights[u32(offsetX + 1)].x * cellWeightsDeriv[u32(offsetY + 1)].y * cellWeights[u32(offsetZ + 1)].z,
-                        cellWeights[u32(offsetX + 1)].x * cellWeights[u32(offsetY + 1)].y * cellWeightsDeriv[u32(offsetZ + 1)].z,
-                    );
-
-                    totalVelocityGradient += mat3x3f(
-                        cellWeightGradient.x * cellVelocity,
-                        cellWeightGradient.y * cellVelocity,
-                        cellWeightGradient.z * cellVelocity,
-                    );
+                    let dist = vec3f(cell_number) - particle_cell_pos;
+                    B += outerProduct(cell_weight * cell_velocity, dist);
                 }
             }
         }
 
-        particle.pos_displacement = newParticleVelocity * uniforms.simulationTimestep;
-        particle.deformation_displacement = totalVelocityGradient * uniforms.simulationTimestep;
+        particle.pos_displacement = new_particle_velocity * uniforms.simulationTimestep;
+        particle.deformation_displacement = B * uniforms.simulationTimestep * 4.0;
 
         // temp
-        particle.vel = newParticleVelocity;
+        particle.vel = new_particle_velocity;
 
-        particle_data[threadIndex] = particle;
+        particle_data[particle_index] = particle;
     }
 }

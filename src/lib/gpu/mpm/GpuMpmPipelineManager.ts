@@ -8,7 +8,12 @@ import clearHashMapSrc from "./clearHashMap.wgsl?raw";
 import clearMappedBlocksSrc from "./clearMappedBlocks.wgsl?raw";
 import solveParticleConstraintsSrc from "./solveParticleConstraints.wgsl?raw";
 import integrateParticlesSrc from "./integrateParticles.wgsl?raw";
+import countParticlesPerBlockSrc from "./countParticlesPerBlock.wgsl?raw";
+import computeBlockOffsetsSrc from "./computeBlockOffsets.wgsl?raw";
+import binParticlesSrc from "./binParticles.wgsl?raw";
+import clearBlockParticleCountsSrc from "./clearBlockParticleCounts.wgsl?raw";
 import { attachPrelude } from "../shaderPrelude";
+import type { GpuMpmBufferManager } from "./GpuMpmBufferManager";
 
 export class GpuMpmPipelineManager {
     readonly particleBindGroupLayout: GPUBindGroupLayout;
@@ -24,8 +29,13 @@ export class GpuMpmPipelineManager {
     readonly gridComputePipeline: GPUComputePipeline;
     readonly g2pComputePipeline: GPUComputePipeline;
     readonly integrateParticlesPipeline: GPUComputePipeline;
+    readonly countParticlesPerBlockPipeline: GPUComputePipeline;
+    readonly computeBlockOffsetsPipeline: GPUComputePipeline;
+    readonly binParticlesPipeline: GPUComputePipeline;
+    readonly clearBlockParticleCountsPipeline: GPUComputePipeline;
 
     private readonly uniformsManager: GpuUniformsBufferManager;
+    private readonly mpmManager: GpuMpmBufferManager;
 
     constructor({
         device,
@@ -38,7 +48,11 @@ export class GpuMpmPipelineManager {
         allocatorBuffer,
         // nWorkgroupsBuffer,
         mappedBlockIndexesBuffer,
+        blockParticleCountsBuffer,
+        blockParticleOffsetsBuffer,
+        sortedParticleIndicesBuffer,
         uniformsManager,
+        mpmManager,
     }: {
         device: GPUDevice,
         particleDataBuffer: GPUBuffer,
@@ -50,7 +64,11 @@ export class GpuMpmPipelineManager {
         allocatorBuffer: GPUBuffer,
         // nWorkgroupsBuffer: GPUBuffer,
         mappedBlockIndexesBuffer: GPUBuffer,
+        blockParticleCountsBuffer: GPUBuffer,
+        blockParticleOffsetsBuffer: GPUBuffer,
+        sortedParticleIndicesBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
+        mpmManager: GpuMpmBufferManager,
     }) {
         const sparseGridBindGroupLayout = device.createBindGroupLayout({
             label: "MPM sparse grid bind group layout",
@@ -62,6 +80,8 @@ export class GpuMpmPipelineManager {
                 { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
             ],
         });
 
@@ -76,6 +96,8 @@ export class GpuMpmPipelineManager {
                 { binding: 4, resource: { buffer: gridMomentumXBuffer } },
                 { binding: 5, resource: { buffer: gridMomentumYBuffer } },
                 { binding: 6, resource: { buffer: gridMomentumZBuffer } },
+                { binding: 7, resource: { buffer: blockParticleCountsBuffer } },
+                { binding: 8, resource: { buffer: blockParticleOffsetsBuffer } },
             ],
         });
 
@@ -86,6 +108,13 @@ export class GpuMpmPipelineManager {
             entries: [
                 {
                     binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage",
+                    },
+                },
+                {
+                    binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
                         type: "storage",
@@ -102,6 +131,12 @@ export class GpuMpmPipelineManager {
                     binding: 0,
                     resource: {
                         buffer: particleDataBuffer,
+                    },
+                },
+                {
+                    binding: 1,
+                    resource: {
+                        buffer: sortedParticleIndicesBuffer,
                     },
                 },
             ],
@@ -216,11 +251,60 @@ export class GpuMpmPipelineManager {
             },
         });
 
+        this.countParticlesPerBlockPipeline = device.createComputePipeline({
+            label: "count particles per block pipeline",
+            layout: particlePipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "count particles per block module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${countParticlesPerBlockSrc}`),
+                }),
+                entryPoint: "countParticlesPerBlock",
+            },
+        });
+
+        this.computeBlockOffsetsPipeline = device.createComputePipeline({
+            label: "compute block offsets pipeline",
+            layout: sparseGridPipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "compute block offsets module",
+                    code: computeBlockOffsetsSrc,
+                }),
+                entryPoint: "computeBlockOffsets",
+            },
+        });
+
+        this.binParticlesPipeline = device.createComputePipeline({
+            label: "bin particles pipeline",
+            layout: particlePipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "bin particles module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${binParticlesSrc}`),
+                }),
+                entryPoint: "binParticles",
+            },
+        });
+
+        this.clearBlockParticleCountsPipeline = device.createComputePipeline({
+            label: "clear block particle counts pipeline",
+            layout: sparseGridPipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "clear block particle counts module",
+                    code: clearBlockParticleCountsSrc,
+                }),
+                entryPoint: "clearBlockParticleCounts",
+            },
+        });
+
         this.particleBindGroupLayout = particleBindGroupLayout;
         this.particleDataBindGroup = particleBindGroup;
         this.sparseGridBindGroupLayout = sparseGridBindGroupLayout;
         this.sparseGridBindGroup = sparseGridBindGroup;
         this.uniformsManager = uniformsManager;
+        this.mpmManager = mpmManager;
     }
 
     addDispatch({
@@ -274,6 +358,33 @@ export class GpuMpmPipelineManager {
         this.addDispatch({
             computePassEncoder,
             pipeline: this.mapAffectedBlocksPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        // sort particles
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.clearBlockParticleCountsPipeline,
+            dispatchX: Math.ceil(this.mpmManager.nMaxBlocksInHashMap / 256),
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.countParticlesPerBlockPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.computeBlockOffsetsPipeline,
+            dispatchX: 1,
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.binParticlesPipeline,
             dispatchX: Math.ceil(nParticles / 256),
             useParticles: true,
         });
@@ -344,6 +455,33 @@ export class GpuMpmPipelineManager {
         this.addDispatch({
             computePassEncoder,
             pipeline: this.mapAffectedBlocksPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        // Sort particles
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.clearBlockParticleCountsPipeline,
+            dispatchX: Math.ceil(100000 / 256), // nMaxBlocksInHashMap
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.countParticlesPerBlockPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.computeBlockOffsetsPipeline,
+            dispatchX: 1,
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.binParticlesPipeline,
             dispatchX: Math.ceil(nParticles / 256),
             useParticles: true,
         });

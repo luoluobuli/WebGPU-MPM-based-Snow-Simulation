@@ -1,16 +1,14 @@
-fn mat3x3Identity() -> mat3x3f {
-    return mat3x3f(
-        1, 0, 0,
-        0, 1, 0,
-        0, 0, 1,
-    );
-}
+const IDENTITY_MAT3 = mat3x3f(
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1,
+);
 
 
 fn mat3x3Inverse(matrix: mat3x3f) -> mat3x3f {
     let det = determinant(matrix);
     if det == 0 {
-        return mat3x3Identity();
+        return IDENTITY_MAT3;
     }
     
     return mat3x3f(
@@ -35,7 +33,7 @@ fn mat3x3Inverse(matrix: mat3x3f) -> mat3x3f {
 fn calculatePolarDecompositionRotation(deformation: mat3x3f) -> mat3x3f {
     var rotationGuess = deformation; // R_n
     
-    const N_ITERATIONS = 8;
+    const N_ITERATIONS = 4;
     for (var i = 0u; i < N_ITERATIONS; i++) {
         // idea: the closer R_n gets to the true rotation R, the closer the inverse transpose should be to R as well
         let rotationGuessInverseTranspose = transpose(mat3x3Inverse(rotationGuess));
@@ -44,4 +42,12 @@ fn calculatePolarDecompositionRotation(deformation: mat3x3f) -> mat3x3f {
     }
     
     return rotationGuess;
+}
+
+fn outerProduct(u: vec3f, v: vec3f) -> mat3x3f {
+    return mat3x3f(
+        u * v.x,
+        u * v.y,
+        u * v.z,
+    );
 }
