@@ -70,12 +70,11 @@ fn scatterParticles(
 
     (*particle).pos = candidatePos;
     (*particle)._hom = 1;
-    (*particle).vel = vec3f(5, 0, 5);
+    (*particle).vel = vec3f();
     (*particle).mass = mass1 * mass1;
-    // (*particle).deformationElastic = IDENTITY_MAT3;
     (*particle).deformationElastic = IDENTITY_MAT3;
     (*particle).deformationPlastic = IDENTITY_MAT3;
 
-    (*particle).pos_displacement = vec3f(5, 0, 5) * uniforms.simulationTimestep;
+    (*particle).pos_displacement = vec3f();
     (*particle).deformation_displacement = mat3x3f(); // Zero matrix - represents change in deformation
 }
