@@ -3,19 +3,21 @@
 @group(1) @binding(2) var<storage, read_write> mapped_block_indexes: array<u32>;
 
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
+@group(2) @binding(1) var<storage, read_write> sortedParticleIndices: array<u32>;
 
 @compute
 @workgroup_size(256)
 fn solveParticleConstraints(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
-    let particle_index = gid.x;
-    if particle_index > arrayLength(&particle_data) { return; }
+    let thread_index = gid.x;
+    if thread_index >= arrayLength(&particle_data) { return; }
 
+    let particle_index = sortedParticleIndices[thread_index];
     var particle = particle_data[particle_index];
 
     // this is the inverse of the formula used to integrate deformation
-    let trial_deformation_elastic = (mat3x3Identity() + particle.deformation_displacement) * particle.deformationElastic; 
+    let trial_deformation_elastic = (IDENTITY_MAT3 + particle.deformation_displacement) * particle.deformationElastic; 
     let trial_rotation = calculatePolarDecompositionRotation(trial_deformation_elastic);
 
     let target_volume = determinant(trial_deformation_elastic);
@@ -26,7 +28,7 @@ fn solveParticleConstraints(
     let blend_factor = 0.95;
     let target_blended = blend_factor * target_scaled + (1 - blend_factor) * trial_rotation;
 
-    let corrected_deformation_displacement = target_blended * mat3x3Inverse(particle.deformationElastic) - mat3x3Identity();
+    let corrected_deformation_displacement = target_blended * mat3x3Inverse(particle.deformationElastic) - IDENTITY_MAT3;
 
 
     let volumeScaleFac = determinant(particle.deformationPlastic); // J

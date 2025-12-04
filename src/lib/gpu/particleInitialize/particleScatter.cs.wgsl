@@ -56,10 +56,10 @@ fn scatterParticles(
     }
 
     let noiseScale = 0.1;
-    let noiseFreq = 16.0;
-    let dx = fbm(candidatePos * noiseFreq);
-    let dy = fbm(candidatePos * noiseFreq + vec3f(100, 200, 300));
-    let dz = fbm(candidatePos * noiseFreq + vec3f(-300, -200, -100));
+    let NOISE_FREQ = 4.;
+    let dx = fbm(candidatePos * NOISE_FREQ);
+    let dy = fbm(candidatePos * NOISE_FREQ + vec3f(100, 200, 300));
+    let dz = fbm(candidatePos * NOISE_FREQ + vec3f(-300, -200, -100));
     candidatePos += (vec3f(dx, dy, dz) - 0.5) * noiseScale;
 
 
@@ -72,9 +72,9 @@ fn scatterParticles(
     (*particle)._hom = 1;
     (*particle).vel = vec3f(5, 0, 5);
     (*particle).mass = mass1 * mass1;
-    // (*particle).deformationElastic = mat3x3Identity();
-    (*particle).deformationElastic = mat3x3Identity();
-    (*particle).deformationPlastic = mat3x3Identity();
+    // (*particle).deformationElastic = IDENTITY_MAT3;
+    (*particle).deformationElastic = IDENTITY_MAT3;
+    (*particle).deformationPlastic = IDENTITY_MAT3;
 
     (*particle).pos_displacement = vec3f(5, 0, 5) * uniforms.simulationTimestep;
     (*particle).deformation_displacement = mat3x3f(); // Zero matrix - represents change in deformation
