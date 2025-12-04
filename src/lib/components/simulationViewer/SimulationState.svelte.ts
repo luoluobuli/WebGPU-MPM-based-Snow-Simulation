@@ -3,7 +3,7 @@ import { onDestroy, onMount } from "svelte";
 import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner.svelte";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
-import modelUrl from "$lib/assets/models/monkey.glb?url";
+import modelUrl from "$lib/assets/models/horse_statue_01_1k.glb?url";
 import colliderUrl from "$lib/assets/models/test2.glb?url";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";

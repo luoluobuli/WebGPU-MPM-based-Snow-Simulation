@@ -6,7 +6,7 @@
 
 const EXTINCTION_COEFFICIENT = 724.;
 const SCATTERING_ALBEDO = 0.95;
-const STEP_SIZE = 0.1;
+const STEP_SIZE = 0.0125;
 const N_MAX_STEPS = 256u;
 const SHADOW_STEP_SIZE = STEP_SIZE * 0.5;
 const N_MAX_SHADOW_STEPS = 64u;
@@ -49,7 +49,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
     }
     
     let cellVolume = cellSize.x * cellSize.y * cellSize.z;
-    return mass / cellVolume * 0.00001;
+    return mass / cellVolume * 0.000001;
 }
 
 fn henyeyGreenstein(ray_light_dot: f32, asymmetry: f32) -> f32 {
