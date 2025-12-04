@@ -23,6 +23,8 @@ struct Uniforms {
     // 256
     colliderTransformMat: mat4x4f, // 320
     colliderVelocity: vec3f, // 336
+    // 340
+    cameraPos: vec3f, // 352
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;

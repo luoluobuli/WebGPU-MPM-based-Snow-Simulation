@@ -35,7 +35,7 @@ export class SimulationState {
     moveDown     = $state(false); // E
 
     simulationMethodType = $state(GpuSimulationMethodType.Pbmpm);
-    renderMethodType = $state(GpuRenderMethodType.Volumetric);
+    renderMethodType = $state(GpuRenderMethodType.Ssfr);
 
     readonly orbit = new CameraOrbit();
     readonly camera = new Camera({
