@@ -48,6 +48,17 @@ let {
         <label for="render-method-type_volumetric">Volumetric</label>
     </div>
 
+    <div>
+        <input
+            type="radio"
+            name="render-method-type"
+            bind:group={simulationState.renderMethodType}
+            value={GpuRenderMethodType.Ssfr}
+            id="render-method-type_ssfr"
+        />
+        <label for="render-method-type_ssfr">SSFR</label>
+    </div>
+
     <Separator />
 
     <h3>Elapsed time</h3>

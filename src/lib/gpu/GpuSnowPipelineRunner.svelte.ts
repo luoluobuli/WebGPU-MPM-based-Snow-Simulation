@@ -13,6 +13,7 @@ import { GpuRasterizeRenderPipelineManager } from "./collider/GpuRasterizeRender
 import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRenderPipelineMager";
 import { GpuVolumetricBufferManager } from "./volumetric/GpuVolumetricBufferManager";
 import { GpuVolumetricRenderPipelineManager } from "./volumetric/GpuVolumetricRenderPipelineManager";
+import { GpuSsfrRenderPipelineManager } from "./ssfr/GpuSsfrRenderPipelineManager";
 import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
 import { GpuSimulationMethodType } from "./GpuSimulationMethod";
 import { GpuEnvironmentRenderPipelineManager } from "./environmentMap/GpuEnvironmentRenderPipelineManager";
@@ -38,6 +39,7 @@ export class GpuSnowPipelineRunner {
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
     private readonly volumetricBufferManager: GpuVolumetricBufferManager;
     private readonly volumetricRenderPipelineManager: GpuVolumetricRenderPipelineManager;
+    private readonly ssfrRenderPipelineManager: GpuSsfrRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
     private readonly environmentRenderPipelineManager: GpuEnvironmentRenderPipelineManager;
 
@@ -225,6 +227,15 @@ export class GpuSnowPipelineRunner {
         });
         this.volumetricRenderPipelineManager = volumetricRenderPipelineManager;
 
+        const ssfrRenderPipelineManager = new GpuSsfrRenderPipelineManager({
+            device,
+            format,
+            depthFormat: "depth24plus",
+            uniformsManager,
+            mpmManager,
+        });
+        this.ssfrRenderPipelineManager = ssfrRenderPipelineManager;
+
 
         this.getSimulationMethodType = getSimulationMethodType;
         this.getRenderMethodType = getRenderMethodType;
@@ -239,6 +250,10 @@ export class GpuSnowPipelineRunner {
         $effect.root(() => {
             $effect(() => this.uniformsManager.writeViewProjMat(this.camera.viewProjMat));
             $effect(() => this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat));
+            $effect(() => {
+                const viewInv = this.camera.viewInvMat;
+                this.uniformsManager.writeCameraPos([viewInv[12], viewInv[13], viewInv[14]]);
+            });
             $effect(() => this.uniformsManager.writeSimulationTimestepS(this.selectedSimulationTimestepS));
             return () => {};
         });
@@ -506,6 +521,9 @@ export class GpuSnowPipelineRunner {
             
             case GpuRenderMethodType.Volumetric:
                 return this.volumetricRenderPipelineManager;
+
+            case GpuRenderMethodType.Ssfr:
+                return this.ssfrRenderPipelineManager;
         }
     }
 
