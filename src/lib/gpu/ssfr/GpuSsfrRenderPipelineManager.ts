@@ -95,19 +95,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                 targets: [
                     {
                         format,
-                        writeMask: 0, // We only care about depth for now? Or do we want to output color?
-                        // The task is "Depth Impostor". Usually this writes to depth buffer.
-                        // But we are in a render pass that has a color attachment.
-                        // If we don't write color, we should set writeMask to 0.
-                        // However, for debugging, maybe we want to output something?
-                        // Let's output depth as color or just white?
-                        // The fragment shader returns `@builtin(frag_depth)`. It doesn't return color.
-                        // So we MUST set writeMask to 0 or change fragment shader to return color.
-                        // If we set writeMask to 0, we don't need to return color.
-                        // But the pipeline expects a target if the render pass has one.
-                        // The render pass in GpuSnowPipelineRunner has a color attachment.
-                        // So we must provide a target state.
-                        // writeMask: 0 is correct if we don't want to write color.
+                        // writeMask: 0, // Removed to allow color output for debugging
                     },
                 ],
             },

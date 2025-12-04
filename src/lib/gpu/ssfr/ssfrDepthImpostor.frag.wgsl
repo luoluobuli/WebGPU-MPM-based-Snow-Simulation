@@ -1,13 +1,18 @@
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
-    @location(1) center_view: vec3f, // Unused
+    @location(1) center_view: vec3f,
     @location(2) radius: f32,
     @location(3) center_world: vec3f,
 }
 
+struct FragOutput {
+    @builtin(frag_depth) depth: f32,
+    @location(0) color: vec4f,
+}
+
 @fragment
-fn frag(in: VertexOutput) -> @builtin(frag_depth) f32 {
+fn frag(in: VertexOutput) -> FragOutput {
     let r2 = dot(in.uv, in.uv);
     if (r2 > 1) {
         discard;
@@ -26,5 +31,15 @@ fn frag(in: VertexOutput) -> @builtin(frag_depth) f32 {
     let clip_pos = uniforms.viewProjMat * vec4f(surface_pos_world, 1);
     let depth = clip_pos.z / clip_pos.w;
     
-    return depth;
+    var out: FragOutput;
+
+    out.depth = depth;
+    
+    let z_near = 0.01;
+    let z_far = 100.;
+    let linear_depth = (2 * z_near * z_far) / (z_far + z_near - (2 * depth - 1) * (z_far - z_near));
+    
+    out.color = vec4f(vec3f(linear_depth / 10), 1);
+    
+    return out;
 }
