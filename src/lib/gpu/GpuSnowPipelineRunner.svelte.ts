@@ -435,6 +435,10 @@ export class GpuSnowPipelineRunner {
             this.ssfrRenderPipelineManager.addImpostorPass(ssfrPassEncoder);
             ssfrPassEncoder.end();
 
+            // SSS Thickness pass - accumulates particle thickness with additive blending
+            this.ssfrRenderPipelineManager.addThicknessPass(commandEncoder);
+
+            // Compute passes: NRF, Normal Reconstruction, Shading, SSS Blur, SSS Combine
             this.ssfrRenderPipelineManager.addComputePasses(commandEncoder);
 
             // Composite the shaded result onto the screen

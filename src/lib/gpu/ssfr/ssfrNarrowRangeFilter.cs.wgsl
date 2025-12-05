@@ -2,9 +2,9 @@
 @group(0) @binding(2) var smoothedDepthTexture: texture_storage_2d<rg32float, write>;
 @group(0) @binding(3) var maskTexture: texture_2d<f32>;
 
-const FILTER_RADIUS: i32 = 20;
-const STDDEV_SPATIAL: f32 = 5.;
-const DEPTH_THRESHOLD: f32 = 0.06;
+const FILTER_RADIUS = 16;
+const STDDEV_SPATIAL = 12.;
+const DEPTH_DISCONTINUITY_THRESHOLD = 0.0005;
 
 fn gaussian(x: f32, stddev: f32) -> f32 {
     return exp(-x * x / (2 * stddev * stddev));
@@ -36,9 +36,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
         for (var x = -FILTER_RADIUS; x <= FILTER_RADIUS; x++) {
             let neighbor_coords = coords + vec2i(x, y);
 
-            if any(neighbor_coords < vec2i(0)) || any(neighbor_coords >= vec2i(screen_size)) {
-                continue;
-            }
+            if any(neighbor_coords < vec2i(0)) || any(neighbor_coords >= vec2i(screen_size)) { continue; }
 
             let neighbor_mask = textureLoad(maskTexture, neighbor_coords, 0);
             let neighbor_depth = neighbor_mask.r;
@@ -47,7 +45,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
             // skip bg
             if neighbor_depth >= 1 { continue; }
 
-            if abs(center_depth - neighbor_depth) > DEPTH_THRESHOLD { continue; }
+            if abs(center_depth - neighbor_depth) > DEPTH_DISCONTINUITY_THRESHOLD { continue; }
 
             let dist = length(vec2f(f32(x), f32(y)));
             let spatial_weight = gaussian(dist, STDDEV_SPATIAL);
