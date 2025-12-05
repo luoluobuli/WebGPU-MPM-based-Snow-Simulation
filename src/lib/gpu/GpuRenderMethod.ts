@@ -2,7 +2,7 @@ export enum GpuRenderMethodType {
     Points,
     Volumetric,
     Ssfr,
-
+    MarchingCubes,
 }
 
 export interface GpuRenderMethod {

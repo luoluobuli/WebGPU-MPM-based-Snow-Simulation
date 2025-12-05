@@ -59,6 +59,17 @@ let {
         <label for="render-method-type_ssfr">SSFR</label>
     </div>
 
+    <div>
+        <input
+            type="radio"
+            name="render-method-type"
+            bind:group={simulationState.renderMethodType}
+            value={GpuRenderMethodType.MarchingCubes}
+            id="render-method-type_marching-cubes"
+        />
+        <label for="render-method-type_marching-cubes">Marching cubes</label>
+    </div>
+
     <Separator />
 
     <h3>Elapsed time</h3>
