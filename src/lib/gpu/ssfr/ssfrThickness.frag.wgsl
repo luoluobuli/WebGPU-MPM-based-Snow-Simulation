@@ -3,7 +3,7 @@ struct VertexOutput {
     @location(0) compression_volume_fac: f32,
 }
 
-const THICKNESS_CONTRIBUTION = 0.01;
+const THICKNESS_CONTRIBUTION = 0.001;
 
 @fragment
 fn frag(in: VertexOutput) -> @location(0) vec4f {
