@@ -2,9 +2,9 @@
 @group(0) @binding(2) var smoothedDepthTexture: texture_storage_2d<rg32float, write>;
 @group(0) @binding(3) var maskTexture: texture_2d<f32>;
 
-const FILTER_RADIUS = 16;
-const STDDEV_SPATIAL = 12.;
-const DEPTH_DISCONTINUITY_THRESHOLD = 0.0005;
+const FILTER_RADIUS = 24;
+const STDDEV_SPATIAL = 8.;
+const DEPTH_DISCONTINUITY_THRESHOLD = 0.003;
 
 fn gaussian(x: f32, stddev: f32) -> f32 {
     return exp(-x * x / (2 * stddev * stddev));

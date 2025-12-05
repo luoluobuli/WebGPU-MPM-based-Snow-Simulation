@@ -3,9 +3,9 @@
 @group(0) @binding(3) var smoothedDepthTexture: texture_2d<f32>;
 @group(0) @binding(4) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 
-const MAX_BLUR_RADIUS = 50;
-const BASE_BLUR_WIDTH = 15.;
-const DEPTH_DISCONTINUITY_THRESHOLD = 0.0005;
+const MAX_BLUR_RADIUS = 12;
+const BASE_BLUR_WIDTH = 4.;
+const DEPTH_DISCONTINUITY_THRESHOLD = 0.003;
 
 const REFLECTED_COLOR = vec3f(0.4, 0.9, 1);
 
