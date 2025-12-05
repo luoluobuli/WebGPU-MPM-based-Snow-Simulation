@@ -102,7 +102,7 @@ export class GpuSnowPipelineRunner {
         const depthTexture = device.createTexture({
             size: [camera.screenDims.width(), camera.screenDims.height()],
             format: "depth24plus",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.depthTextureView = depthTexture.createView();
 
@@ -263,11 +263,12 @@ export class GpuSnowPipelineRunner {
         const depthTexture = this.device.createTexture({
             size: [width, height],
             format: "depth24plus",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.depthTextureView = depthTexture.createView();
 
         this.volumetricRenderPipelineManager.resize(this.device, width, height);
+        this.ssfrRenderPipelineManager.resize(width, height, this.depthTextureView);
     }
 
     scatterParticlesInMeshVolume() {
@@ -405,9 +406,59 @@ export class GpuSnowPipelineRunner {
         this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
         this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
         this.environmentRenderPipelineManager.addDraw(renderPassEncoder);
-        this.selectRenderPipelineManager().addDraw(renderPassEncoder);
+        
+        if (this.getRenderMethodType() !== GpuRenderMethodType.Ssfr) {
+            this.selectRenderPipelineManager().addDraw(renderPassEncoder);
+        }
 
         renderPassEncoder.end();
+
+        // SSFR post-processing: apply narrow-range filter to depth buffer
+        if (this.getRenderMethodType() === GpuRenderMethodType.Ssfr) {
+            // SSFR Impostor Pass - writes to depth and mask
+            const ssfrPassEncoder = commandEncoder.beginRenderPass({
+                label: "ssfr impostor render pass",
+                colorAttachments: [
+                    {
+                        view: this.ssfrRenderPipelineManager.maskTextureView,
+                        clearValue: { r: 1.0, g: 0, b: 0, a: 0 },
+                        loadOp: "clear",
+                        storeOp: "store",
+                    }
+                ],
+                depthStencilAttachment: {
+                    view: this.depthTextureView,
+                    depthLoadOp: "load",
+                    depthStoreOp: "store",
+                }
+            });
+            this.ssfrRenderPipelineManager.addImpostorPass(ssfrPassEncoder);
+            ssfrPassEncoder.end();
+
+            this.ssfrRenderPipelineManager.addComputePasses(commandEncoder);
+
+            // Composite the shaded result onto the screen
+            const compositePassEncoder = commandEncoder.beginRenderPass({
+                label: "ssfr composite render pass",
+                colorAttachments: [
+                    {
+                        loadOp: "load",
+                        storeOp: "store",
+                        view: this.context.getCurrentTexture().createView(),
+                    },
+                ],
+                depthStencilAttachment: {
+                    view: this.depthTextureView,
+                    depthLoadOp: 'load',
+                    depthStoreOp: 'store',
+                },
+            });
+
+            this.ssfrRenderPipelineManager.addCompositePass(compositePassEncoder);
+            compositePassEncoder.end();
+
+            this.prerenderPassRan = true;
+        }
     }
 
     loop({
