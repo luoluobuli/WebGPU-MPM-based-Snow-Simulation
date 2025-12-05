@@ -2,12 +2,7 @@
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-    @location(1) center_view: vec3f,
-    @location(2) sphere_radius: f32,
-    @location(3) center_world: vec3f,
-    @location(4) quad_scale: f32,
-    @location(5) compression_volume_fac: f32,
+    @location(0) compression_volume_fac: f32,
 }
 
 const BASE_PARTICLE_RADIUS = 0.05;
@@ -28,28 +23,18 @@ fn vert(
 ) -> VertexOutput {
     var out: VertexOutput;
     let particle = particle_data[instance_index];
-    let pos_world = vec4f(particle.pos, 1);
-
-    let radius = BASE_PARTICLE_RADIUS * particle.mass;
     
-    let sphere_radius = radius;
+    let radius = BASE_PARTICLE_RADIUS * particle.mass;
     let quad_radius = radius * OVERLAP_FACTOR;
-    out.sphere_radius = sphere_radius;
-    out.quad_scale = OVERLAP_FACTOR;
-    out.center_world = particle.pos;
-
-    let camera_pos = uniforms.cameraPos;
-    let forward = normalize(camera_pos - particle.pos);
+    
+    let forward = normalize(uniforms.cameraPos - particle.pos);
     let right = normalize(cross(vec3f(0, 0, 1), forward));
     let up = normalize(cross(forward, right));
     
     let uv = VERT_POSITIONS[vertex_index];
-    
-    out.uv = uv;
-    
     let vertex_pos_world = particle.pos + (right * uv.x + up * uv.y) * quad_radius;
-    out.position = uniforms.viewProjMat * vec4f(vertex_pos_world, 1);
     
+    out.position = uniforms.viewProjMat * vec4f(vertex_pos_world, 1);
     out.compression_volume_fac = determinant(particle.deformationPlastic);
     
     return out;

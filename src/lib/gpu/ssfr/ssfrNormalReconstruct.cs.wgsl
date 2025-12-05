@@ -1,19 +1,12 @@
-// Normal reconstruction from smoothed depth using finite differences
-// Outputs normal in view space (xyz) and compression J (w) to normalTexture
-
 @group(0) @binding(1) var smoothedDepthTexture: texture_2d<f32>;
 @group(0) @binding(2) var normalTexture: texture_storage_2d<rgba16float, write>;
 
-// Reconstruct world-space position from screen coords and NDC depth
 fn reconstructWorldPos(coords: vec2i, depth: f32, screen_size: vec2f) -> vec3f {
-    // Convert pixel coords to NDC (-1 to 1)
     let uv = (vec2f(coords) + 0.5) / screen_size;
-    let ndc = vec2f(uv.x, 1.0 - uv.y) * 2.0 - 1.0; // Flip Y for screen space
+    let ndc = vec2f(uv.x, 1 - uv.y) * 2 - 1;
     
-    // Reconstruct clip space position
-    let clip_pos = vec4f(ndc, depth, 1.0);
+    let clip_pos = vec4f(ndc, depth, 1);
     
-    // Transform to world space using inverse projection
     let world_pos_hom = uniforms.viewProjInvMat * clip_pos;
     return world_pos_hom.xyz / world_pos_hom.w;
 }
@@ -24,9 +17,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let screen_size = vec2f(textureDimensions(smoothedDepthTexture));
     let coords = vec2i(global_id.xy);
     
-    if any(coords >= vec2i(screen_size)) {
-        return;
-    }
+    if any(coords >= vec2i(screen_size)) { return; }
     
     let center_data = textureLoad(smoothedDepthTexture, coords, 0);
     let center_depth = center_data.r;

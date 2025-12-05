@@ -6,6 +6,10 @@ import ssfrNormalReconstructSrc from "./ssfrNormalReconstruct.cs.wgsl?raw";
 import ssfrShadingSrc from "./ssfrShading.cs.wgsl?raw";
 import ssfrCompositeVertSrc from "./ssfrComposite.vert.wgsl?raw";
 import ssfrCompositeFragSrc from "./ssfrComposite.frag.wgsl?raw";
+import ssfrThicknessVertSrc from "./ssfrThickness.vert.wgsl?raw";
+import ssfrThicknessFragSrc from "./ssfrThickness.frag.wgsl?raw";
+import ssfrSubsurfaceBlurSrc from "./ssfrSubsurfaceBlur.wgsl?raw";
+import ssfrSubsurfaceCombineSrc from "./ssfrSubsurfaceCombine.wgsl?raw";
 import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
 import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
 import { attachPrelude } from "$lib/gpu/shaderPrelude";
@@ -16,7 +20,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
     readonly uniformsManager: GpuUniformsBufferManager;
     readonly mpmManager: GpuMpmBufferManager;
     
-    // Textures
     smoothedDepthTexture: GPUTexture;
     smoothedDepthTextureView: GPUTextureView;
     private normalTexture: GPUTexture;
@@ -26,28 +29,45 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
     maskTexture: GPUTexture;
     maskTextureView: GPUTextureView;
 
+    private thicknessTexture: GPUTexture;
+    private thicknessTextureView: GPUTextureView;
+    private diffuseTexture: GPUTexture;
+    private diffuseTextureView: GPUTextureView;
+    private specularAmbientTexture: GPUTexture;
+    private specularAmbientTextureView: GPUTextureView;
+    private subsurfaceBlurTempTexture: GPUTexture;
+    private subsurfaceBlurTempTextureView: GPUTextureView;
+
     private readonly bindGroup: GPUBindGroup;
     
-    // NRF (Narrow Range Filter) pipeline
     private readonly nrfComputePipeline: GPUComputePipeline;
     private nrfBindGroup: GPUBindGroup | null = null;
     private readonly nrfBindGroupLayout: GPUBindGroupLayout;
     
-    // Normal reconstruction pipeline
     private readonly normalReconstructPipeline: GPUComputePipeline;
     private normalReconstructBindGroup: GPUBindGroup | null = null;
     private readonly normalReconstructBindGroupLayout: GPUBindGroupLayout;
     
-    // Shading pipeline
     private readonly shadingPipeline: GPUComputePipeline;
     private shadingBindGroup: GPUBindGroup | null = null;
     private readonly shadingBindGroupLayout: GPUBindGroupLayout;
     
-    // Composite render pipeline
     private readonly compositePipeline: GPURenderPipeline;
     private compositeBindGroup: GPUBindGroup | null = null;
     private readonly compositeBindGroupLayout: GPUBindGroupLayout;
-    private readonly compositeVertBuffer: GPUBuffer;
+
+    private readonly thicknessPipeline: GPURenderPipeline;
+    private readonly thicknessBindGroup: GPUBindGroup;
+
+    private readonly subsurfaceBlurHorizontalPipeline: GPUComputePipeline;
+    private readonly subsurfaceBlurVerticalPipeline: GPUComputePipeline;
+    private subsurfaceBlurHorizontalBindGroup: GPUBindGroup | null = null;
+    private subsurfaceBlurVerticalBindGroup: GPUBindGroup | null = null;
+    private readonly subsurfaceBlurBindGroupLayout: GPUBindGroupLayout;
+
+    private readonly subsurfaceCombinePipeline: GPUComputePipeline;
+    private subsurfaceCombineBindGroup: GPUBindGroup | null = null;
+    private readonly subsurfaceCombineBindGroupLayout: GPUBindGroupLayout;
     
     private readonly device: GPUDevice;
 
@@ -68,7 +88,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         this.uniformsManager = uniformsManager;
         this.mpmManager = mpmManager;
 
-        // ================== Depth Impostor Render Pipeline ==================
         const bindGroupLayout = device.createBindGroupLayout({
             label: "ssfr render pipeline bind group layout",
             entries: [
@@ -136,7 +155,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                 entryPoint: "frag",
                 targets: [
                     {
-                        format: "rg32float", // Mask texture format (rg32float for depth + compression J)
+                        format: "rg32float",
                         writeMask: GPUColorWrite.ALL,
                     },
                 ],
@@ -155,7 +174,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
 
         this.bindGroup = bindGroup;
 
-        // ================== NRF Compute Pipeline ==================
         const nrfBindGroupLayout = device.createBindGroupLayout({
             label: "ssfr nrf bind group layout",
             entries: [
@@ -216,7 +234,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             },
         });
 
-        // ================== Normal Reconstruction Pipeline ==================
         const normalReconstructBindGroupLayout = device.createBindGroupLayout({
             label: "ssfr normal reconstruct bind group layout",
             entries: [
@@ -262,7 +279,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             },
         });
 
-        // ================== Shading Pipeline ==================
         const shadingBindGroupLayout = device.createBindGroupLayout({
             label: "ssfr shading bind group layout",
             entries: [
@@ -296,6 +312,15 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                         viewDimension: "2d",
                     },
                 },
+                {
+                    binding: 4,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: {
+                        access: "write-only",
+                        format: "rgba8unorm",
+                        viewDimension: "2d",
+                    },
+                },
             ],
         });
         this.shadingBindGroupLayout = shadingBindGroupLayout;
@@ -316,7 +341,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             },
         });
 
-        // ================== Composite Render Pipeline ==================
         const compositeBindGroupLayout = device.createBindGroupLayout({
             label: "ssfr composite bind group layout",
             entries: [
@@ -378,13 +402,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             },
         });
 
-        // Vertex buffer for fullscreen quad (not actually needed, using vertex_index)
-        this.compositeVertBuffer = device.createBuffer({
-            size: 16,
-            usage: GPUBufferUsage.VERTEX,
-        });
-
-        // ================== Initialize Textures (1x1 placeholders) ==================
         this.smoothedDepthTexture = device.createTexture({
             size: [1, 1],
             format: "rg32float",
@@ -412,6 +429,190 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.maskTextureView = this.maskTexture.createView();
+
+        // SSS Textures (1x1 placeholders)
+        this.thicknessTexture = device.createTexture({
+            size: [1, 1],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.thicknessTextureView = this.thicknessTexture.createView();
+
+        this.diffuseTexture = device.createTexture({
+            size: [1, 1],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.diffuseTextureView = this.diffuseTexture.createView();
+
+        this.specularAmbientTexture = device.createTexture({
+            size: [1, 1],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.specularAmbientTextureView = this.specularAmbientTexture.createView();
+
+        this.subsurfaceBlurTempTexture = device.createTexture({
+            size: [1, 1],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.subsurfaceBlurTempTextureView = this.subsurfaceBlurTempTexture.createView();
+
+        // ================== Thickness Render Pipeline ==================
+        const thicknessBindGroupLayout = device.createBindGroupLayout({
+            label: "ssfr thickness bind group layout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                    buffer: { type: "uniform" },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: { type: "read-only-storage" },
+                },
+            ],
+        });
+
+        const thicknessVertModule = device.createShaderModule({
+            label: "ssfr thickness vertex module",
+            code: attachPrelude(ssfrThicknessVertSrc),
+        });
+        const thicknessFragModule = device.createShaderModule({
+            label: "ssfr thickness fragment module",
+            code: ssfrThicknessFragSrc,
+        });
+
+        this.thicknessPipeline = device.createRenderPipeline({
+            label: "ssfr thickness render pipeline",
+            layout: device.createPipelineLayout({
+                bindGroupLayouts: [thicknessBindGroupLayout],
+            }),
+            vertex: {
+                module: thicknessVertModule,
+                entryPoint: "vert",
+            },
+            fragment: {
+                module: thicknessFragModule,
+                entryPoint: "frag",
+                targets: [{
+                    format: "rgba8unorm",
+                    blend: {
+                        color: { srcFactor: "one", dstFactor: "one", operation: "add" },
+                        alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
+                    },
+                }],
+            },
+            primitive: {
+                topology: "triangle-list",
+            },
+            // No depth testing for thickness accumulation
+        });
+
+        this.thicknessBindGroup = device.createBindGroup({
+            label: "ssfr thickness bind group",
+            layout: thicknessBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: uniformsManager.buffer } },
+                { binding: 1, resource: { buffer: mpmManager.particleDataBuffer } },
+            ],
+        });
+
+        // ================== SSS Blur Pipelines ==================
+        const sssBlurBindGroupLayout = device.createBindGroupLayout({
+            label: "ssfr sss blur bind group layout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: { type: "uniform" },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+                },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+                },
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+                },
+                {
+                    binding: 4,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: { access: "write-only", format: "rgba8unorm", viewDimension: "2d" },
+                },
+            ],
+        });
+        this.subsurfaceBlurBindGroupLayout = sssBlurBindGroupLayout;
+
+        const sssBlurModule = device.createShaderModule({
+            label: "ssfr sss blur module",
+            code: attachPrelude(ssfrSubsurfaceBlurSrc),
+        });
+
+        this.subsurfaceBlurHorizontalPipeline = device.createComputePipeline({
+            label: "ssfr sss blur horizontal pipeline",
+            layout: device.createPipelineLayout({ bindGroupLayouts: [sssBlurBindGroupLayout] }),
+            compute: { module: sssBlurModule, entryPoint: "mainHorizontal" },
+        });
+
+        this.subsurfaceBlurVerticalPipeline = device.createComputePipeline({
+            label: "ssfr sss blur vertical pipeline",
+            layout: device.createPipelineLayout({ bindGroupLayouts: [sssBlurBindGroupLayout] }),
+            compute: { module: sssBlurModule, entryPoint: "mainVertical" },
+        });
+
+        // ================== SSS Combine Pipeline ==================
+        const sssCombineBindGroupLayout = device.createBindGroupLayout({
+            label: "ssfr sss combine bind group layout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: { type: "uniform" },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+                },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+                },
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+                },
+                {
+                    binding: 4,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: { access: "write-only", format: "rgba8unorm", viewDimension: "2d" },
+                },
+            ],
+        });
+        this.subsurfaceCombineBindGroupLayout = sssCombineBindGroupLayout;
+
+        const sssCombineModule = device.createShaderModule({
+            label: "ssfr sss combine module",
+            code: attachPrelude(ssfrSubsurfaceCombineSrc),
+        });
+
+        this.subsurfaceCombinePipeline = device.createComputePipeline({
+            label: "ssfr sss combine pipeline",
+            layout: device.createPipelineLayout({ bindGroupLayouts: [sssCombineBindGroupLayout] }),
+            compute: { module: sssCombineModule, entryPoint: "main" },
+        });
     }
 
     resize(width: number, height: number, depthTextureView: GPUTextureView) {
@@ -491,7 +692,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             ],
         });
 
-        // Shading bind group
         this.shadingBindGroup = this.device.createBindGroup({
             label: "ssfr shading bind group",
             layout: this.shadingBindGroupLayout,
@@ -510,7 +710,11 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                 },
                 {
                     binding: 3,
-                    resource: this.shadedOutputTextureView,
+                    resource: this.diffuseTextureView,
+                },
+                {
+                    binding: 4,
+                    resource: this.specularAmbientTextureView,
                 },
             ],
         });
@@ -534,18 +738,93 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                 },
             ],
         });
+
+        this.thicknessTexture = this.device.createTexture({
+            size: [width, height],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.thicknessTextureView = this.thicknessTexture.createView();
+
+        this.diffuseTexture = this.device.createTexture({
+            size: [width, height],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.diffuseTextureView = this.diffuseTexture.createView();
+
+        this.specularAmbientTexture = this.device.createTexture({
+            size: [width, height],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.specularAmbientTextureView = this.specularAmbientTexture.createView();
+
+        this.subsurfaceBlurTempTexture = this.device.createTexture({
+            size: [width, height],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.subsurfaceBlurTempTextureView = this.subsurfaceBlurTempTexture.createView();
+
+        this.shadingBindGroup = this.device.createBindGroup({
+            label: "ssfr shading bind group",
+            layout: this.shadingBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.uniformsManager.buffer } },
+                { binding: 1, resource: this.smoothedDepthTextureView },
+                { binding: 2, resource: this.normalTextureView },
+                { binding: 3, resource: this.diffuseTextureView },
+                { binding: 4, resource: this.specularAmbientTextureView },
+            ],
+        });
+
+        this.subsurfaceBlurHorizontalBindGroup = this.device.createBindGroup({
+            label: "ssfr sss blur horizontal bind group",
+            layout: this.subsurfaceBlurBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.uniformsManager.buffer } },
+                { binding: 1, resource: this.diffuseTextureView },
+                { binding: 2, resource: this.thicknessTextureView },
+                { binding: 3, resource: this.smoothedDepthTextureView },
+                { binding: 4, resource: this.subsurfaceBlurTempTextureView },
+            ],
+        });
+
+        this.subsurfaceBlurVerticalBindGroup = this.device.createBindGroup({
+            label: "ssfr sss blur vertical bind group",
+            layout: this.subsurfaceBlurBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.uniformsManager.buffer } },
+                { binding: 1, resource: this.subsurfaceBlurTempTextureView },
+                { binding: 2, resource: this.thicknessTextureView },
+                { binding: 3, resource: this.smoothedDepthTextureView },
+                { binding: 4, resource: this.diffuseTextureView },
+            ],
+        });
+
+        this.subsurfaceCombineBindGroup = this.device.createBindGroup({
+            label: "ssfr sss combine bind group",
+            layout: this.subsurfaceCombineBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.uniformsManager.buffer } },
+                { binding: 1, resource: this.diffuseTextureView },
+                { binding: 2, resource: this.specularAmbientTextureView },
+                { binding: 3, resource: this.smoothedDepthTextureView },
+                { binding: 4, resource: this.shadedOutputTextureView },
+            ],
+        });
     }
 
     addComputePasses(commandEncoder: GPUCommandEncoder) {
-        // Skip if bind groups not yet initialized (before first resize)
         if (!this.nrfBindGroup || !this.normalReconstructBindGroup || !this.shadingBindGroup) return;
+        if (!this.subsurfaceBlurHorizontalBindGroup || !this.subsurfaceBlurVerticalBindGroup || !this.subsurfaceCombineBindGroup) return;
 
         const width = this.smoothedDepthTexture.width;
         const height = this.smoothedDepthTexture.height;
         const workgroupsX = Math.ceil(width / 8);
         const workgroupsY = Math.ceil(height / 8);
 
-        // Pass 1: Narrow Range Filter (depth smoothing)
         const nrfPass = commandEncoder.beginComputePass({
             label: "ssfr nrf compute pass",
         });
@@ -554,7 +833,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         nrfPass.dispatchWorkgroups(workgroupsX, workgroupsY);
         nrfPass.end();
 
-        // Pass 2: Normal Reconstruction
         const normalPass = commandEncoder.beginComputePass({
             label: "ssfr normal reconstruct compute pass",
         });
@@ -563,7 +841,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         normalPass.dispatchWorkgroups(workgroupsX, workgroupsY);
         normalPass.end();
 
-        // Pass 3: Shading with noise injection
         const shadingPass = commandEncoder.beginComputePass({
             label: "ssfr shading compute pass",
         });
@@ -571,6 +848,30 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         shadingPass.setBindGroup(0, this.shadingBindGroup);
         shadingPass.dispatchWorkgroups(workgroupsX, workgroupsY);
         shadingPass.end();
+
+        const sssBlurHPass = commandEncoder.beginComputePass({
+            label: "ssfr sss blur horizontal compute pass",
+        });
+        sssBlurHPass.setPipeline(this.subsurfaceBlurHorizontalPipeline);
+        sssBlurHPass.setBindGroup(0, this.subsurfaceBlurHorizontalBindGroup);
+        sssBlurHPass.dispatchWorkgroups(workgroupsX, workgroupsY);
+        sssBlurHPass.end();
+
+        const sssBlurVPass = commandEncoder.beginComputePass({
+            label: "ssfr sss blur vertical compute pass",
+        });
+        sssBlurVPass.setPipeline(this.subsurfaceBlurVerticalPipeline);
+        sssBlurVPass.setBindGroup(0, this.subsurfaceBlurVerticalBindGroup);
+        sssBlurVPass.dispatchWorkgroups(workgroupsX, workgroupsY);
+        sssBlurVPass.end();
+
+        const sssCombinePass = commandEncoder.beginComputePass({
+            label: "ssfr sss combine compute pass",
+        });
+        sssCombinePass.setPipeline(this.subsurfaceCombinePipeline);
+        sssCombinePass.setBindGroup(0, this.subsurfaceCombineBindGroup);
+        sssCombinePass.dispatchWorkgroups(workgroupsX, workgroupsY);
+        sssCombinePass.end();
     }
 
     addImpostorPass(renderPassEncoder: GPURenderPassEncoder) {
@@ -579,8 +880,24 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         renderPassEncoder.draw(6, this.mpmManager.nParticles, 0, 0);
     }
 
+    addThicknessPass(commandEncoder: GPUCommandEncoder) {
+        const thicknessPassDescriptor: GPURenderPassDescriptor = {
+            colorAttachments: [{
+                view: this.thicknessTextureView,
+                clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                loadOp: "clear",
+                storeOp: "store",
+            }],
+        };
+
+        const thicknessPass = commandEncoder.beginRenderPass(thicknessPassDescriptor);
+        thicknessPass.setPipeline(this.thicknessPipeline);
+        thicknessPass.setBindGroup(0, this.thicknessBindGroup);
+        thicknessPass.draw(6, this.mpmManager.nParticles, 0, 0);
+        thicknessPass.end();
+    }
+
     addDraw(renderPassEncoder: GPURenderPassEncoder) {
-        // First draw the depth impostors
         this.addImpostorPass(renderPassEncoder);
     }
 

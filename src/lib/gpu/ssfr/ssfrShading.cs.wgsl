@@ -1,21 +1,23 @@
 // SSFR Shading pass with granular noise injection
 // Perturbs normals with triplanar noise and applies lighting
+// Outputs diffuse separately for SSS blur processing
 
 @group(0) @binding(1) var smoothedDepthTexture: texture_2d<f32>;
 @group(0) @binding(2) var normalTexture: texture_2d<f32>;
-@group(0) @binding(3) var outputTexture: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(3) var diffuseOutputTexture: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(4) var specularAmbientTexture: texture_storage_2d<rgba8unorm, write>;
 
-const NOISE_SCALE: f32 = 20.0;
-const NOISE_STRENGTH_PACKED: f32 = 0.05;
-const NOISE_STRENGTH_LOOSE: f32 = 0.25;
+const NOISE_SCALE = 20.;
+const NOISE_STRENGTH_PACKED = 0.05;
+const NOISE_STRENGTH_LOOSE = 0.25;
 
-const LIGHT_DIR: vec3f = vec3f(0.5, 0.3, 0.8);
-const AMBIENT: f32 = 0.15;
-const DIFFUSE_STRENGTH: f32 = 0.7;
-const SPECULAR_STRENGTH: f32 = 0.3;
-const SHININESS: f32 = 32.0;
+const LIGHT_DIR = vec3f(0.5, 0.3, 0.8);
+const AMBIENT = 0.15;
+const DIFFUSE_STRENGTH = 0.7;
+const SPECULAR_STRENGTH = 0.3;
+const SHININESS = 4.;
 
-const PARTICLE_COLOR: vec3f = vec3f(0.95, 0.97, 1);
+const PARTICLE_COLOR = vec3f(0.5, 0.5, 0.5);
 
 fn noiseGradient3(p: vec3f) -> vec3f {
     let eps = 0.01;
@@ -60,8 +62,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let depth = textureLoad(smoothedDepthTexture, coords, 0).r;
     
     if depth >= 1 {
-        // bg pixel
-        textureStore(outputTexture, coords, vec4f(0.0, 0.0, 0.0, 0.0));
+        // bg pixel - write to both textures
+        textureStore(diffuseOutputTexture, coords, vec4f(0.0, 0.0, 0.0, 0.0));
+        textureStore(specularAmbientTexture, coords, vec4f(0.0, 0.0, 0.0, 0.0));
         return;
     }
     
@@ -101,10 +104,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
 
     let ambient_color = PARTICLE_COLOR * AMBIENT;
     let diffuse_color = PARTICLE_COLOR * diffuse * DIFFUSE_STRENGTH;
-    let specular_color = specular * SPECULAR_STRENGTH;
+    let specular_color = vec3f(specular * SPECULAR_STRENGTH);
     
-    var final_color = ambient_color + diffuse_color + specular_color;
-    final_color = pow(final_color, vec3f(1 / 2.2));
+    // Output diffuse for SSS blur
+    textureStore(diffuseOutputTexture, coords, vec4f(diffuse_color, 1));
     
-    textureStore(outputTexture, coords, vec4f(final_color, 1));
+    // Store full lighting (ambient + diffuse + specular) for base, SSS will add on top
+    let base_lighting = ambient_color + diffuse_color + specular_color;
+    textureStore(specularAmbientTexture, coords, vec4f(base_lighting, 1));
 }
