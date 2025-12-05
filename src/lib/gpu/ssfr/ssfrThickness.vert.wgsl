@@ -6,7 +6,7 @@ struct VertexOutput {
 }
 
 const BASE_PARTICLE_RADIUS = 0.05;
-const OVERLAP_FACTOR = 4.;
+const OVERLAP_FACTOR = 2.;
 const VERT_POSITIONS: array<vec2f, 6> = array(
     vec2f(-1, -1),
     vec2f(1, -1),

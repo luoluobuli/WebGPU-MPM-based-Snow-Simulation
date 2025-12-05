@@ -34,7 +34,8 @@ fn frag(in: VertexOutput) -> FragmentOutput {
     
     var out: FragmentOutput;
     out.mask = vec4f(depth, in.compression_volume_fac, 0, 1);
-    out.depth = depth;
+    let depth_squared = depth * depth;
+    out.depth = depth_squared * depth_squared;
     return out;
 }
 
