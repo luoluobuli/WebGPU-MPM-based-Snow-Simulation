@@ -1,8 +1,3 @@
-// SSFR Shading pass with granular noise injection and Zirr-Kaplanyan glint model
-// Perturbs normals with triplanar noise and applies lighting
-// Implements multiscale procedural glints for realistic snow sparkle
-// Outputs diffuse separately for SSS blur processing
-
 @group(0) @binding(1) var smoothedDepthTexture: texture_2d<f32>;
 @group(0) @binding(2) var normalTexture: texture_2d<f32>;
 @group(0) @binding(3) var diffuseOutputTexture: texture_storage_2d<rgba8unorm, write>;
@@ -13,61 +8,55 @@ const NOISE_STRENGTH_PACKED = 0.05;
 const NOISE_STRENGTH_LOOSE = 0.125;
 
 const LIGHT_DIR = vec3f(0.5, 0.3, 0.8);
-const AMBIENT = 0.15;
+const AMBIENT_COLOR = vec3f(0.05, 0.08, 0.1);
+const DIFFUSE_COLOR = vec3f(0.65, 0.68, 0.69);
 const DIFFUSE_STRENGTH = 0.7;
 const SPECULAR_STRENGTH = 0.3;
 const SHININESS = 2.;
 
-const PARTICLE_COLOR = vec3f(0.5, 0.5, 0.5);
 
-// ============== Zirr-Kaplanyan Glint Model Parameters ==============
-// Crystal density: number of ice crystals per square meter
-const GLINT_CRYSTAL_DENSITY = 100000.0;
-// Base grid scale for the finest LOD level (in world units)
-const GLINT_BASE_SCALE = 500.0;
-// Number of LOD levels in the hierarchy
-const GLINT_LOD_LEVELS = 6u;
-// Roughness for the glint microfacet distribution (smaller = sharper glints)
-const GLINT_ROUGHNESS = 0.05;
-// Overall glint intensity multiplier
-const GLINT_INTENSITY = 2.5;
-// Screen-space pixel scale for LOD calculation
-const GLINT_PIXEL_SCALE = 0.002;
+// Zirr-Kaplanyan glints
+// crystal density (number of ice crystals per square meter)
+const GLINT_CRYSTAL_DENSITY = 100000.;
+// base grid scale for finest LOD level, in world units
+const GLINT_BASE_SCALE = 1000.;
+// number of LOD levels in hierarchy
+const GLINT_LOD_LEVELS = 4u;
+// roughness for glint microfacet distribution (smaller = sharper glints)
+const GLINT_ROUGHNESS = 0.125;
+const GLINT_INTENSITY = 0.75;
+// screen-space pixel scale for LOD calculation
+const GLINT_PIXEL_SCALE = 0.2;
 
-// ============== GGX/Trowbridge-Reitz NDF ==============
+// GGX/Trowbridge-Reitz NDF
 fn D_GGX(NdotH: f32, roughness: f32) -> f32 {
     let a = roughness * roughness;
     let a2 = a * a;
     let NdotH2 = NdotH * NdotH;
     let denom = NdotH2 * (a2 - 1.0) + 1.0;
-    return a2 / (3.14159265 * denom * denom);
+    return a2 / (PI * denom * denom);
 }
 
-// ============== Stable Hash for Grid Cells ==============
-// Uses xxHash-based hashing for stable pseudo-random values
 fn hashGridCell(cell: vec3i, lod: u32) -> f32 {
-    // Combine cell coordinates with LOD level for unique hash
     let seed = vec4u(
         bitcast<u32>(cell.x),
         bitcast<u32>(cell.y),
         bitcast<u32>(cell.z),
-        lod
+        lod,
     );
     return f32(hash4(seed)) / f32(0xFFFFFFFFu);
 }
 
-// ============== LOD Selection ==============
-// Calculate appropriate grid level based on pixel footprint
+// calculate appropriate grid level based on pixel footprint
 fn calculateGlintLOD(pos_world: vec3f, camera_pos: vec3f) -> u32 {
     let dist = length(pos_world - camera_pos);
-    // Pixel footprint scales with distance
+    // pixel footprint scales with distance
     let footprint = dist * GLINT_PIXEL_SCALE;
-    // Select LOD level where grid cell size matches footprint
+    // select LOD level where grid cell size matches footprint
     let lod_float = log2(max(footprint * GLINT_BASE_SCALE, 1.0));
     return clamp(u32(lod_float), 0u, GLINT_LOD_LEVELS - 1u);
 }
 
-// ============== Multiscale Procedural Glint ==============
 fn computeMultiscaleGlint(
     pos_world: vec3f,
     normal: vec3f,
@@ -206,11 +195,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let view_dir_world = normalize(uniforms.cameraPos - pos_world);
     
     // diffuse
-    let diffuse = max(dot(perturbed_normal, light_dir_world), 0.0);
+    let diffuse = max(dot(perturbed_normal, light_dir_world), 0);
     
     // Blinn-Phong specular
     let half_dir = normalize(light_dir_world + view_dir_world);
-    let specular = pow(max(dot(perturbed_normal, half_dir), 0.0), SHININESS);
+    let specular = pow(max(dot(perturbed_normal, half_dir), 0), SHININESS);
     
     // Zirr-Kaplanyan multiscale procedural glint
     let glint = computeMultiscaleGlint(
@@ -220,14 +209,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
         light_dir_world,
         uniforms.cameraPos
     );
-    let specular_with_glint = specular * SPECULAR_STRENGTH + glint * GLINT_INTENSITY;
+    let specular_with_glint = /*specular * SPECULAR_STRENGTH +*/ glint * GLINT_INTENSITY;
 
-    let ambient_color = PARTICLE_COLOR * AMBIENT;
-    let diffuse_color = PARTICLE_COLOR * diffuse * DIFFUSE_STRENGTH;
+    let diffuse_color = DIFFUSE_COLOR * diffuse * DIFFUSE_STRENGTH;
     let specular_color = vec3f(specular_with_glint);
     
     textureStore(diffuseOutputTexture, coords, vec4f(diffuse_color, 1));
     
-    let base_lighting = ambient_color + diffuse_color + specular_color;
+    let base_lighting = AMBIENT_COLOR + diffuse_color + specular_color;
     textureStore(specularAmbientTexture, coords, vec4f(base_lighting, 1));
 }

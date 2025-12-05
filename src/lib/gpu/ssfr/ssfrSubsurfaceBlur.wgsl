@@ -3,14 +3,21 @@
 @group(0) @binding(3) var smoothedDepthTexture: texture_2d<f32>;
 @group(0) @binding(4) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 
-const MAX_BLUR_RADIUS = 12;
-const BASE_BLUR_WIDTH = 4.;
-const DEPTH_DISCONTINUITY_THRESHOLD = 0.003;
+const WORLD_BLUR_RADIUS = 0.015;
+const MAX_SCREEN_RADIUS = 16;
+const DEPTH_WEIGHT_FAC = 120.;
+const PROJ_FACTOR = 0.866;
 
-const REFLECTED_COLOR = vec3f(0.4, 0.9, 1);
+const REFLECTED_COLOR = vec3f(0.9, 0.95, 1);
 
 fn gaussian(x: f32, stddev: f32) -> f32 {
     return exp(-x * x / (2.0 * stddev * stddev));
+}
+
+fn linearizeDepth(ndc_depth: f32) -> f32 {
+    let near = 0.1;
+    let far = 100.0;
+    return near * far / (far - ndc_depth * (far - near));
 }
 
 @compute
@@ -32,9 +39,10 @@ fn mainHorizontal(@builtin(global_invocation_id) global_id: vec3u) {
     }
     
     let thickness = textureLoad(thicknessTexture, coords, 0).r;
+    let linear_depth = linearizeDepth(center_depth);
     
-    // depth modulation: farther objects blur less (perspective correction)
-    let depth_factor = 1 / max(center_depth * 10, 0.1);
+    // Fixed projection scale
+    let proj_scale = f32(screen_size.y) * PROJ_FACTOR;
     
     // thickness modulation: thin edges blur less
     let thickness_factor = saturate(thickness * 2);
@@ -42,8 +50,10 @@ fn mainHorizontal(@builtin(global_invocation_id) global_id: vec3u) {
     // compression modulation: ice scatters less, powder scatters more
     let compression_factor = mix(0.3, 1.0, saturate(compression_volume_fac));
     
-    let stddev = BASE_BLUR_WIDTH * depth_factor * thickness_factor * compression_factor;
-    let blur_radius = i32(min(stddev * 2, f32(MAX_BLUR_RADIUS)));
+    // Calculate world-space blur radius with modulation, then convert to screen-space
+    let world_radius = WORLD_BLUR_RADIUS * thickness_factor * compression_factor;
+    let screen_stddev = max(world_radius * proj_scale / linear_depth, 0.5);
+    let blur_radius = i32(min(screen_stddev * 2, f32(MAX_SCREEN_RADIUS)));
     
     var total_color = vec3f();
     var total_weight = 0.;
@@ -55,10 +65,19 @@ fn mainHorizontal(@builtin(global_invocation_id) global_id: vec3u) {
         
         let sample_depth = textureLoad(smoothedDepthTexture, sample_coords, 0).r;
         
-        // skip bg and large depth discontinuities
-        if sample_depth >= 1 || abs(sample_depth - center_depth) > DEPTH_DISCONTINUITY_THRESHOLD { continue; }
+        // skip bg
+        if sample_depth >= 1 { continue; }
+
+        // use relative linear depth difference for world-space consistency
+        let sample_linear_depth = linearizeDepth(sample_depth);
+        let depth_diff = (linear_depth - sample_linear_depth) / linear_depth;
+        let depth_weight = exp(-depth_diff * depth_diff * DEPTH_WEIGHT_FAC);
         
-        let weight = gaussian(f32(i), max(stddev, 0.5));
+        let spatial_weight = gaussian(f32(i), max(screen_stddev, 0.5));
+
+        let weight = spatial_weight * depth_weight;
+
+
         let sample_color = textureLoad(inputTexture, sample_coords, 0).rgb;
         
         total_color += sample_color * weight;
@@ -94,13 +113,18 @@ fn mainVertical(@builtin(global_invocation_id) global_id: vec3u) {
     }
     
     let thickness = textureLoad(thicknessTexture, coords, 0).r;
+    let linear_depth = linearizeDepth(center_depth);
     
-    let depth_factor = 1 / max(center_depth * 10, 0.1);
+    // Fixed projection scale
+    let proj_scale = f32(screen_size.y) * PROJ_FACTOR;
+    
     let thickness_factor = saturate(thickness * 2);
     let compression_factor = mix(0.3, 1, saturate(compression_volume_fac));
     
-    let stddev = BASE_BLUR_WIDTH * depth_factor * thickness_factor * compression_factor;
-    let blur_radius = i32(min(stddev * 2, f32(MAX_BLUR_RADIUS)));
+    // Calculate world-space blur radius with modulation, then convert to screen-space
+    let world_radius = WORLD_BLUR_RADIUS * thickness_factor * compression_factor;
+    let screen_stddev = max(world_radius * proj_scale / linear_depth, 0.5);
+    let blur_radius = i32(min(screen_stddev * 2, f32(MAX_SCREEN_RADIUS)));
     
     var total_color = vec3f();
     var total_weight = 0.;
@@ -111,11 +135,18 @@ fn mainVertical(@builtin(global_invocation_id) global_id: vec3u) {
         if sample_coords.y < 0 || sample_coords.y >= screen_size.y { continue; }
         
         let sample_depth = textureLoad(smoothedDepthTexture, sample_coords, 0).r;
+
+        // Use relative linear depth difference for world-space consistency
+        let sample_linear_depth = linearizeDepth(sample_depth);
+        let depth_diff = (linear_depth - sample_linear_depth) / linear_depth;
+        let depth_weight = exp(-depth_diff * depth_diff * DEPTH_WEIGHT_FAC);
         
-        if sample_depth >= 1 || abs(sample_depth - center_depth) > DEPTH_DISCONTINUITY_THRESHOLD { continue; }
+        if sample_depth >= 1 { continue; }
         
-        let weight = gaussian(f32(i), max(stddev, 0.5));
+        let spatial_weight = gaussian(f32(i), max(screen_stddev, 0.5));
         let sample_color = textureLoad(inputTexture, sample_coords, 0).rgb;
+
+        let weight = spatial_weight * depth_weight;
         
         total_color += sample_color * weight;
         total_weight += weight;
