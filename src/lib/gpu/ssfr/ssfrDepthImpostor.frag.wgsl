@@ -5,6 +5,7 @@ struct VertexOutput {
     @location(2) sphere_radius: f32,
     @location(3) center_world: vec3f,
     @location(4) quad_scale: f32,
+    @location(5) compression_volume_fac: f32,
 }
 
 struct FragmentOutput {
@@ -32,7 +33,7 @@ fn frag(in: VertexOutput) -> FragmentOutput {
     let depth = clip_pos.z / clip_pos.w;
     
     var out: FragmentOutput;
-    out.mask = vec4f(depth, 0, 0, 1);
+    out.mask = vec4f(depth, in.compression_volume_fac, 0, 1);
     out.depth = depth;
     return out;
 }

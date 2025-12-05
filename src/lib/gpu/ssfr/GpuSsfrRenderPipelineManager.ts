@@ -136,7 +136,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                 entryPoint: "frag",
                 targets: [
                     {
-                        format: "r32float", // Mask texture format (using r32float for high precision depth)
+                        format: "rg32float", // Mask texture format (rg32float for depth + compression J)
                         writeMask: GPUColorWrite.ALL,
                     },
                 ],
@@ -180,7 +180,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                     visibility: GPUShaderStage.COMPUTE,
                     storageTexture: {
                         access: "write-only",
-                        format: "r32float",
+                        format: "rg32float",
                         viewDimension: "2d",
                     }
                 },
@@ -387,7 +387,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         // ================== Initialize Textures (1x1 placeholders) ==================
         this.smoothedDepthTexture = device.createTexture({
             size: [1, 1],
-            format: "r32float",
+            format: "rg32float",
             usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.smoothedDepthTextureView = this.smoothedDepthTexture.createView();
@@ -408,7 +408,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
 
         this.maskTexture = device.createTexture({
             size: [1, 1],
-            format: "r32float",
+            format: "rg32float",
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.maskTextureView = this.maskTexture.createView();
@@ -418,7 +418,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         // Recreate smoothed depth texture
         this.smoothedDepthTexture = this.device.createTexture({
             size: [width, height],
-            format: "r32float",
+            format: "rg32float",
             usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.smoothedDepthTextureView = this.smoothedDepthTexture.createView();
@@ -442,7 +442,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         // Recreate mask texture (high precision depth)
         this.maskTexture = this.device.createTexture({
             size: [width, height],
-            format: "r32float",
+            format: "rg32float",
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.maskTextureView = this.maskTexture.createView();

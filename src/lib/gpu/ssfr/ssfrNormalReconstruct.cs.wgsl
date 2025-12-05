@@ -28,7 +28,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
         return;
     }
     
-    let center_depth = textureLoad(smoothedDepthTexture, coords, 0).r;
+    let center_data = textureLoad(smoothedDepthTexture, coords, 0);
+    let center_depth = center_data.r;
+    let compression = center_data.g;
     
     if center_depth >= 1 {
         // bg pixel
@@ -88,6 +90,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     // ensure normal points towards camera
     normal *= sign(dot(normal, normalize(uniforms.cameraPos - pos_center)));
     
-    // store normal and compression value
-    textureStore(normalTexture, coords, vec4f(normal, 1));
+    // store normal and compression value (J < 1 = packed, J ≈ 1 = loose)
+    textureStore(normalTexture, coords, vec4f(normal, compression));
 }

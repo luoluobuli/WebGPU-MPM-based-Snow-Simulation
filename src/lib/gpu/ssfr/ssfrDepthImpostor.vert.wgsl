@@ -7,6 +7,7 @@ struct VertexOutput {
     @location(2) sphere_radius: f32,
     @location(3) center_world: vec3f,
     @location(4) quad_scale: f32,
+    @location(5) compression_volume_fac: f32,
 }
 
 const BASE_PARTICLE_RADIUS: f32 = 0.02;
@@ -48,6 +49,8 @@ fn vert(
     
     let vertex_pos_world = particle.pos + (right * uv.x + up * uv.y) * quad_radius;
     out.position = uniforms.viewProjMat * vec4f(vertex_pos_world, 1);
+    
+    out.compression_volume_fac = determinant(particle.deformationPlastic);
     
     return out;
 }
