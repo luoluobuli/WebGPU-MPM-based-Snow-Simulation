@@ -72,14 +72,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let normal_len = length(normal);
 
 
-    normal = select(
-        normal / normal_len,
-        normalize(uniforms.cameraPos - pos_center), // degenerate case, use view direction
-        normal_len < 1e-6,
-    );
+    if normal_len == 0 {
+        normal = normalize(uniforms.cameraPos - pos_center);
+    }
+    else {
+        normal /= normal_len;
+        
+        // ensure normal points towards camera
+        normal *= sign(dot(normal, normalize(uniforms.cameraPos - pos_center)));
+    }
     
-    // ensure normal points towards camera
-    normal *= sign(dot(normal, normalize(uniforms.cameraPos - pos_center)));
     
     // store normal and compression value (J < 1 = packed, J ≈ 1 = loose)
     textureStore(normalTexture, coords, vec4f(normal, compression));
