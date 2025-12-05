@@ -5,10 +5,10 @@
 @group(1) @binding(4) var environmentSampler: sampler;
 
 const EXTINCTION_COEFFICIENT = 724.;
-const SCATTERING_ALBEDO = 0.95;
+const SCATTERING_ALBEDO = vec3f(0.9, 0.985, 0.99);
 const STEP_SIZE = 0.0125;
 const N_MAX_STEPS = 256u;
-const SHADOW_STEP_SIZE = STEP_SIZE * 0.5;
+const SHADOW_STEP_SIZE = STEP_SIZE;
 const N_MAX_SHADOW_STEPS = 64u;
 
 fn readDensity(worldPos: vec3f) -> f32 {
@@ -80,19 +80,17 @@ fn aabbIntersectionDistances(
     return vec2f(t_near, t_far);
 }
 
-fn raymarchShadow(pos: vec3f, light_dir: vec3f) -> f32 {
-    let jitter = f32(hash4(vec4u(bitcast<vec3u>(pos), uniforms.time))) / f32(0xFFFFFFFF); // needed to prevent banding
-
-    var shadow_pos = pos + light_dir * SHADOW_STEP_SIZE * jitter;
-    var shadow_transmittance = 1.;
+fn raymarchShadow(pos: vec3f, light_dir: vec3f) -> vec3f {
+    var shadow_pos = pos + light_dir * SHADOW_STEP_SIZE;
+    var shadow_transmittance = vec3f(1);
 
     for (var s = 0u; s < N_MAX_SHADOW_STEPS; s++) {
         shadow_pos += light_dir * SHADOW_STEP_SIZE;
         let shadow_density = readDensity(shadow_pos);
         if shadow_density > 1e-4 {
             let shadow_extinction = EXTINCTION_COEFFICIENT * shadow_density;
-            shadow_transmittance *= exp(-shadow_extinction * SHADOW_STEP_SIZE);
-            if shadow_transmittance < 1e-4 { break; }
+            shadow_transmittance *= exp(-shadow_extinction * SHADOW_STEP_SIZE * SCATTERING_ALBEDO);
+            if all(shadow_transmittance < vec3f(1e-4)) { break; }
         }
     }
     return shadow_transmittance;
@@ -151,16 +149,15 @@ fn doVolumetricRaymarch(
     let distance_start = volume_start;
     var distance_end = min(distance_far, distance_ground);
     
-    let jitter = f32(hash3(vec3u(global_id.xy, uniforms.time))) / f32(0xFFFFFFFF); // needed to prevent banding
-    var current_ray_distance = distance_start + jitter * STEP_SIZE;
+    var current_ray_distance = distance_start;
 
-    var transmittance = 1.;
+    var transmittance = vec3f(1);
     var out_col = vec3f(0);
     var depth_written = false;
     var recorded_depth = 1e20;
 
     for (var i = 0u; i < N_MAX_STEPS; i++) {
-        if current_ray_distance >= distance_end || transmittance < 0.01 { break; }
+        if current_ray_distance >= distance_end || all(transmittance < vec3f(0.01)) { break; }
 
         let pos = ray_origin + current_ray_distance * ray_dir;
         let density = readDensity(pos);
@@ -176,35 +173,35 @@ fn doVolumetricRaymarch(
             
             // exponential assuming a constant density, since every step can be thought of as an independent trial
             // in a geometric probability distribution
-            let stepTransmittance = exp(-local_extinction * STEP_SIZE); // T
+            let step_transmittance = exp(-local_extinction * STEP_SIZE * SCATTERING_ALBEDO); // T
             let phase = doubleHenyeyGreenstein(dot(ray_dir, light_dir), 0.5, 0.5); // P
             
             let shadow_transmittance = raymarchShadow(pos, light_dir);
 
             let light = ambient_col + light_col * phase * shadow_transmittance;
-            let light_addition_fac = light * local_scattering * (1 - stepTransmittance) / max(local_extinction, 0.0001);
+            let light_addition_fac = light * local_scattering * (1 - step_transmittance) / max(local_extinction, 1e-4);
             
             out_col += transmittance * light_addition_fac;
-            transmittance *= stepTransmittance;
+            transmittance *= step_transmittance;
         }
 
         current_ray_distance += STEP_SIZE;
     }
 
-    if hit_ground && transmittance > 0.01 {
+    if hit_ground && any(transmittance > vec3f(0.01)) {
         let pos = ray_origin + distance_ground * ray_dir;
         let shadow = raymarchShadow(pos, light_dir);
         let ground_albedo = vec3f(0.05);
         let ground_col = ambient_col + ground_albedo * (light_col * shadow * max(0.0, light_dir.z));
         out_col += transmittance * ground_col;
-        transmittance = 0.0;
+        transmittance = vec3f();
 
         if !depth_written {
             recorded_depth = distance_ground;
         }
     }
 
-    let alpha = 1 - transmittance;
+    let alpha = 1 - max(transmittance.r, max(transmittance.g, transmittance.b));
     textureStore(outputTexture, global_id.xy, vec4f(
         pow(out_col.r, 1/2.2),
         pow(out_col.g, 1/2.2),
