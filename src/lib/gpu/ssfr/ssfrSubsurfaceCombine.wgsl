@@ -3,7 +3,7 @@
 @group(0) @binding(3) var smoothedDepthTexture: texture_2d<f32>;
 @group(0) @binding(4) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 
-const SSS_STRENGTH = 0.8;
+const SSS_STRENGTH = 0.5;
 
 @compute
 @workgroup_size(8, 8)

@@ -3,13 +3,13 @@
 @group(0) @binding(3) var diffuseOutputTexture: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(4) var specularAmbientTexture: texture_storage_2d<rgba8unorm, write>;
 
-const NOISE_SCALE = 10.;
+const NOISE_SCALE = 2.;
 const NOISE_STRENGTH_PACKED = 0.05;
 const NOISE_STRENGTH_LOOSE = 0.125;
 
 const LIGHT_DIR = vec3f(0.5, 0.3, 0.8);
 const AMBIENT_COLOR = vec3f(0.05, 0.08, 0.1);
-const DIFFUSE_COLOR = vec3f(0.65, 0.68, 0.69);
+const DIFFUSE_COLOR = vec3f(0.9, 0.91, 0.915);
 const DIFFUSE_STRENGTH = 0.7;
 const SPECULAR_STRENGTH = 0.3;
 const SHININESS = 2.;
@@ -23,10 +23,10 @@ const GLINT_BASE_SCALE = 1000.;
 // number of LOD levels in hierarchy
 const GLINT_LOD_LEVELS = 4u;
 // roughness for glint microfacet distribution (smaller = sharper glints)
-const GLINT_ROUGHNESS = 0.125;
-const GLINT_INTENSITY = 0.75;
+const GLINT_ROUGHNESS = 0.2;
+const GLINT_INTENSITY = 0.5;
 // screen-space pixel scale for LOD calculation
-const GLINT_PIXEL_SCALE = 0.2;
+const GLINT_PIXEL_SCALE = 0.02;
 
 // GGX/Trowbridge-Reitz NDF
 fn D_GGX(NdotH: f32, roughness: f32) -> f32 {

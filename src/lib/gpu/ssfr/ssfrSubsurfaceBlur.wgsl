@@ -3,15 +3,15 @@
 @group(0) @binding(3) var smoothedDepthTexture: texture_2d<f32>;
 @group(0) @binding(4) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 
-const WORLD_BLUR_RADIUS = 0.015;
-const MAX_SCREEN_RADIUS = 16;
-const DEPTH_WEIGHT_FAC = 120.;
+const WORLD_BLUR_RADIUS = 0.4;
+const MAX_SCREEN_RADIUS = 24;
+const DEPTH_WEIGHT_FAC = 90.;
 const PROJ_FACTOR = 0.866;
 
-const REFLECTED_COLOR = vec3f(0.9, 0.95, 1);
+const REFLECTED_COLOR = vec3f(0.4, 0.9, 1);
 
 fn gaussian(x: f32, stddev: f32) -> f32 {
-    return exp(-x * x / (2.0 * stddev * stddev));
+    return exp(-x * x / (2 * stddev * stddev));
 }
 
 fn linearizeDepth(ndc_depth: f32) -> f32 {
