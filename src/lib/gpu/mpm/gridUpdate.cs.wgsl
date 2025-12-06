@@ -1,8 +1,5 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
-@group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
-@group(1) @binding(1) var<storage, read_write> n_allocated_blocks: u32;
-@group(1) @binding(2) var<storage, read_write> mapped_block_indexes: array<u32>; // Stores indices into PageTable
 @group(1) @binding(3) var<storage, read_write> grid_mass: array<i32>;
 @group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<i32>;
 @group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<i32>;
@@ -21,11 +18,11 @@ fn doGridUpdate(
     let block_index = wid.y * 256 + wid.x;
     if block_index >= N_MAX_BLOCKS_IN_HASH_MAP { return; }
     
-    let count = n_allocated_blocks;
+    let count = atomicLoad(&sparse_grid.n_allocated_blocks);
     if block_index >= count { return; }
     
-    let mapped_block_index = mapped_block_indexes[block_index];
-    let block_number = hash_map_entries[mapped_block_index].block_number;
+    let mapped_block_index = sparse_grid.mapped_block_indexes[block_index];
+    let block_number = sparse_grid.hash_map_entries[mapped_block_index].block_number;
     
     let cell_index_within_block = lid.x;
     let cell_index = block_index * 64u + cell_index_within_block;

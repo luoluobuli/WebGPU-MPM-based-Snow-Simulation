@@ -1,16 +1,11 @@
 
 export class GpuMpmBufferManager {
     readonly particleDataBuffer: GPUBuffer;
-    readonly pageTableBuffer: GPUBuffer;
+    readonly sparseGridBuffer: GPUBuffer;
     readonly gridMassBuffer: GPUBuffer;
     readonly gridMomentumXBuffer: GPUBuffer;
     readonly gridMomentumYBuffer: GPUBuffer;
     readonly gridMomentumZBuffer: GPUBuffer;
-    readonly nAllocatedBlocksBuffer: GPUBuffer;
-    // readonly nWorkgroupsBuffer: GPUBuffer;
-    readonly mappedBlockIndexesBuffer: GPUBuffer;
-    readonly blockParticleCountsBuffer: GPUBuffer;
-    readonly blockParticleOffsetsBuffer: GPUBuffer;
     readonly sortedParticleIndicesBuffer: GPUBuffer;
 
     readonly nParticles: number;
@@ -30,10 +25,16 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
         });
 
-
-        const blocksHashMapBuffer = device.createBuffer({
-            label: "MPM blocks hash map buffer",
-            size: this.hashMapSize * 16,
+        // SparseGridStorage layout:
+        // - n_allocated_blocks: atomic<u32> (4 bytes) + 12 bytes padding = 16 bytes
+        // - hash_map_entries: array<HashMapEntry, HASH_MAP_SIZE> = HASH_MAP_SIZE * 16 bytes
+        // - mapped_block_indexes: array<u32, N_MAX_BLOCKS_IN_HASH_MAP> = N_MAX_BLOCKS * 4 bytes
+        // - block_particle_counts: array<u32, N_MAX_BLOCKS_IN_HASH_MAP> = N_MAX_BLOCKS * 4 bytes
+        // - block_particle_offsets: array<u32, N_MAX_BLOCKS_IN_HASH_MAP> = N_MAX_BLOCKS * 4 bytes
+        const sparseGridBufferSize = 16 + this.hashMapSize * 16 + this.nMaxBlocksInHashMap * 4 * 3;
+        const sparseGridBuffer = device.createBuffer({
+            label: "MPM sparse grid storage buffer",
+            size: sparseGridBufferSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
@@ -63,55 +64,6 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        const gridDisplacementXBuffer = device.createBuffer({
-            label: "MPM physical displacement X buffer",
-            size: poolSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-
-        const gridDisplacementYBuffer = device.createBuffer({
-            label: "MPM physical displacement Y buffer",
-            size: poolSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-
-        const gridDisplacementZBuffer = device.createBuffer({
-            label: "MPM physical displacement Z buffer",
-            size: poolSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-
-
-        const nAllocatedBlocksBufer = device.createBuffer({
-            label: "MPM # allocated blocks buffer",
-            size: 4,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-        });
-
-        // const nWorkgroupsBuffer = device.createBuffer({
-        //     label: "MPM # workgroups buffer",
-        //     size: 12,
-        //     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
-        // });
-
-        const mappedBlockIndexesBuffer = device.createBuffer({
-            label: "MPM mapped block indexes buffer",
-            size: this.nMaxBlocksInHashMap * 4,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-
-        const blockParticleCountsBuffer = device.createBuffer({
-            label: "MPM block particle counts buffer",
-            size: this.nMaxBlocksInHashMap * 4,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-        });
-
-        const blockParticleOffsetsBuffer = device.createBuffer({
-            label: "MPM block particle offsets buffer",
-            size: this.nMaxBlocksInHashMap * 4,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-        });
-
         const sortedParticleIndicesBuffer = device.createBuffer({
             label: "MPM sorted particle indices buffer",
             size: nParticles * 4,
@@ -119,16 +71,11 @@ export class GpuMpmBufferManager {
         });
 
         this.particleDataBuffer = particleDataBuffer;
-        this.pageTableBuffer = blocksHashMapBuffer;
+        this.sparseGridBuffer = sparseGridBuffer;
         this.gridMassBuffer = gridMassBuffer;
         this.gridMomentumXBuffer = gridMomentumXBuffer;
         this.gridMomentumYBuffer = gridMomentumYBuffer;
         this.gridMomentumZBuffer = gridMomentumZBuffer;
-        this.nAllocatedBlocksBuffer = nAllocatedBlocksBufer;
-        // this.nWorkgroupsBuffer = nWorkgroupsBuffer;
-        this.mappedBlockIndexesBuffer = mappedBlockIndexesBuffer;
-        this.blockParticleCountsBuffer = blockParticleCountsBuffer;
-        this.blockParticleOffsetsBuffer = blockParticleOffsetsBuffer;
         this.sortedParticleIndicesBuffer = sortedParticleIndicesBuffer;
 
         this.nParticles = nParticles;
