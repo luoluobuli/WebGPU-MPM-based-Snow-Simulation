@@ -1,3 +1,5 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 @group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
 @group(1) @binding(7) var<storage, read_write> block_particle_counts: array<atomic<u32>>;
 

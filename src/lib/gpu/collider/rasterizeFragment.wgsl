@@ -1,3 +1,5 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 struct FSIn {
     @location(0) normal: vec3<f32>,
 };

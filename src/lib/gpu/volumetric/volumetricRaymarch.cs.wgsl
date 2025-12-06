@@ -1,3 +1,5 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 @group(1) @binding(0) var<storage, read_write> mass_grid: array<atomic<u32>>;
 @group(1) @binding(1) var outputTexture: texture_storage_2d<rgba8unorm, write>;
 @group(1) @binding(2) var depthTexture: texture_storage_2d<r32float, write>;

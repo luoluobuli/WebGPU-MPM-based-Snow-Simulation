@@ -1,3 +1,4 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> particle_data: array<ParticleData>;
 
 struct VertexOutput {

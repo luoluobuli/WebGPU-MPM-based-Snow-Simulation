@@ -7,12 +7,14 @@ export interface ColliderGeometry {
 }
 
 export class GpuColliderBufferManager {
-    readonly verticesBuffer: GPUBuffer;
-    readonly normalsBuffer: GPUBuffer;
-    readonly indicesBuffer: GPUBuffer;
+    readonly colliderDataBuffer: GPUBuffer;
     readonly numIndices: number;
     readonly minCoords: [number, number, number];
     readonly maxCoords: [number, number, number];
+
+    readonly indicesOffset: number;
+    readonly verticesOffset: number;
+    readonly normalsOffset: number;
 
     constructor({
         device,
@@ -42,61 +44,57 @@ export class GpuColliderBufferManager {
 
         this.numIndices = indices.length;
 
-        const flatVertices = new Float32Array(vertices.length);
-        for (let i = 0; i < vertices.length; i++) {
-            flatVertices[i] = vertices[i];
-        }
-
-        const flatNormals = new Float32Array(normals.length);
-        for (let i = 0; i < normals.length; i++) {
-            flatNormals[i] = normals[i];
-        }
-
-        const flatIndices = new Uint32Array(indices.length);
-        for (let i = 0; i < indices.length; i++) {
-            flatIndices[i] = indices[i];
-        }
+        // Pack data: [Indices (u32), Vertices (f32), Normals (f32)]
+        // All are 4 bytes.
+        const totalSize = (indices.length + vertices.length + normals.length) * 4;
         
-        this.verticesBuffer = device.createBuffer({
-            label: "collider vertices buffer",
-            size: flatVertices.byteLength,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX,
+        // Use a DataView or just write separately with offsets.
+        // Actually, creating one large buffer and writing parts is fine.
+        
+        this.colliderDataBuffer = device.createBuffer({
+            label: "collider data buffer",
+            size: totalSize,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX,
         });
 
-        this.normalsBuffer = device.createBuffer({
-            label: "collider normals buffer",
-            size: flatNormals.byteLength,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX,
-        });
+        const flatIndices = new Uint32Array(indices);
+        const flatIndicesBytes = flatIndices.byteLength;
+        
+        const flatVertices = new Float32Array(vertices);
+        const flatVerticesBytes = flatVertices.byteLength;
 
-        this.indicesBuffer = device.createBuffer({
-            label: "collider indices buffer",
-            size: flatIndices.byteLength,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.INDEX,
-        });
+        const flatNormals = new Float32Array(normals);
+        const flatNormalsBytes = flatNormals.byteLength;
 
-        device.queue.writeBuffer(
-            this.verticesBuffer, 
-            0, 
-            flatVertices.buffer,
-            flatVertices.byteOffset,
-            flatVertices.byteLength
-        );
+        this.indicesOffset = 0;
+        this.verticesOffset = flatIndicesBytes;
+        this.normalsOffset = flatIndicesBytes + flatVerticesBytes;
 
         device.queue.writeBuffer(
-            this.normalsBuffer, 
-            0, 
-            flatNormals.buffer,
-            flatNormals.byteOffset,
-            flatNormals.byteLength
-        );
-
-        device.queue.writeBuffer(
-            this.indicesBuffer, 
-            0, 
+            this.colliderDataBuffer,
+            0,
             flatIndices.buffer,
             flatIndices.byteOffset,
-            flatIndices.byteLength
+            flatIndicesBytes
         );
+
+        device.queue.writeBuffer(
+            this.colliderDataBuffer,
+            flatIndicesBytes,
+            flatVertices.buffer,
+            flatVertices.byteOffset,
+            flatVerticesBytes
+        );
+
+        device.queue.writeBuffer(
+            this.colliderDataBuffer,
+            flatIndicesBytes + flatVerticesBytes,
+            flatNormals.buffer,
+            flatNormals.byteOffset,
+            flatNormalsBytes
+        );
+        
+        // Keep these for potential reuse if needed, or remove them. 
+        // The properties were removed from class def, so I won't assign them.
     }
 }

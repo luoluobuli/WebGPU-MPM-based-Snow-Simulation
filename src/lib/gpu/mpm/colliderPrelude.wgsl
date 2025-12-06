@@ -1,11 +1,9 @@
-
-@group(1) @binding(9) var<storage, read> colliderVertices: array<f32>;
-@group(1) @binding(10) var<storage, read> colliderNormals: array<f32>;
-@group(1) @binding(11) var<storage, read> colliderIndices: array<u32>;
-
 fn getColliderVertex(index: u32) -> vec3f {
-    let i = index * 3u;
-    return vec3f(colliderVertices[i], colliderVertices[i + 1u], colliderVertices[i + 2u]);
+    let base_offset = uniforms.colliderNumIndices + index * 3u;
+    let x = bitcast<f32>(colliderData[base_offset]);
+    let y = bitcast<f32>(colliderData[base_offset + 1u]);
+    let z = bitcast<f32>(colliderData[base_offset + 2u]);
+    return vec3f(x, y, z);
 }
 
 fn closestPointTriangle(point: vec3f, tri_vert_a: vec3f, tri_vert_b: vec3f, tri_vert_c: vec3f) -> vec3f {
@@ -111,15 +109,15 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
     let ray_length = length(ray_dir);
     let do_ccd = ray_length > 1e-4;
 
-    let num_indices = arrayLength(&colliderIndices);
+    let num_indices = uniforms.colliderNumIndices;
     if num_indices == 0u { return; }
 
     let transform = uniforms.colliderTransformMat;
     
     for (var i = 0u; i < num_indices; i += 3u) {
-        let idx0 = colliderIndices[i];
-        let idx1 = colliderIndices[i + 1u];
-        let idx2 = colliderIndices[i + 2u];
+        let idx0 = colliderData[i];
+        let idx1 = colliderData[i + 1u];
+        let idx2 = colliderData[i + 2u];
         
         let v0_local = getColliderVertex(idx0);
         let v1_local = getColliderVertex(idx1);

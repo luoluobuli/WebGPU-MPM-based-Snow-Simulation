@@ -118,4 +118,7 @@ export class GpuUniformsBufferManager {
     writeGridCellDims(gridCellDims: [number, number, number]) {
         this.device.queue.writeBuffer(this.buffer, 352, new Float32Array(gridCellDims));
     }
+    writeColliderNumIndices(numIndices: number) {
+        this.device.queue.writeBuffer(this.buffer, 348, new Uint32Array([numIndices]));
+    }
 }

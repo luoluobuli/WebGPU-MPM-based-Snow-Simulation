@@ -15,6 +15,7 @@ import clearBlockParticleCountsSrc from "./clearBlockParticleCounts.wgsl?raw";
 import { attachPrelude } from "../shaderPrelude";
 import type { GpuMpmBufferManager } from "./GpuMpmBufferManager";
 import type { GpuColliderBufferManager } from "../collider/GpuColliderBufferManager";
+import colliderPreludeModuleSrc from "./colliderPrelude.wgsl?raw";
 
 export class GpuMpmPipelineManager {
     readonly particleBindGroupLayout: GPUBindGroupLayout;
@@ -85,12 +86,11 @@ export class GpuMpmPipelineManager {
                 { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-                // Collider buffers
                 { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-                { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-                { binding: 11, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
             ],
         });
+
+        uniformsManager.writeColliderNumIndices(colliderManager.numIndices);
 
         const sparseGridBindGroup = device.createBindGroup({
             label: "MPM sparse grid bind group",
@@ -105,9 +105,7 @@ export class GpuMpmPipelineManager {
                 { binding: 6, resource: { buffer: gridMomentumZBuffer } },
                 { binding: 7, resource: { buffer: blockParticleCountsBuffer } },
                 { binding: 8, resource: { buffer: blockParticleOffsetsBuffer } },
-                { binding: 9, resource: { buffer: colliderManager.verticesBuffer } },
-                { binding: 10, resource: { buffer: colliderManager.normalsBuffer } },
-                { binding: 11, resource: { buffer: colliderManager.indicesBuffer } },
+                { binding: 9, resource: { buffer: colliderManager.colliderDataBuffer } },
             ],
         });
 
@@ -255,7 +253,7 @@ export class GpuMpmPipelineManager {
             compute: {
                 module: device.createShaderModule({
                     label: "integrate particles module",
-                    code: attachPrelude(`${sparseGridPreludeSrc}\n${integrateParticlesSrc}`),
+                    code: attachPrelude(`${colliderPreludeModuleSrc}\n${sparseGridPreludeSrc}\n${integrateParticlesSrc}`),
                 }),
                 entryPoint: "integrateParticles",
             },

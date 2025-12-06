@@ -1,3 +1,4 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var smoothedDepthTexture: texture_2d<f32>;
 @group(0) @binding(2) var normalTexture: texture_2d<f32>;
 @group(0) @binding(3) var diffuseOutputTexture: texture_storage_2d<rgba8unorm, write>;

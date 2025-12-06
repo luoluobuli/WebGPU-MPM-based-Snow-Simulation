@@ -12,6 +12,8 @@ struct VertexOutput {
 }
 
 
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 @vertex
 fn vert(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;

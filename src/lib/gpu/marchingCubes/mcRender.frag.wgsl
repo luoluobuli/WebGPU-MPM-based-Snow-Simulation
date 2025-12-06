@@ -1,4 +1,4 @@
-// Marching cubes mesh fragment shader - G-buffer output
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 struct FragmentInput {
     @location(0) worldPos: vec3f,
