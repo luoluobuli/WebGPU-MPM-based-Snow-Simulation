@@ -164,6 +164,8 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
             }
         }
     }
+
+    let velocity_scale_fac = 0.05 / uniforms.simulationTimestep;
     
     // ccd resolved over static
     
@@ -171,30 +173,30 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
     if has_hit {
         let surface_margin = 0.02;
         let snap_pos = hit_pos + hit_normal * surface_margin;
-        let snap_vec = snap_pos - prev_pos - (*particle).pos_displacement;
             
-        
         (*particle).pos = snap_pos;
         
         let old_vel = (*particle).pos_displacement / uniforms.simulationTimestep;
         var v_rel = old_vel - uniforms.colliderVelocity;
         let vn = dot(v_rel, hit_normal);
         
-        // velocity response
-        if vn < 0 {
-            let v_n = vn * hit_normal;
-            let v_t = v_rel - v_n;
-            let friction = 0.1;
-            
-            // bounce/friction response
-            var new_vel = v_t * (1.0 - friction) + uniforms.colliderVelocity;
-            
-            (*particle).vel = new_vel;
-            (*particle).pos_displacement = new_vel * uniforms.simulationTimestep; 
+        // decompose relative velocity
+        let v_n = vn * hit_normal;
+        let v_t = v_rel - v_n;
+        let friction = 0.1;
+        
+        // velocity response: remove normal component (if penetrating) and add collider velocity
+        var new_vel: vec3f;
+        if vn < 0.0 {
+            // penetrating: remove inward normal velocity, apply friction to tangent
+            new_vel = v_t * (1.0 - friction) + uniforms.colliderVelocity * velocity_scale_fac;
         } else {
-             // moving away
-             (*particle).pos_displacement = (*particle).vel * uniforms.simulationTimestep; 
+            // moving away: keep relative velocity but still add collider velocity base
+            new_vel = v_rel + uniforms.colliderVelocity * velocity_scale_fac;
         }
+        
+        (*particle).vel = new_vel;
+        (*particle).pos_displacement = new_vel * uniforms.simulationTimestep; 
         return; 
     }
     
@@ -214,16 +216,23 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
         let v_rel = old_vel - uniforms.colliderVelocity;
         let vn = dot(v_rel, push_dir);
 
-        if vn < 0 {
-            let v_n = vn * push_dir;
-            let v_t = v_rel - v_n;
-            let friction = 0.;
-            
-            let new_vel = v_t * (1 - friction) + uniforms.colliderVelocity;
-            
-            (*particle).vel = new_vel;
-            (*particle).pos_displacement = new_vel * uniforms.simulationTimestep;
+        // decompose relative velocity
+        let v_n = vn * push_dir;
+        let v_t = v_rel - v_n;
+        let friction = 0.0;
+        
+        // velocity response: remove normal component (if penetrating) and add collider velocity
+        var new_vel: vec3f;
+        if vn < 0.0 {
+            // penetrating: remove inward normal velocity, apply friction to tangent
+            new_vel = v_t * (1.0 - friction) + uniforms.colliderVelocity * velocity_scale_fac;
+        } else {
+            // moving away: keep relative velocity but still add collider velocity base
+            new_vel = v_rel + uniforms.colliderVelocity * velocity_scale_fac;
         }
+        
+        (*particle).vel = new_vel;
+        (*particle).pos_displacement = new_vel * uniforms.simulationTimestep;
         
         // position correction
         let surface_margin = 0.02;

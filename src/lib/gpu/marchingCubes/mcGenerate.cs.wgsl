@@ -1,21 +1,7 @@
-// Sparse single-pass marching cubes mesh generation
-// Dispatched indirectly per active block
-// One threadblock per active block (8x8x8 cells)
-
 struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
-    // Add dummy padding if needed to match alignment? 
-    // vec3u is 12 bytes. u32 is 4 bytes. Total 16 bytes. Aligned.
 }
-
-// We don't use the struct for output anymore, we use f32 array for packing.
-/*
-struct MCVertex {
-    position: vec3f,
-    normal: vec3f,
-}
-*/
 
 struct IndirectDrawArgs {
     vertexCount: atomic<u32>,
@@ -28,14 +14,12 @@ struct IndirectDrawArgs {
 
 @group(1) @binding(0) var<storage, read> vertexDensity: array<f32>;
 @group(1) @binding(1) var<storage, read> vertexGradient: array<vec4f>;
-// Output vertices as raw floats for tight packing (structs force 16-byte alignment)
-// Layout: [Px, Py, Pz, Nx, Ny, Nz] per vertex (6 floats = 24 bytes)
 @group(1) @binding(2) var<storage, read_write> outputVertices: array<f32>;
 @group(1) @binding(3) var<storage, read_write> indirectDraw: IndirectDrawArgs;
 @group(1) @binding(4) var<uniform> mcParams: MCParams;
 @group(1) @binding(5) var<storage, read> activeBlocks: array<u32>;
 
-const ISOVALUE = 0.5; 
+const ISOVALUE = 0.1; 
 const BLOCK_SIZE = 8u;
 
 fn vertexIndex(coord: vec3i) -> u32 {
@@ -51,7 +35,6 @@ fn cellToWorld(cellCoord: vec3f) -> vec3f {
     return uniforms.gridMinCoords + cellCoord * cellSize;
 }
 
-// Global helpers
 fn getGlobalVertexDensity(vCoord: vec3i) -> f32 {
     let idx = vertexIndex(vCoord);
     return vertexDensity[idx];
@@ -62,7 +45,7 @@ fn getGlobalVertexGradient(vCoord: vec3i) -> vec3f {
     return vertexGradient[idx].xyz;
 }
 
-// Shared memory for 9x9x9 tile of vertices
+// shared memory for 9x9x9 tile of vertices (8x8x8 + 1 border)
 var<workgroup> s_vertexDensity: array<f32, 729>;
 var<workgroup> s_vertexGradient: array<vec3f, 729>;
 
