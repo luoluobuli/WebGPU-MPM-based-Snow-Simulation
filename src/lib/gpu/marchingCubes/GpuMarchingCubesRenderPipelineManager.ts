@@ -404,7 +404,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
             primitive: { topology: "triangle-strip" },
             depthStencil: {
                 depthWriteEnabled: true,
-                depthCompare: "always",
+                depthCompare: "less",
                 format: depthFormat,
             },
         });
