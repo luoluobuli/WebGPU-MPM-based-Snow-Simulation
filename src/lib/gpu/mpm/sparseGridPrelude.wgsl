@@ -14,6 +14,17 @@ struct HashMapEntry {
     block_index: atomic<u32>,
 }
 
+struct SparseGridStorage {
+    n_allocated_blocks: atomic<u32>,
+    // implicit 12 byte padding
+    hash_map_entries: array<HashMapEntry, HASH_MAP_SIZE>,
+    mapped_block_indexes: array<u32, N_MAX_BLOCKS_IN_HASH_MAP>,
+    block_particle_counts: array<atomic<u32>, N_MAX_BLOCKS_IN_HASH_MAP>,
+    block_particle_offsets: array<atomic<u32>, N_MAX_BLOCKS_IN_HASH_MAP>,
+}
+
+@group(1) @binding(0) var<storage, read_write> sparse_grid : SparseGridStorage;
+
 fn calculateBlockNumberContainingCell(cell_number: vec3i) -> vec3i {
     return cell_number >> vec3u(LOG_BLOCK_SIZE);
 }
@@ -28,8 +39,8 @@ fn retrieveBlockIndexFromHashMap(block_coord: vec3<i32>) -> u32 {
 
     for (var i = 0u; i < N_HASH_MAP_CANDIDATE_INDEX_ATTEMPTS; i++) {
         let candidate_index = (hash_key + i) % HASH_MAP_SIZE;
-        let stored_coord = hash_map_entries[candidate_index].block_number;
-        let block_index = atomicLoad(&hash_map_entries[candidate_index].block_index);
+        let stored_coord = sparse_grid.hash_map_entries[candidate_index].block_number;
+        let block_index = atomicLoad(&sparse_grid.hash_map_entries[candidate_index].block_index);
         
         if block_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY {
             return GRID_HASH_MAP_BLOCK_INDEX_EMPTY;

@@ -1,6 +1,5 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
-@group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
 @group(1) @binding(3) var<storage, read_write> grid_mass: array<i32>;
 @group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<i32>;
 @group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<i32>;
