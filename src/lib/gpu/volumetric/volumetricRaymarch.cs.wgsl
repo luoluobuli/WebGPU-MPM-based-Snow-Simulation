@@ -6,7 +6,7 @@
 
 const EXTINCTION_COEFFICIENT = 724.;
 const SCATTERING_ALBEDO = vec3f(0.9, 0.985, 0.99);
-const STEP_SIZE = 0.0125;
+const STEP_SIZE = 0.025;
 const N_MAX_STEPS = 256u;
 const SHADOW_STEP_SIZE = STEP_SIZE;
 const N_MAX_SHADOW_STEPS = 64u;
@@ -81,7 +81,8 @@ fn aabbIntersectionDistances(
 }
 
 fn raymarchShadow(pos: vec3f, light_dir: vec3f) -> vec3f {
-    var shadow_pos = pos + light_dir * SHADOW_STEP_SIZE;
+    let jitter = f32(hash4(vec4u(bitcast<vec3u>(pos), uniforms.time))) / f32(0xFFFFFFFF);
+    var shadow_pos = pos + light_dir * SHADOW_STEP_SIZE * jitter;
     var shadow_transmittance = vec3f(1);
 
     for (var s = 0u; s < N_MAX_SHADOW_STEPS; s++) {
@@ -149,7 +150,8 @@ fn doVolumetricRaymarch(
     let distance_start = volume_start;
     var distance_end = min(distance_far, distance_ground);
     
-    var current_ray_distance = distance_start;
+    let jitter = f32(hash3(vec3u(global_id.xy, uniforms.time))) / f32(0xFFFFFFFF);
+    var current_ray_distance = distance_start + jitter * STEP_SIZE;
 
     var transmittance = vec3f(1);
     var out_col = vec3f(0);
