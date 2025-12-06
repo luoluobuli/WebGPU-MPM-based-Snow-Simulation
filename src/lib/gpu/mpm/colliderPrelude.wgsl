@@ -78,7 +78,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
     let min_b = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
     let max_b = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMaxCoords, 1.0)).xyz;
     
-    let margin = 0.5;
+    let margin = 1.;
     let safety_min = min(min_b, max_b) - vec3f(margin);
     let safety_max = max(min_b, max_b) + vec3f(margin);
     
