@@ -7,6 +7,7 @@ import { GpuMarchingCubesBufferManager } from "./GpuMarchingCubesBufferManager";
 import preludeSrc from "./prelude.wgsl?raw";
 import triTableSrc from "./triTable.wgsl?raw";
 import mcDensitySrc from "./mcDensity.cs.wgsl?raw";
+import mcListBlocksSrc from "./mcListBlocks.cs.wgsl?raw";
 import mcVertexDensitySrc from "./mcVertexDensity.cs.wgsl?raw";
 import mcGenerateSrc from "./mcGenerate.cs.wgsl?raw";
 import mcRenderVertSrc from "./mcRender.vert.wgsl?raw";
@@ -14,6 +15,8 @@ import mcRenderFragSrc from "./mcRender.frag.wgsl?raw";
 import mcShadingSrc from "./mcShading.cs.wgsl?raw";
 import mcCompositeVertSrc from "./mcComposite.vert.wgsl?raw";
 import mcCompositeFragSrc from "./mcComposite.frag.wgsl?raw";
+import mcResetSrc from "./mcReset.cs.wgsl?raw";
+import mcClampArgsSrc from "./mcClampArgs.cs.wgsl?raw";
 
 export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
     private readonly device: GPUDevice;
@@ -23,20 +26,26 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
     
     // Compute pipelines
     private readonly densityPipeline: GPUComputePipeline;
+    private readonly listBlocksPipeline: GPUComputePipeline;
     private readonly vertexDensityPipeline: GPUComputePipeline;
     private readonly generatePipeline: GPUComputePipeline;
     private readonly shadingPipeline: GPUComputePipeline;
-    
+    private readonly resetPipeline: GPUComputePipeline;
+    private readonly clampArgsPipeline: GPUComputePipeline;
+
     // Render pipelines
     private readonly meshRenderPipeline: GPURenderPipeline;
     private readonly compositePipeline: GPURenderPipeline;
-    
+
     // Bind groups
     private densityBindGroup: GPUBindGroup;
+    private listBlocksBindGroup: GPUBindGroup;
     private vertexDensityBindGroup: GPUBindGroup;
     private generateBindGroup: GPUBindGroup;
     private shadingBindGroup: GPUBindGroup;
     private compositeBindGroup: GPUBindGroup;
+    private resetBindGroup: GPUBindGroup;
+    private clampArgsBindGroup: GPUBindGroup;
     
     // Textures for G-buffer
     private normalTexture: GPUTexture;
@@ -57,6 +66,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
     
     // MC parameters buffer
     private readonly mcParamsBuffer: GPUBuffer;
+    private readonly maxVertsBuffer: GPUBuffer;
     
     constructor({
         device,
@@ -95,6 +105,16 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
         this.mcParamsBuffer = mcParamsBuffer;
+
+        // Max verts uniform for clamping
+        // 3.5M * 3 = 10,500,000 vertices
+        const MAX_TOTAL_VERTICES = 10500000;
+        this.maxVertsBuffer = device.createBuffer({
+            label: "MC max verts buffer",
+            size: 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(this.maxVertsBuffer, 0, new Uint32Array([MAX_TOTAL_VERTICES]));
         
         // Write MC params
         const [mcX, mcY, mcZ] = this.bufferManager.mcGridDims;
@@ -138,18 +158,50 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
             ],
         });
         
+        // === List blocks pipeline ===
+        const listBlocksBindGroupLayout = device.createBindGroupLayout({
+            label: "MC list blocks bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // densityGrid
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // activeBlocks
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // indirectDispatch
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },           // mcParams
+            ],
+        });
+
+        this.listBlocksPipeline = device.createComputePipeline({
+            label: "MC list blocks pipeline",
+            layout: device.createPipelineLayout({
+                bindGroupLayouts: [listBlocksBindGroupLayout],
+            }),
+            compute: {
+                module: device.createShaderModule({
+                    code: mcListBlocksSrc,
+                }),
+                entryPoint: "listBlocks",
+            },
+        });
+
+        this.listBlocksBindGroup = device.createBindGroup({
+            label: "MC list blocks bind group",
+            layout: listBlocksBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.bufferManager.densityGridBuffer } },
+                { binding: 1, resource: { buffer: this.bufferManager.activeBlocksBuffer } },
+                { binding: 2, resource: { buffer: this.bufferManager.blockIndirectDispatchBuffer } },
+                { binding: 3, resource: { buffer: mcParamsBuffer } },
+            ],
+        });
+
         // === Vertex density pipeline ===
         const vertexDensityBindGroupLayout = device.createBindGroupLayout({
             label: "MC vertex density bind group layout",
             entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE,
-                  buffer: { type: "read-only-storage" } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE,
-                  buffer: { type: "storage" } },
-                { binding: 2, visibility: GPUShaderStage.COMPUTE,
-                  buffer: { type: "storage" } },
-                { binding: 3, visibility: GPUShaderStage.COMPUTE,
-                  buffer: { type: "uniform" } },
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // densityGrid
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // vertexDensity
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // vertexGradient
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },           // mcParams
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // activeBlocks
             ],
         });
         
@@ -174,6 +226,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
                 { binding: 1, resource: { buffer: this.bufferManager.vertexDensityBuffer } },
                 { binding: 2, resource: { buffer: this.bufferManager.vertexGradientBuffer } },
                 { binding: 3, resource: { buffer: mcParamsBuffer } },
+                { binding: 4, resource: { buffer: this.bufferManager.activeBlocksBuffer } },
             ],
         });
         
@@ -181,16 +234,12 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         const generateBindGroupLayout = device.createBindGroupLayout({
             label: "MC generate bind group layout",
             entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE,
-                  buffer: { type: "read-only-storage" } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE,
-                  buffer: { type: "read-only-storage" } },
-                { binding: 2, visibility: GPUShaderStage.COMPUTE,
-                  buffer: { type: "storage" } },
-                { binding: 3, visibility: GPUShaderStage.COMPUTE,
-                  buffer: { type: "storage" } },
-                { binding: 4, visibility: GPUShaderStage.COMPUTE,
-                  buffer: { type: "uniform" } },
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // vertexDensity
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // vertexGradient
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // outputVertices
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // indirectDraw
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },           // mcParams
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // activeBlocks
             ],
         });
         
@@ -216,6 +265,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
                 { binding: 2, resource: { buffer: this.bufferManager.vertexBuffer } },
                 { binding: 3, resource: { buffer: this.bufferManager.indirectDrawBuffer } },
                 { binding: 4, resource: { buffer: mcParamsBuffer } },
+                { binding: 5, resource: { buffer: this.bufferManager.activeBlocksBuffer } },
             ],
         });
         
@@ -231,10 +281,10 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
                 }),
                 entryPoint: "vert",
                 buffers: [{
-                    arrayStride: 32, // 2 * vec3f aligned to 16 bytes each => 32 bytes total
+                    arrayStride: 24, // 2 * vec3f packed = 24 bytes
                     attributes: [
                         { shaderLocation: 0, offset: 0, format: "float32x3" as GPUVertexFormat },
-                        { shaderLocation: 1, offset: 16, format: "float32x3" as GPUVertexFormat },
+                        { shaderLocation: 1, offset: 12, format: "float32x3" as GPUVertexFormat },
                     ],
                 }],
             },
@@ -268,6 +318,14 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         });
         this.normalTextureView = this.normalTexture.createView();
         
+        this.albedoTexture = device.createTexture({
+            label: "MC albedo texture",
+            size: [1, 1],
+            format: format,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+        this.albedoTextureView = this.albedoTexture.createView();
+
         this.shadedTexture = device.createTexture({
             label: "MC shaded texture",
             size: [1, 1],
@@ -352,6 +410,76 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         });
         
         this.compositeBindGroup = this.createCompositeBindGroup();
+
+        // === Reset pipeline ===
+        const resetBindGroupLayout = device.createBindGroupLayout({
+            label: "MC reset bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // indirectDispatch
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // indirectDraw
+            ],
+        });
+
+        this.resetPipeline = device.createComputePipeline({
+            label: "MC reset pipeline",
+            layout: device.createPipelineLayout({
+                bindGroupLayouts: [resetBindGroupLayout],
+            }),
+            compute: {
+                module: device.createShaderModule({
+                    code: mcResetSrc,
+                }),
+                entryPoint: "main",
+            },
+        });
+
+        this.resetBindGroup = device.createBindGroup({
+            label: "MC reset bind group",
+            layout: resetBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.bufferManager.blockIndirectDispatchBuffer } },
+                { binding: 1, resource: { buffer: this.bufferManager.indirectDrawBuffer } },
+            ],
+        });
+
+        // === Clamp Args Pipeline ===
+        const clampBindGroupLayout = device.createBindGroupLayout({
+            label: "MC clamp args bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // indirectDraw
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } }, // dummy mcParams (not used but bound) OR skip? 
+                // We reused binding 1 for MCParams in reset? No.
+                // Shader expects: binding 0: indirectDraw, binding 2: maxVerts.
+                // Wait, shader definition:
+                // @group(0) @binding(0) var<storage, read_write> indirectDraw: IndirectDrawArgs;
+                // @group(0) @binding(1) var<uniform> mcParams: MCParams; 
+                // @group(0) @binding(2) var<uniform> maxVertsUniform: u32; 
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } }, // maxVerts
+            ]
+        });
+
+        this.clampArgsPipeline = device.createComputePipeline({
+            label: "MC clamp args pipeline",
+            layout: device.createPipelineLayout({
+                bindGroupLayouts: [clampBindGroupLayout],
+            }),
+            compute: {
+                module: device.createShaderModule({ code: mcClampArgsSrc }),
+                entryPoint: "main",
+            },
+        });
+        
+        this.clampArgsBindGroup = device.createBindGroup({
+            label: "MC clamp args bind group",
+            layout: clampBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.bufferManager.indirectDrawBuffer } },
+                { binding: 1, resource: { buffer: this.mcParamsBuffer } }, // unused but bound to satisfy layout if we kept it? 
+                // Wait, I defined binding 1 in shader but said it might be unused. 
+                // I must bind it if it's in shader.
+                { binding: 2, resource: { buffer: this.maxVertsBuffer } },
+            ]
+        });
     }
     
     private createShadingBindGroup(): GPUBindGroup {
@@ -426,46 +554,55 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         // Clear density buffer (but NOT the indirect draw buffer - that would race with queue.writeBuffer)
         commandEncoder.clearBuffer(this.bufferManager.densityGridBuffer);
         
-        // Write initial indirect draw args: vertexCount=0 (will be filled by shader), rest fixed
-        // This must be done via queue.writeBuffer BEFORE the command encoder is submitted
-        this.device.queue.writeBuffer(
-            this.bufferManager.indirectDrawBuffer,
-            0,
-            new Uint32Array([0, 1, 0, 0]) // vertexCount=0, instanceCount=1, firstVertex=0, firstInstance=0
-        );
+        // Reset indirect dispatch/draw counters using compute shader
+        // This ensures correct ordering within the command stream
+        const resetPass = commandEncoder.beginComputePass({ label: "MC reset pass" });
+        resetPass.setPipeline(this.resetPipeline);
+        resetPass.setBindGroup(0, this.resetBindGroup);
+        resetPass.dispatchWorkgroups(1);
+        resetPass.end();
         
-        const computePass = commandEncoder.beginComputePass({
-            label: "MC compute pass",
-        });
+        // 1. Calculate density grid (scatter particles to grid)
+        // This is still dense/global because particles can be anywhere
+        const densityPass = commandEncoder.beginComputePass({ label: "MC density pass" });
+        densityPass.setPipeline(this.densityPipeline);
+        densityPass.setBindGroup(0, this.uniformsManager.bindGroup);
+        densityPass.setBindGroup(1, this.densityBindGroup);
+        densityPass.dispatchWorkgroups(Math.ceil(this.mpmManager.nParticles / 256));
+        densityPass.end();
         
-        // 1. Calculate density grid
-        computePass.setPipeline(this.densityPipeline);
-        computePass.setBindGroup(0, this.uniformsManager.bindGroup);
-        computePass.setBindGroup(1, this.densityBindGroup);
-        computePass.dispatchWorkgroups(Math.ceil(this.mpmManager.nParticles / 256));
+        // 2. List Active Blocks
+        const listPass = commandEncoder.beginComputePass({ label: "MC list blocks pass" });
+        listPass.setPipeline(this.listBlocksPipeline);
+        listPass.setBindGroup(0, this.listBlocksBindGroup);
+        // Total blocks / 64 threads per group
+        const [gx, gy, gz] = this.bufferManager.mcGridDims;
+        const totalBlocks = Math.ceil(gx/8) * Math.ceil(gy/8) * Math.ceil(gz/8);
+        listPass.dispatchWorkgroups(totalBlocks); // One workgroup per block now
+        listPass.end();
+
+        // 3. Calculate vertex densities and gradients ONLY for active blocks
+        const vertexDensityPass = commandEncoder.beginComputePass({ label: "MC vertex density pass" });
+        vertexDensityPass.setPipeline(this.vertexDensityPipeline);
+        vertexDensityPass.setBindGroup(0, this.uniformsManager.bindGroup);
+        vertexDensityPass.setBindGroup(1, this.vertexDensityBindGroup);
+        vertexDensityPass.dispatchWorkgroupsIndirect(this.bufferManager.blockIndirectDispatchBuffer, 0);
+        vertexDensityPass.end();
         
-        // 2. Calculate vertex densities and gradients
-        computePass.setPipeline(this.vertexDensityPipeline);
-        computePass.setBindGroup(0, this.uniformsManager.bindGroup);
-        computePass.setBindGroup(1, this.vertexDensityBindGroup);
-        const [gx, gy, gz] = this.bufferManager.gridDims;
-        computePass.dispatchWorkgroups(
-            Math.ceil((gx + 1) / 8),
-            Math.ceil((gy + 1) / 8),
-            Math.ceil((gz + 1) / 4)
-        );
-        
-        // 3. Generate mesh
-        computePass.setPipeline(this.generatePipeline);
-        computePass.setBindGroup(0, this.uniformsManager.bindGroup);
-        computePass.setBindGroup(1, this.generateBindGroup);
-        computePass.dispatchWorkgroups(
-            Math.ceil(gx / 8),
-            Math.ceil(gy / 8),
-            Math.ceil(gz / 4)
-        );
-        
-        computePass.end();
+        // 4. Generate mesh ONLY for active blocks
+        const generatePass = commandEncoder.beginComputePass({ label: "MC generate pass" });
+        generatePass.setPipeline(this.generatePipeline);
+        generatePass.setBindGroup(0, this.uniformsManager.bindGroup);
+        generatePass.setBindGroup(1, this.generateBindGroup);
+        generatePass.dispatchWorkgroupsIndirect(this.bufferManager.blockIndirectDispatchBuffer, 0);
+        generatePass.end();
+
+        // 5. Clamp indirect args to ensure we don't draw garbage
+        const clampPass = commandEncoder.beginComputePass({ label: "MC clamp pass" });
+        clampPass.setPipeline(this.clampArgsPipeline);
+        clampPass.setBindGroup(0, this.clampArgsBindGroup);
+        clampPass.dispatchWorkgroups(1);
+        clampPass.end();
     }
     
     addMeshRenderPass(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {

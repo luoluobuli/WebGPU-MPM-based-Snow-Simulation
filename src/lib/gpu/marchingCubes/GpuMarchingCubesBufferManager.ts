@@ -1,9 +1,12 @@
 // Maximum triangles per cell is 5, reasonable estimate for max total
-const MAX_TRIANGLES = 500000;
+// WebGPU default maxBufferSize is 256MB (268,435,456 bytes).
+// 3,500,000 tris * 3 verts * 24 bytes (packed) = 252,000,000 bytes.
+// This fits within 256MB.
+const MAX_TRIANGLES = 3500000;
 const MAX_VERTICES = MAX_TRIANGLES * 3;
 
 // Maximum MC grid resolution per axis (will downsample if larger)
-const MAX_MC_GRID_RES = 64;
+const MAX_MC_GRID_RES = 256;
 
 export class GpuMarchingCubesBufferManager {
     readonly device: GPUDevice;
@@ -25,6 +28,10 @@ export class GpuMarchingCubesBufferManager {
     
     // Vertex gradient buffer (for precomputed normals)
     readonly vertexGradientBuffer: GPUBuffer;
+
+    // Active blocks list for sparse update
+    readonly activeBlocksBuffer: GPUBuffer;
+    readonly blockIndirectDispatchBuffer: GPUBuffer;
     
     // Actual MC grid dimensions (may be downsampled from simulation grid)
     readonly mcGridDims: [number, number, number];
@@ -60,10 +67,10 @@ export class GpuMarchingCubesBufferManager {
         
         console.log(`MC grid: ${mcResX}x${mcResY}x${mcResZ} (downsampled ${this.downsampleFactor}x from simulation grid)`);
         
-        // Vertex buffer: position (aligned vec3f = 16 bytes) + normal (aligned vec3f = 16 bytes) = 32 bytes per vertex
+        // Vertex buffer: position (vec3f = 12 bytes) + normal (vec3f = 12 bytes) = 24 bytes per vertex packed
         this.vertexBuffer = device.createBuffer({
             label: "MC vertex buffer",
-            size: MAX_VERTICES * 32,
+            size: MAX_VERTICES * 24, // Packed f32 arrays
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
         
@@ -103,6 +110,24 @@ export class GpuMarchingCubesBufferManager {
             label: "MC vertex gradient buffer",
             size: numVertices * 16, // vec4f = 16 bytes
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        // Block-based optimization
+        const blocksX = Math.ceil(mcResX / 8);
+        const blocksY = Math.ceil(mcResY / 8);
+        const blocksZ = Math.ceil(mcResZ / 8);
+        const totalBlocks = blocksX * blocksY * blocksZ;
+
+        this.activeBlocksBuffer = device.createBuffer({
+            label: "MC active blocks buffer",
+            size: totalBlocks * 4, // u32 block index
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        this.blockIndirectDispatchBuffer = device.createBuffer({
+            label: "MC block indirect dispatch buffer",
+            size: 12, // x, y, z (atomic x)
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
         });
     }
     

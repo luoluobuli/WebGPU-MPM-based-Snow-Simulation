@@ -1,15 +1,21 @@
-// Single-pass marching cubes mesh generation
-// One thread per cell, outputs triangles with indirect draw
+// Sparse single-pass marching cubes mesh generation
+// Dispatched indirectly per active block
+// One threadblock per active block (8x8x8 cells)
 
 struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
+    // Add dummy padding if needed to match alignment? 
+    // vec3u is 12 bytes. u32 is 4 bytes. Total 16 bytes. Aligned.
 }
 
+// We don't use the struct for output anymore, we use f32 array for packing.
+/*
 struct MCVertex {
     position: vec3f,
     normal: vec3f,
 }
+*/
 
 struct IndirectDrawArgs {
     vertexCount: atomic<u32>,
@@ -20,33 +26,21 @@ struct IndirectDrawArgs {
 
 @group(1) @binding(0) var<storage, read> vertexDensity: array<f32>;
 @group(1) @binding(1) var<storage, read> vertexGradient: array<vec4f>;
-@group(1) @binding(2) var<storage, read_write> outputVertices: array<MCVertex>;
+// Output vertices as raw floats for tight packing (structs force 16-byte alignment)
+// Layout: [Px, Py, Pz, Nx, Ny, Nz] per vertex (6 floats = 24 bytes)
+@group(1) @binding(2) var<storage, read_write> outputVertices: array<f32>;
 @group(1) @binding(3) var<storage, read_write> indirectDraw: IndirectDrawArgs;
 @group(1) @binding(4) var<uniform> mcParams: MCParams;
+@group(1) @binding(5) var<storage, read> activeBlocks: array<u32>;
 
-const DENSITY_SCALE = 65536.0; // Same as uniforms.fixedPointScale
-const ISOVALUE = 0.001; // Low threshold for sparse snow
+const DENSITY_SCALE = 65536.0; 
+const ISOVALUE = 0.2; 
+const BLOCK_SIZE = 8u;
 
 fn vertexIndex(coord: vec3i) -> u32 {
     let res = vec3i(mcParams.mcGridRes) + vec3i(1);
+    if (any(coord < vec3i(0)) || any(coord >= res)) { return 0u; } 
     return u32(coord.x + coord.y * res.x + coord.z * res.x * res.y);
-}
-
-fn getCellVertexDensity(cellCoord: vec3i, vertexOffset: u32) -> f32 {
-    // Vertex offset to coord offset
-    let dx = i32(vertexOffset & 1u);
-    let dy = i32((vertexOffset >> 2u) & 1u);
-    let dz = i32((vertexOffset >> 1u) & 1u);
-    let vertCoord = cellCoord + vec3i(dx, dy, dz);
-    return vertexDensity[vertexIndex(vertCoord)];
-}
-
-fn getCellVertexGradient(cellCoord: vec3i, vertexOffset: u32) -> vec3f {
-    let dx = i32(vertexOffset & 1u);
-    let dy = i32((vertexOffset >> 2u) & 1u);
-    let dz = i32((vertexOffset >> 1u) & 1u);
-    let vertCoord = cellCoord + vec3i(dx, dy, dz);
-    return vertexGradient[vertexIndex(vertCoord)].xyz;
 }
 
 fn cellToWorld(cellCoord: vec3f) -> vec3f {
@@ -56,93 +50,208 @@ fn cellToWorld(cellCoord: vec3f) -> vec3f {
     return uniforms.gridMinCoords + cellCoord * cellSize;
 }
 
+// Global helpers
+fn getGlobalVertexDensity(vCoord: vec3i) -> f32 {
+    let idx = vertexIndex(vCoord);
+    return vertexDensity[idx];
+}
+
+fn getGlobalVertexGradient(vCoord: vec3i) -> vec3f {
+    let idx = vertexIndex(vCoord);
+    return vertexGradient[idx].xyz;
+}
+
+// Shared memory for 9x9x9 tile of vertices
+var<workgroup> s_vertexDensity: array<f32, 729>;
+var<workgroup> s_vertexGradient: array<vec3f, 729>;
+
+fn sharedIndex(lx: i32, ly: i32, lz: i32) -> i32 {
+    return lx + ly * 9 + lz * 81;
+}
+
+var<workgroup> wgVertexCount: atomic<u32>;
+var<workgroup> wgBaseVertexIdx: u32;
+
 @compute
 @workgroup_size(8, 8, 4)
-fn generateMesh(@builtin(global_invocation_id) global_id: vec3u) {
-    let cellCoord = vec3i(global_id);
-    let gridRes = vec3i(mcParams.mcGridRes);
-    
-    if any(cellCoord >= gridRes) {
-        return;
+fn generateMesh(
+    @builtin(local_invocation_id) local_id: vec3u,
+    @builtin(workgroup_id) group_id: vec3u,
+    @builtin(local_invocation_index) local_idx: u32
+) {
+    if (local_idx == 0u) {
+        atomicStore(&wgVertexCount, 0u);
     }
     
-    // Sample 8 corner densities
-    var densities: array<f32, 8>;
-    for (var i = 0u; i < 8u; i++) {
-        densities[i] = getCellVertexDensity(cellCoord, i);
+    // Identify block
+    let blockIdx = activeBlocks[group_id.x];
+    
+    let gridRes = mcParams.mcGridRes;
+    let blocksPerAxis = (gridRes + vec3u(BLOCK_SIZE - 1u)) / BLOCK_SIZE;
+    let bz = blockIdx / (blocksPerAxis.x * blocksPerAxis.y);
+    let rem = blockIdx % (blocksPerAxis.x * blocksPerAxis.y);
+    let by = rem / blocksPerAxis.x;
+    let bx = rem % blocksPerAxis.x;
+    let blockCoord = vec3i(i32(bx), i32(by), i32(bz));
+    
+    let baseCell = blockCoord * 8;
+    let num_loads = 729u;
+    
+    // Cooperative load
+    for (var i = 0u; i < 3u; i++) {
+        let idx = local_idx + i * 256u;
+        if (idx < num_loads) {
+            let lz = i32(idx / 81u);
+            let rem2 = i32(idx % 81u);
+            let ly = rem2 / 9;
+            let lx = rem2 % 9;
+            
+            let vPos = baseCell + vec3i(lx, ly, lz);
+            s_vertexDensity[idx] = getGlobalVertexDensity(vPos);
+            s_vertexGradient[idx] = getGlobalVertexGradient(vPos);
+        }
     }
     
-    // Compute marching cubes case
-    let mcCase = mcComputeCase(densities, ISOVALUE);
-    let numTris = MC_TRI_COUNTS[mcCase];
+    workgroupBarrier();
+
+    // Loop
+    let num_cells = 512u; // 8^3
     
-    if numTris == 0u {
-        return;
-    }
+    var savedCases: array<u32, 2>;
+    var savedOffsets: array<u32, 2>;
+    var savedNumTris: array<u32, 2>;
     
-    // Allocate vertices atomically
-    let baseVertexIdx = atomicAdd(&indirectDraw.vertexCount, numTris * 3u);
-    
-    // Safety check to prevent buffer overflow (matches MAX_VERTICES in GpuMarchingCubesBufferManager.ts)
-    const MAX_VERTICES = 1500000u;
-    if (baseVertexIdx + numTris * 3u > MAX_VERTICES) {
-        return;
-    }
-    
-    // Generate triangles
-    for (var t = 0u; t < numTris; t++) {
-        for (var v = 0u; v < 3u; v++) {
-            let edgeIdx = mcGetTriangleEdge(mcCase, t, v);
-            if edgeIdx < 0 {
-                continue;
+    for (var i = 0u; i < 2u; i++) {
+        savedNumTris[i] = 0u;
+        
+        let cell_idx = local_idx + i * 256u;
+        if (cell_idx < num_cells) {
+            let cz = i32(cell_idx / 64u);
+            let rem2 = i32(cell_idx % 64u);
+            let cy = rem2 / 8;
+            let cx = rem2 % 8;
+            
+            let lx = cx; let ly = cy; let lz = cz;
+            let cellGlobal = baseCell + vec3i(cx, cy, cz);
+            
+            if (all(cellGlobal < vec3i(gridRes))) {
+                var densities: array<f32, 8>;
+                densities[0] = s_vertexDensity[sharedIndex(lx, ly, lz)];
+                densities[1] = s_vertexDensity[sharedIndex(lx+1, ly, lz)];
+                densities[2] = s_vertexDensity[sharedIndex(lx, ly, lz+1)];
+                densities[3] = s_vertexDensity[sharedIndex(lx+1, ly, lz+1)];
+                densities[4] = s_vertexDensity[sharedIndex(lx, ly+1, lz)];
+                densities[5] = s_vertexDensity[sharedIndex(lx+1, ly+1, lz)];
+                densities[6] = s_vertexDensity[sharedIndex(lx, ly+1, lz+1)];
+                densities[7] = s_vertexDensity[sharedIndex(lx+1, ly+1, lz+1)];
+                
+                let mcCase = mcComputeCase(densities, ISOVALUE);
+                let numTris = MC_TRI_COUNTS[mcCase];
+                
+                if (numTris > 0u) {
+                    savedCases[i] = mcCase;
+                    savedNumTris[i] = numTris;
+                    savedOffsets[i] = atomicAdd(&wgVertexCount, numTris * 3u);
+                }
             }
+        }
+    }
+    
+    workgroupBarrier();
+    
+    if (local_idx == 0u) {
+        let totalWgCount = atomicLoad(&wgVertexCount);
+        if (totalWgCount > 0u) {
+            wgBaseVertexIdx = atomicAdd(&indirectDraw.vertexCount, totalWgCount);
+        }
+    }
+    
+    workgroupBarrier();
+    
+    let baseIdx = wgBaseVertexIdx;
+    let MAX_VERTICES = 10500000u; // Matches buffer (~3.5M tris * 3)
+    
+    // Output pass
+    for (var i = 0u; i < 2u; i++) {
+        let numTris = savedNumTris[i];
+        if (numTris > 0u) {
+            let mcCase = savedCases[i];
+            let myOffset = savedOffsets[i];
             
-            let edge = u32(edgeIdx);
+            let cell_idx = local_idx + i * 256u;
+            let cz = i32(cell_idx / 64u);
+            let rem2 = i32(cell_idx % 64u);
+            let cy = rem2 / 8;
+            let cx = rem2 % 8;
+            let cellGlobal = baseCell + vec3i(cx, cy, cz);
             
-            // Get edge endpoints
-            let v0 = MC_EDGE_V0[edge];
-            let v1 = MC_EDGE_V1[edge];
-            let d0 = densities[v0];
-            let d1 = densities[v1];
+            let lx = cx; let ly = cy; let lz = cz;
             
-            // Interpolation factor
-            let t_interp = clamp((ISOVALUE - d0) / (d1 - d0 + 0.0001), 0.0, 1.0);
+            var densities: array<f32, 8>;
+            var gradients: array<vec3f, 8>;
             
-            // Interpolate position
-            let p0 = mcVertexOffset(v0);
-            let p1 = mcVertexOffset(v1);
-            let localPos = mix(p0, p1, t_interp);
-            let worldPos = cellToWorld(vec3f(cellCoord) + localPos);
+            let s0 = sharedIndex(lx, ly, lz);
+            let s1 = sharedIndex(lx+1, ly, lz);
+            let s2 = sharedIndex(lx, ly, lz+1);
+            let s3 = sharedIndex(lx+1, ly, lz+1);
+            let s4 = sharedIndex(lx, ly+1, lz);
+            let s5 = sharedIndex(lx+1, ly+1, lz);
+            let s6 = sharedIndex(lx, ly+1, lz+1);
+            let s7 = sharedIndex(lx+1, ly+1, lz+1);
             
-            // Compute analytic gradient of trilinear interpolant at localPos
-            // This is robust even if the density field is locally flat at corners (step function)
-            // Gradient X
-            let dx00 = densities[1] - densities[0];
-            let dx10 = densities[5] - densities[4];
-            let dx01 = densities[3] - densities[2];
-            let dx11 = densities[7] - densities[6];
-            let gx = mix(mix(dx00, dx10, localPos.y), mix(dx01, dx11, localPos.y), localPos.z);
+            densities[0] = s_vertexDensity[s0]; gradients[0] = s_vertexGradient[s0];
+            densities[1] = s_vertexDensity[s1]; gradients[1] = s_vertexGradient[s1];
+            densities[2] = s_vertexDensity[s2]; gradients[2] = s_vertexGradient[s2];
+            densities[3] = s_vertexDensity[s3]; gradients[3] = s_vertexGradient[s3];
+            densities[4] = s_vertexDensity[s4]; gradients[4] = s_vertexGradient[s4];
+            densities[5] = s_vertexDensity[s5]; gradients[5] = s_vertexGradient[s5];
+            densities[6] = s_vertexDensity[s6]; gradients[6] = s_vertexGradient[s6];
+            densities[7] = s_vertexDensity[s7]; gradients[7] = s_vertexGradient[s7];
             
-            // Gradient Y
-            let dy00 = densities[4] - densities[0];
-            let dy10 = densities[5] - densities[1];
-            let dy01 = densities[6] - densities[2];
-            let dy11 = densities[7] - densities[3];
-            let gy = mix(mix(dy00, dy10, localPos.x), mix(dy01, dy11, localPos.x), localPos.z);
-            
-            // Gradient Z
-            let dz00 = densities[2] - densities[0];
-            let dz10 = densities[3] - densities[1];
-            let dz01 = densities[6] - densities[4];
-            let dz11 = densities[7] - densities[5];
-            let gz = mix(mix(dz00, dz10, localPos.x), mix(dz01, dz11, localPos.x), localPos.y);
-            
-            // Normal points towards lower density
-            let normal = -normalize(vec3f(gx, gy, gz));
-            
-            let vertIdx = baseVertexIdx + t * 3u + v;
-            outputVertices[vertIdx].position = worldPos;
-            outputVertices[vertIdx].normal = normal;
+            for (var t = 0u; t < numTris; t++) {
+                for (var v = 0u; v < 3u; v++) {
+                    let edgeIdx = mcGetTriangleEdge(mcCase, t, v);
+                    let edge = u32(edgeIdx);
+                    
+                    let v0 = MC_EDGE_V0[edge];
+                    let v1 = MC_EDGE_V1[edge];
+                    let d0 = densities[v0];
+                    let d1 = densities[v1];
+                    
+                    let t_interp = clamp((ISOVALUE - d0) / (d1 - d0 + 0.0001), 0.0, 1.0);
+                    
+                    let p0 = mcVertexOffset(v0);
+                    let p1 = mcVertexOffset(v1);
+                    let localPos = mix(p0, p1, t_interp);
+                    let worldPos = cellToWorld(vec3f(cellGlobal) + localPos);
+                    
+                    let g0 = mix(gradients[0], gradients[1], localPos.x); 
+                    let g1 = mix(gradients[2], gradients[3], localPos.x); 
+                    let g2 = mix(gradients[4], gradients[5], localPos.x); 
+                    let g3 = mix(gradients[6], gradients[7], localPos.x); 
+                    let gy0 = mix(g0, g1, localPos.z);
+                    let gy1 = mix(g2, g3, localPos.z);
+                    let normalVec = mix(gy0, gy1, localPos.y);
+                    
+                    let nLen = length(normalVec);
+                    var normal = vec3f(0.0);
+                    if (nLen > 0.0001) {
+                        normal = -normalVec / nLen;
+                    }
+                    
+                    let globalVertIdx = baseIdx + myOffset + t * 3u + v;
+                    if (globalVertIdx < MAX_VERTICES) {
+                        // Packed write: 6 floats per vertex
+                        let floatIdx = globalVertIdx * 6u;
+                        outputVertices[floatIdx + 0u] = worldPos.x;
+                        outputVertices[floatIdx + 1u] = worldPos.y;
+                        outputVertices[floatIdx + 2u] = worldPos.z;
+                        outputVertices[floatIdx + 3u] = normal.x;
+                        outputVertices[floatIdx + 4u] = normal.y;
+                        outputVertices[floatIdx + 5u] = normal.z;
+                    }
+                }
+            }
         }
     }
 }
