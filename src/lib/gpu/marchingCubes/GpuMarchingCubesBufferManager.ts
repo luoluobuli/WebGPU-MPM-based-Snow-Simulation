@@ -1,7 +1,7 @@
 const N_MAX_TRIANGLES = 3_500_000;
 const N_MAX_VERTICES = N_MAX_TRIANGLES * 3;
 
-const MAX_MC_GRID_RES = 1_024;
+// const MAX_MC_GRID_RES = 1_024;
 
 export class GpuMarchingCubesBufferManager {
     readonly device: GPUDevice;
@@ -22,9 +22,9 @@ export class GpuMarchingCubesBufferManager {
 
     readonly activeBlocksBuffer: GPUBuffer; // for sparse update
     readonly blockIndirectDispatchBuffer: GPUBuffer;
-    readonly marchingCubesGridDims: [number, number, number];
+    readonly gridResolution: [number, number, number];
     readonly simulationGridDims: [number, number, number];
-    readonly downsampleFactor: number;
+    // readonly downsampleFactor: number;
     
     constructor({
         device,
@@ -41,12 +41,14 @@ export class GpuMarchingCubesBufferManager {
         this.simulationGridDims = [gridResolutionX, gridResolutionY, gridResolutionZ];
         
         const maxSimRes = Math.max(gridResolutionX, gridResolutionY, gridResolutionZ);
-        this.downsampleFactor = Math.max(1, Math.ceil(maxSimRes / MAX_MC_GRID_RES));
+        // this.downsampleFactor = Math.max(1, Math.ceil(maxSimRes / MAX_MC_GRID_RES));
         
-        const mcResX = Math.ceil(gridResolutionX / this.downsampleFactor);
-        const mcResY = Math.ceil(gridResolutionY / this.downsampleFactor);
-        const mcResZ = Math.ceil(gridResolutionZ / this.downsampleFactor);
-        this.marchingCubesGridDims = [mcResX, mcResY, mcResZ];
+        // const mcResX = Math.ceil(gridResolutionX / this.downsampleFactor);
+        // const mcResY = Math.ceil(gridResolutionY / this.downsampleFactor);
+        // const mcResZ = Math.ceil(gridResolutionZ / this.downsampleFactor);
+        // this.marchingCubesGridDims = [mcResX, mcResY, mcResZ];
+
+        this.gridResolution = [gridResolutionX, gridResolutionY, gridResolutionZ];
         
         this.vertexBuffer = device.createBuffer({
             label: "MC vertex buffer",
@@ -68,7 +70,7 @@ export class GpuMarchingCubesBufferManager {
         });
         
         // Density grid (u32 per cell for atomics)
-        const numCells = mcResX * mcResY * mcResZ;
+        const numCells = this.gridResolution[0] * this.gridResolution[1] * this.gridResolution[2];
         this.densityGridBuffer = device.createBuffer({
             label: "MC density grid buffer",
             size: numCells * 4,
@@ -76,7 +78,7 @@ export class GpuMarchingCubesBufferManager {
         });
         
         // Vertex density (one extra in each dimension for corners)
-        const numVertices = (mcResX + 1) * (mcResY + 1) * (mcResZ + 1);
+        const numVertices = (this.gridResolution[0] + 1) * (this.gridResolution[1] + 1) * (this.gridResolution[2] + 1);
         this.vertexDensityBuffer = device.createBuffer({
             label: "MC vertex density buffer",
             size: numVertices * 4,
@@ -91,34 +93,34 @@ export class GpuMarchingCubesBufferManager {
         });
 
         // Block-based optimization
-        const blocksX = Math.ceil(mcResX / 8);
-        const blocksY = Math.ceil(mcResY / 8);
-        const blocksZ = Math.ceil(mcResZ / 8);
+        const blocksX = Math.ceil(this.gridResolution[0] / 8);
+        const blocksY = Math.ceil(this.gridResolution[1] / 8);
+        const blocksZ = Math.ceil(this.gridResolution[2] / 8);
         const totalBlocks = blocksX * blocksY * blocksZ;
 
         this.activeBlocksBuffer = device.createBuffer({
             label: "MC active blocks buffer",
-            size: totalBlocks * 4, // u32 block index
+            size: totalBlocks * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
         this.blockIndirectDispatchBuffer = device.createBuffer({
             label: "MC block indirect dispatch buffer",
-            size: 12, // x, y, z (atomic x)
+            size: 12,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
         });
     }
     
     get numCells(): number {
-        return this.marchingCubesGridDims[0] * this.marchingCubesGridDims[1] * this.marchingCubesGridDims[2];
+        return this.gridResolution[0] * this.gridResolution[1] * this.gridResolution[2];
     }
     
     get numVertices(): number {
-        return (this.marchingCubesGridDims[0] + 1) * (this.marchingCubesGridDims[1] + 1) * (this.marchingCubesGridDims[2] + 1);
+        return (this.gridResolution[0] + 1) * (this.gridResolution[1] + 1) * (this.gridResolution[2] + 1);
     }
     
     get gridDims(): [number, number, number] {
-        return this.marchingCubesGridDims;
+        return this.gridResolution;
     }
 
 
