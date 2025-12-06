@@ -1,3 +1,4 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var depthTexture: texture_depth_2d;
 @group(0) @binding(2) var smoothedDepthTexture: texture_storage_2d<rg32float, write>;
 @group(0) @binding(3) var maskTexture: texture_2d<f32>;

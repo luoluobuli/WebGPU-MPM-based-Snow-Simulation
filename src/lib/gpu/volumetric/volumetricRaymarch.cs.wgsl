@@ -51,7 +51,7 @@ fn readDensity(worldPos: vec3f) -> f32 {
     }
     
     let cellVolume = cellSize.x * cellSize.y * cellSize.z;
-    return mass / cellVolume * 0.000001;
+    return mass / cellVolume * 0.00001;
 }
 
 fn henyeyGreenstein(ray_light_dot: f32, asymmetry: f32) -> f32 {
