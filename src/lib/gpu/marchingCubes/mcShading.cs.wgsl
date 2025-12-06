@@ -49,8 +49,8 @@ const GROUND_COLOR = vec3f(0.35, 0.32, 0.28);  // Earthy brown
 const GROUND_ROUGHNESS = 0.9;
 
 // Shadow raymarch parameters
-const N_SHADOW_STEPS = 64u;
-const SHADOW_OPACITY = 16.;
+const N_SHADOW_STEPS = 32u;
+const EXTINCTION_COEFFICIENT = 32.;
 
 // ===== NOISE FUNCTIONS =====
 // Simple 3D hash for noise
@@ -237,7 +237,7 @@ fn raymarchShadow(worldPos: vec3f, lightDir: vec3f) -> vec3f {
         let density = sampleDensity(rayPos);
         
         // Accumulate shadow based on density
-        shadow *= exp(-density * 16 * stepSize * SSS_COLOR);
+        shadow *= exp(-density * EXTINCTION_COEFFICIENT * stepSize * SSS_COLOR);
         
         // Early exit if fully shadowed
         if all(shadow < vec3f(0.01)) {
