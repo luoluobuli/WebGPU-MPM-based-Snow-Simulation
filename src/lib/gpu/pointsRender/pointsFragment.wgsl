@@ -1,3 +1,5 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 @fragment
 fn frag(
     in: PointsVertexOut,

@@ -3,6 +3,7 @@ struct VertexOutput {
     @location(0) uv: vec2f,
 }
 
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var shadedTexture: texture_2d<f32>;
 @group(0) @binding(2) var smoothedDepthTexture: texture_2d<f32>;
 

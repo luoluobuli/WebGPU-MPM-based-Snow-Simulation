@@ -1,12 +1,7 @@
-// Maximum triangles per cell is 5, reasonable estimate for max total
-// WebGPU default maxBufferSize is 256MB (268,435,456 bytes).
-// 3,500,000 tris * 3 verts * 24 bytes (packed) = 252,000,000 bytes.
-// This fits within 256MB.
-const MAX_TRIANGLES = 3500000;
-const MAX_VERTICES = MAX_TRIANGLES * 3;
+const N_MAX_TRIANGLES = 3_500_000;
+const N_MAX_VERTICES = N_MAX_TRIANGLES * 3;
 
-// Maximum MC grid resolution per axis (will downsample if larger)
-const MAX_MC_GRID_RES = 384;
+const MAX_MC_GRID_RES = 1_024;
 
 export class GpuMarchingCubesBufferManager {
     readonly device: GPUDevice;
@@ -60,7 +55,7 @@ export class GpuMarchingCubesBufferManager {
         
         this.vertexBuffer = device.createBuffer({
             label: "MC vertex buffer",
-            size: MAX_VERTICES * 24, // Packed f32 arrays
+            size: N_MAX_VERTICES * 24,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
         

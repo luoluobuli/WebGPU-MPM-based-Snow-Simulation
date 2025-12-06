@@ -46,7 +46,7 @@ fn scatterParticles(
 
 
 
-    const REJECTION_SAMPLING_N_MAX_ATTEMPTS = 128u;
+    const REJECTION_SAMPLING_N_MAX_ATTEMPTS = 32u;
 
     let nTriangles = arrayLength(&meshVertices) / 3;
     var seed = hash4(vec4u(threadIndex, 100, 200, 300));

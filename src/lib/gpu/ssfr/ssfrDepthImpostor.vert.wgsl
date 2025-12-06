@@ -11,7 +11,7 @@ struct VertexOutput {
     @location(5) compression_volume_fac: f32,
 }
 
-const BASE_PARTICLE_RADIUS = 0.03;
+const BASE_PARTICLE_RADIUS = 0.1;
 const OVERLAP_FACTOR = 2.;
 const VERT_POSITIONS: array<vec2f, 6> = array(
     vec2f(-1, -1),

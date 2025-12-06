@@ -425,7 +425,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         });
         const thicknessFragModule = device.createShaderModule({
             label: "ssfr thickness fragment module",
-            code: ssfrThicknessFragSrc,
+            code: attachPrelude(ssfrThicknessFragSrc),
         });
 
         this.thicknessPipeline = device.createRenderPipeline({
