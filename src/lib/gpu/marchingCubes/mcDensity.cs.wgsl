@@ -1,10 +1,9 @@
-// Compute density grid from particles
-// Uses downsampled MC grid
-
 struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
 }
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 @group(1) @binding(0) var<storage, read> particleData: array<ParticleData>;
 @group(1) @binding(1) var<storage, read_write> densityGrid: array<atomic<u32>>;

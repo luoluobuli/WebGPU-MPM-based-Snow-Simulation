@@ -1,3 +1,5 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 struct VSIn {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,

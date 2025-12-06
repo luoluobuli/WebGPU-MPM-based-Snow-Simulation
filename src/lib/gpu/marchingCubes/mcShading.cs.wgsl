@@ -2,6 +2,7 @@
 // Soft lighting with SSS-style scattering
 // Note: uniforms are at @group(0) @binding(0) via prelude
 
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var depthTexture: texture_depth_2d;
 @group(0) @binding(2) var normalTexture: texture_2d<f32>;
 @group(0) @binding(3) var shadedOutput: texture_storage_2d<rgba8unorm, write>;

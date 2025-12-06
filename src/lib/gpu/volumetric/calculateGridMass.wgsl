@@ -1,3 +1,5 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 @group(1) @binding(0) var<storage, read> particleData: array<ParticleData>;
 @group(1) @binding(1) var<storage, read_write> mass_grid: array<atomic<u32>>;
 

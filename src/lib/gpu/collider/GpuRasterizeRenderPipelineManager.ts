@@ -109,9 +109,9 @@ export class GpuRasterizeRenderPipelineManager {
     addDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
         renderPassEncoder.setPipeline(this.renderPipeline);
-        renderPassEncoder.setVertexBuffer(0, this.colliderManager.verticesBuffer);
-        renderPassEncoder.setVertexBuffer(1, this.colliderManager.normalsBuffer);
-        renderPassEncoder.setIndexBuffer(this.colliderManager.indicesBuffer, "uint32");
+        renderPassEncoder.setVertexBuffer(0, this.colliderManager.colliderDataBuffer, this.colliderManager.verticesOffset);
+        renderPassEncoder.setVertexBuffer(1, this.colliderManager.colliderDataBuffer, this.colliderManager.normalsOffset);
+        renderPassEncoder.setIndexBuffer(this.colliderManager.colliderDataBuffer, "uint32", this.colliderManager.indicesOffset);
         renderPassEncoder.drawIndexed(this.indexCount);
     }
 }

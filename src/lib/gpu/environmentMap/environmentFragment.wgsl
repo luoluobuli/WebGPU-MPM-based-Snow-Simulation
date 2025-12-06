@@ -1,3 +1,4 @@
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var environment_texture: texture_2d<f32>;
 
 fn normalizedSphericalFromRayDir(ray_dir: vec3f) -> vec2f {

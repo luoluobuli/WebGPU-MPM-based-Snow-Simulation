@@ -24,6 +24,8 @@ struct IndirectDrawArgs {
     firstInstance: u32,
 }
 
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 @group(1) @binding(0) var<storage, read> vertexDensity: array<f32>;
 @group(1) @binding(1) var<storage, read> vertexGradient: array<vec4f>;
 // Output vertices as raw floats for tight packing (structs force 16-byte alignment)
