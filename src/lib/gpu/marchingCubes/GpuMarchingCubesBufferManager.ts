@@ -32,14 +32,8 @@ export class GpuMarchingCubesBufferManager {
     // Active blocks list for sparse update
     readonly activeBlocksBuffer: GPUBuffer;
     readonly blockIndirectDispatchBuffer: GPUBuffer;
-    
-    // Actual MC grid dimensions (may be downsampled from simulation grid)
-    readonly mcGridDims: [number, number, number];
-    
-    // Original simulation grid dimensions
-    readonly simGridDims: [number, number, number];
-    
-    // Downsample factor
+    readonly marchingCubesGridDims: [number, number, number];
+    readonly simulationGridDims: [number, number, number];
     readonly downsampleFactor: number;
     
     constructor({
@@ -54,28 +48,22 @@ export class GpuMarchingCubesBufferManager {
         gridResolutionZ: number,
     }) {
         this.device = device;
-        this.simGridDims = [gridResolutionX, gridResolutionY, gridResolutionZ];
+        this.simulationGridDims = [gridResolutionX, gridResolutionY, gridResolutionZ];
         
-        // Calculate downsample factor to keep resolution reasonable
         const maxSimRes = Math.max(gridResolutionX, gridResolutionY, gridResolutionZ);
         this.downsampleFactor = Math.max(1, Math.ceil(maxSimRes / MAX_MC_GRID_RES));
         
         const mcResX = Math.ceil(gridResolutionX / this.downsampleFactor);
         const mcResY = Math.ceil(gridResolutionY / this.downsampleFactor);
         const mcResZ = Math.ceil(gridResolutionZ / this.downsampleFactor);
-        this.mcGridDims = [mcResX, mcResY, mcResZ];
+        this.marchingCubesGridDims = [mcResX, mcResY, mcResZ];
         
-        console.log(`MC grid: ${mcResX}x${mcResY}x${mcResZ} (downsampled ${this.downsampleFactor}x from simulation grid)`);
-        
-        // Vertex buffer: position (vec3f = 12 bytes) + normal (vec3f = 12 bytes) = 24 bytes per vertex packed
         this.vertexBuffer = device.createBuffer({
             label: "MC vertex buffer",
             size: MAX_VERTICES * 24, // Packed f32 arrays
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
         
-        // Indirect draw buffer for drawIndirect
-        // Format: vertexCount (u32), instanceCount (u32), firstVertex (u32), firstInstance (u32)
         this.indirectDrawBuffer = device.createBuffer({
             label: "MC indirect draw buffer",
             size: 16,
@@ -132,14 +120,14 @@ export class GpuMarchingCubesBufferManager {
     }
     
     get numCells(): number {
-        return this.mcGridDims[0] * this.mcGridDims[1] * this.mcGridDims[2];
+        return this.marchingCubesGridDims[0] * this.marchingCubesGridDims[1] * this.marchingCubesGridDims[2];
     }
     
     get numVertices(): number {
-        return (this.mcGridDims[0] + 1) * (this.mcGridDims[1] + 1) * (this.mcGridDims[2] + 1);
+        return (this.marchingCubesGridDims[0] + 1) * (this.marchingCubesGridDims[1] + 1) * (this.marchingCubesGridDims[2] + 1);
     }
     
     get gridDims(): [number, number, number] {
-        return this.mcGridDims;
+        return this.marchingCubesGridDims;
     }
 }

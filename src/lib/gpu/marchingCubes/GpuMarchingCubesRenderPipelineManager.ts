@@ -117,7 +117,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         device.queue.writeBuffer(this.maxVertsBuffer, 0, new Uint32Array([MAX_TOTAL_VERTICES]));
         
         // Write MC params
-        const [mcX, mcY, mcZ] = this.bufferManager.mcGridDims;
+        const [mcX, mcY, mcZ] = this.bufferManager.marchingCubesGridDims;
         device.queue.writeBuffer(mcParamsBuffer, 0, new Uint32Array([mcX, mcY, mcZ, this.bufferManager.downsampleFactor]));
         
         const mcPrelude = `${preludeSrc}\n${triTableSrc}`;
@@ -576,7 +576,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         listPass.setPipeline(this.listBlocksPipeline);
         listPass.setBindGroup(0, this.listBlocksBindGroup);
         // Total blocks / 64 threads per group
-        const [gx, gy, gz] = this.bufferManager.mcGridDims;
+        const [gx, gy, gz] = this.bufferManager.marchingCubesGridDims;
         const totalBlocks = Math.ceil(gx/8) * Math.ceil(gy/8) * Math.ceil(gz/8);
         listPass.dispatchWorkgroups(totalBlocks); // One workgroup per block now
         listPass.end();
