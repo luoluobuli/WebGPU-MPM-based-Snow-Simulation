@@ -130,10 +130,20 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
         this.bindGroup = bindGroup;
     }
 
-    addDraw(renderPassEncoder: GPURenderPassEncoder) {
+    nPrerenderPasses(): number {
+        return 0;
+    }
+    
+    addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {}
+
+    addFinalDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setBindGroup(0, this.bindGroup);
         renderPassEncoder.setVertexBuffer(0, this.mpmManager.particleDataBuffer);
         renderPassEncoder.setPipeline(this.renderPipeline);
         renderPassEncoder.draw(this.mpmManager.nParticles);
     }
+
+    resize(device: GPUDevice, width: number, height: number, depthTextureView: GPUTextureView): void {}
+
+    destroy() {}
 }

@@ -130,4 +130,16 @@ export class GpuMarchingCubesBufferManager {
     get gridDims(): [number, number, number] {
         return this.marchingCubesGridDims;
     }
+
+
+    destroy() {
+        this.vertexBuffer.destroy();
+        this.indirectDrawBuffer.destroy();
+        this.atomicCounterBuffer.destroy();
+        this.densityGridBuffer.destroy();
+        this.vertexDensityBuffer.destroy();
+        this.vertexGradientBuffer.destroy();
+        this.activeBlocksBuffer.destroy();
+        this.blockIndirectDispatchBuffer.destroy();
+    }
 }

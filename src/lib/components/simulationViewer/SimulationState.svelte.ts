@@ -175,6 +175,8 @@ export class SimulationState {
                 oneSimulationStepPerFrame: () => state.oneSimulationStepPerFrame,
                 environmentImageBitmap,
                 measurePerf: supportsTimestamp,
+                width: () => state.width,
+                height: () => state.height,
             });
 
             state.restart();
@@ -182,11 +184,6 @@ export class SimulationState {
 
         onDestroy(() => {
             state.stopSimulation?.();
-        });
-
-
-        $effect(() => {
-            state.runner?.resizeTextures(state.width, state.height);
         });
 
 

@@ -506,7 +506,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         });
     }
     
-    resize(width: number, height: number) {
+    resize(device: GPUDevice, width: number, height: number, depthTextureView: GPUTextureView) {
         this.screenWidth = width;
         this.screenHeight = height;
         
@@ -550,7 +550,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         this.compositeBindGroup = this.createCompositeBindGroup();
     }
     
-    addComputePasses(commandEncoder: GPUCommandEncoder) {
+    addMeshGenerationPasses(commandEncoder: GPUCommandEncoder) {
         // Clear density buffer (but NOT the indirect draw buffer - that would race with queue.writeBuffer)
         commandEncoder.clearBuffer(this.bufferManager.densityGridBuffer);
         
@@ -649,9 +649,35 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         renderPassEncoder.setBindGroup(0, this.compositeBindGroup);
         renderPassEncoder.draw(4);
     }
+
+    nPrerenderPasses(): number {
+        return 3;
+    }
     
-    // Required by GpuRenderMethod interface
-    addDraw(renderPassEncoder: GPURenderPassEncoder): void {
-        // Marching cubes uses its own render passes, this is a no-op
+    addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView): void {
+        // density, vertex density, mesh generation
+        this.addMeshGenerationPasses(commandEncoder);
+
+        // mesh render pass - outputs to G-buffer
+        this.addMeshRenderPass(commandEncoder, depthTextureView);
+
+        // shading pass
+        this.addShadingPass(commandEncoder);
+    }
+
+    addFinalDraw(renderPassEncoder: GPURenderPassEncoder): void {
+        this.addCompositePass(renderPassEncoder);
+    }
+
+    destroy() {
+        this.normalTexture.destroy();
+        this.albedoTexture.destroy();
+        this.shadedTexture.destroy();
+        this.mcDepthTexture.destroy();
+
+        this.maxVertsBuffer.destroy();
+        this.mcParamsBuffer.destroy();
+
+        this.bufferManager.destroy();
     }
 }

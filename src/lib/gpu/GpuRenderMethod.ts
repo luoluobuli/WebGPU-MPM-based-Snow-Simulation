@@ -6,5 +6,9 @@ export enum GpuRenderMethodType {
 }
 
 export interface GpuRenderMethod {
-    addDraw(renderPassEncoder: GPURenderPassEncoder): void;
+    nPrerenderPasses(): number;
+    addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView): void;
+    addFinalDraw(renderPassEncoder: GPURenderPassEncoder): void;
+    resize(device: GPUDevice, width: number, height: number, depthTextureView: GPUTextureView): void;
+    destroy(): void;
 }

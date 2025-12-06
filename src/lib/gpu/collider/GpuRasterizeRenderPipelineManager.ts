@@ -6,7 +6,7 @@ import rasterizeVertexModuleSrc from "./rasterizeVertex.wgsl?raw";
 import rasterizeFragmentModuleSrc from "./rasterizeFragment.wgsl?raw";
 import { attachPrelude } from "../shaderPrelude";
 
-export class GpuRasterizeRenderPipelineManager implements GpuRenderMethod {
+export class GpuRasterizeRenderPipelineManager {
     readonly renderPipeline: GPURenderPipeline;
     readonly indexCount : number;
 
