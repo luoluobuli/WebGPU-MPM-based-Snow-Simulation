@@ -170,6 +170,7 @@ export class GpuSnowPipelineRunner {
             sortedParticleIndicesBuffer: mpmManager.sortedParticleIndicesBuffer,
             uniformsManager,
             mpmManager,
+            colliderManager,
         });
         this.mpmPipelineManager = mpmPipelineManager;
 

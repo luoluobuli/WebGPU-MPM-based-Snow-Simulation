@@ -14,6 +14,7 @@ import binParticlesSrc from "./binParticles.wgsl?raw";
 import clearBlockParticleCountsSrc from "./clearBlockParticleCounts.wgsl?raw";
 import { attachPrelude } from "../shaderPrelude";
 import type { GpuMpmBufferManager } from "./GpuMpmBufferManager";
+import type { GpuColliderBufferManager } from "../collider/GpuColliderBufferManager";
 
 export class GpuMpmPipelineManager {
     readonly particleBindGroupLayout: GPUBindGroupLayout;
@@ -53,6 +54,7 @@ export class GpuMpmPipelineManager {
         sortedParticleIndicesBuffer,
         uniformsManager,
         mpmManager,
+        colliderManager,
     }: {
         device: GPUDevice,
         particleDataBuffer: GPUBuffer,
@@ -69,6 +71,7 @@ export class GpuMpmPipelineManager {
         sortedParticleIndicesBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
         mpmManager: GpuMpmBufferManager,
+        colliderManager: GpuColliderBufferManager,
     }) {
         const sparseGridBindGroupLayout = device.createBindGroupLayout({
             label: "MPM sparse grid bind group layout",
@@ -82,6 +85,10 @@ export class GpuMpmPipelineManager {
                 { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                // Collider buffers
+                { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+                { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+                { binding: 11, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
             ],
         });
 
@@ -98,6 +105,9 @@ export class GpuMpmPipelineManager {
                 { binding: 6, resource: { buffer: gridMomentumZBuffer } },
                 { binding: 7, resource: { buffer: blockParticleCountsBuffer } },
                 { binding: 8, resource: { buffer: blockParticleOffsetsBuffer } },
+                { binding: 9, resource: { buffer: colliderManager.verticesBuffer } },
+                { binding: 10, resource: { buffer: colliderManager.normalsBuffer } },
+                { binding: 11, resource: { buffer: colliderManager.indicesBuffer } },
             ],
         });
 
@@ -421,6 +431,14 @@ export class GpuMpmPipelineManager {
         this.addDispatch({
             computePassEncoder,
             pipeline: this.g2pComputePipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        // Integrate Particles (Update Pos + Deformation + Handle Collision)
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.integrateParticlesPipeline,
             dispatchX: Math.ceil(nParticles / 256),
             useParticles: true,
         });

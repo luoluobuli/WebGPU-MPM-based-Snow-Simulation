@@ -42,17 +42,17 @@ export class GpuColliderBufferManager {
 
         this.numIndices = indices.length;
 
-        const flatVertices = new Float32Array(vertices.length * 4);
+        const flatVertices = new Float32Array(vertices.length);
         for (let i = 0; i < vertices.length; i++) {
             flatVertices[i] = vertices[i];
         }
 
-        const flatNormals = new Float32Array(normals.length * 4);
+        const flatNormals = new Float32Array(normals.length);
         for (let i = 0; i < normals.length; i++) {
             flatNormals[i] = normals[i];
         }
 
-        const flatIndices = new Uint32Array(indices.length * 4);
+        const flatIndices = new Uint32Array(indices.length);
         for (let i = 0; i < indices.length; i++) {
             flatIndices[i] = indices[i];
         }

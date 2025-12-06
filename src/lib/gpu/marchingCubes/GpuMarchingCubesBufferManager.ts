@@ -6,7 +6,7 @@ const MAX_TRIANGLES = 3500000;
 const MAX_VERTICES = MAX_TRIANGLES * 3;
 
 // Maximum MC grid resolution per axis (will downsample if larger)
-const MAX_MC_GRID_RES = 256;
+const MAX_MC_GRID_RES = 384;
 
 export class GpuMarchingCubesBufferManager {
     readonly device: GPUDevice;
