@@ -27,4 +27,6 @@ struct Uniforms {
     cameraPos: vec3f, // 352
     colliderNumIndices: u32, // 356
     gridCellDims: vec3f, // 368
+    // 380 (padding to 384)
+    lightViewProjMat: mat4x4f, // 448
 }

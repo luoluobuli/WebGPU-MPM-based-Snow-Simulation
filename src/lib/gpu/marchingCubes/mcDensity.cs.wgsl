@@ -9,8 +9,6 @@ struct MCParams {
 @group(1) @binding(1) var<storage, read_write> densityGrid: array<atomic<u32>>;
 @group(1) @binding(2) var<uniform> mcParams: MCParams;
 
-const DENSITY_SCALE = 65536.0; // Same as uniforms.fixedPointScale
-
 @compute
 @workgroup_size(256)
 fn calculateDensity(@builtin(global_invocation_id) global_id: vec3u) {
@@ -62,7 +60,7 @@ fn calculateDensity(@builtin(global_invocation_id) global_id: vec3u) {
                     + cellNumber.z * i32(mcParams.mcGridRes.x * mcParams.mcGridRes.y);
 
                 // Use particle mass as density contribution
-                let densityContribution = u32(particle.mass * weight * DENSITY_SCALE);
+                let densityContribution = u32(particle.mass * weight * uniforms.fixedPointScale);
                 atomicAdd(&densityGrid[cellIndex], densityContribution);
             }
         }

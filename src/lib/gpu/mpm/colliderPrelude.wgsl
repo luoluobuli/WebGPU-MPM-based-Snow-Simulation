@@ -165,7 +165,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
         }
     }
 
-    let velocity_scale_fac = 0.05 / uniforms.simulationTimestep;
+    let velocity_scale_fac = 0.2 / uniforms.simulationTimestep;
     
     // ccd resolved over static
     

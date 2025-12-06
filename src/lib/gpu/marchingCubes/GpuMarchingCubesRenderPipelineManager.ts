@@ -354,6 +354,10 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
                   texture: { sampleType: "float" } },
                 { binding: 3, visibility: GPUShaderStage.COMPUTE,
                   storageTexture: { access: "write-only", format: "rgba8unorm" } },
+                { binding: 4, visibility: GPUShaderStage.COMPUTE,
+                  buffer: { type: "read-only-storage" } }, // densityGrid
+                { binding: 5, visibility: GPUShaderStage.COMPUTE,
+                  buffer: { type: "uniform" } }, // mcParams
             ],
         });
         
@@ -491,6 +495,8 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
                 { binding: 1, resource: this.mcDepthTextureView },
                 { binding: 2, resource: this.normalTextureView },
                 { binding: 3, resource: this.shadedTextureView },
+                { binding: 4, resource: { buffer: this.bufferManager.densityGridBuffer } },
+                { binding: 5, resource: { buffer: this.mcParamsBuffer } },
             ],
         });
     }
