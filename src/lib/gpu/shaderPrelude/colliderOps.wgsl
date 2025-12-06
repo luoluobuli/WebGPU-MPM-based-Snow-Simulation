@@ -8,121 +8,115 @@ fn getColliderVertex(index: u32) -> vec3f {
     return vec3f(colliderVertices[i], colliderVertices[i + 1u], colliderVertices[i + 2u]);
 }
 
-fn closestPointTriangle(p: vec3f, a: vec3f, b: vec3f, c: vec3f) -> vec3f {
-    let ab = b - a;
-    let ac = c - a;
-    let ap = p - a;
+fn closestPointTriangle(point: vec3f, tri_vert_a: vec3f, tri_vert_b: vec3f, tri_vert_c: vec3f) -> vec3f {
+    let ab = tri_vert_b - tri_vert_a;
+    let ac = tri_vert_c - tri_vert_a;
+    let ap = point - tri_vert_a;
     
     let d1 = dot(ab, ap);
     let d2 = dot(ac, ap);
-    if (d1 <= 0.0 && d2 <= 0.0) { return a; }
+    if (d1 <= 0.0 && d2 <= 0.0) { return tri_vert_a; }
     
-    let bp = p - b;
+    let bp = point - tri_vert_b;
     let d3 = dot(ab, bp);
     let d4 = dot(ac, bp);
-    if (d3 >= 0.0 && d4 <= d3) { return b; }
+    if (d3 >= 0.0 && d4 <= d3) { return tri_vert_b; }
     
     let vc = d1 * d4 - d3 * d2;
     if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0) {
         let v = d1 / (d1 - d3);
-        return a + v * ab;
+        return tri_vert_a + v * ab;
     }
     
-    let cp = p - c;
+    let cp = point - tri_vert_c;
     let d5 = dot(ab, cp);
     let d6 = dot(ac, cp);
-    if (d6 >= 0.0 && d5 <= d6) { return c; }
+    if (d6 >= 0.0 && d5 <= d6) { return tri_vert_c; }
     
     let vb = d5 * d2 - d1 * d6;
     if (vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0) {
         let w = d2 / (d2 - d6);
-        return a + w * ac;
+        return tri_vert_a + w * ac;
     }
     
     let va = d3 * d6 - d5 * d4;
     if (va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0) {
         let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-        return b + w * (c - b);
+        return tri_vert_b + w * (tri_vert_c - tri_vert_b);
     }
     
     let denom = 1.0 / (va + vb + vc);
     let v = vb * denom;
     let w = vc * denom;
-    return a + v * ab + w * ac;
+    return tri_vert_a + v * ab + w * ac;
 }
 
-fn intersectRayTriangle(origin: vec3f, dir: vec3f, v0: vec3f, v1: vec3f, v2: vec3f) -> f32 {
+fn intersectRayTriangle(origin: vec3f, dir: vec3f, tri_vert_a: vec3f, tri_vert_b: vec3f, tri_vert_c: vec3f) -> f32 {
     let EPSILON = 1e-6;
-    let edge1 = v1 - v0;
-    let edge2 = v2 - v0;
+    let edge1 = tri_vert_b - tri_vert_a;
+    let edge2 = tri_vert_c - tri_vert_a;
     let h = cross(dir, edge2);
     let a = dot(edge1, h);
     
-    if (a > -EPSILON && a < EPSILON) { return -1.0; } // Parallel
+    if a > -EPSILON && a < EPSILON { return -1.0; } // Parallel
     
     let f = 1.0 / a;
-    let s = origin - v0;
+    let s = origin - tri_vert_a;
     let u = f * dot(s, h);
-    if (u < 0.0 || u > 1.0) { return -1.0; }
+    if u < 0.0 || u > 1.0 { return -1.0; }
     
     let q = cross(s, edge1);
     let v = f * dot(dir, q);
-    if (v < 0.0 || u + v > 1.0) { return -1.0; }
+    if v < 0.0 || u + v > 1.0 { return -1.0; }
     
     let t = f * dot(edge2, q);
-    if (t > EPSILON) { return t; }
+    if t > EPSILON { return t; }
     
     return -1.0;
 }
 
 fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
-    // Broadphase: Check bounding box
-    let minB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
-    let maxB = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMaxCoords, 1.0)).xyz;
+    // broadphase: check bounding box
+    let min_b = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
+    let max_b = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMaxCoords, 1.0)).xyz;
     
     let margin = 0.5;
-    let safetyMin = min(minB, maxB) - vec3f(margin);
-    let safetyMax = max(minB, maxB) + vec3f(margin);
+    let safety_min = min(min_b, max_b) - vec3f(margin);
+    let safety_max = max(min_b, max_b) + vec3f(margin);
     
-    let currentPos = (*particle).pos;
-    // For CCD, we need the "previous" position.
-    // Assuming pos_displacement holds the step's movement vector.
-    // Note: In GridToParticle, pos_displacement is (vel * dt).
-    // In IntegrateParticles, pos_displacement is the accumulated displacement.
-    let prevPos = currentPos - (*particle).pos_displacement;
+    let current_pos = (*particle).pos;
+    let prev_pos = current_pos - (*particle).pos_displacement;
     
-    // Broadphase check on both positions (segment AABB)
-    let minP = min(currentPos, prevPos);
-    let maxP = max(currentPos, prevPos);
+    // broadphase check on both positions (segment AABB)
+    let min_p = min(current_pos, prev_pos);
+    let max_p = max(current_pos, prev_pos);
     
-    if (any(minP > safetyMax) || any(maxP < safetyMin)) {
-        return;
-    }
+    if any(min_p > safety_max) || any(max_p < safety_min) { return; }
 
-    // Narrowphase Loop
+    // narrowphase loop
     
-    // Static Collision State
-    var minInfoDistSq = 1e20;
-    var closestNormal = vec3f(0.0, 0.0, 1.0);
-    var closestPos = currentPos;
+    // static collision state
+    var min_info_dist_sq = 1e20;
+    var closest_normal = vec3f(0.0, 0.0, 1.0);
+    var closest_pos = current_pos;
     
-    // CCD State
-    var minT = 1.0; // Max t is 1.0 (at currentPos)
-    var hitNormal = vec3f(0.0, 0.0, 1.0);
-    var hitPos = currentPos;
-    var hasHit = false;
+    // CCD state
+    var min_t = 1.; // max t is 1.0 (at current_pos)
+    var hit_normal = vec3f(0.0, 0.0, 1.0);
+    var hit_pos = current_pos;
+    var has_hit = false;
 
-    let rayDir = (*particle).pos_displacement; // displacement vector
-    // Only raycast if moved significantly
-    let rayLength = length(rayDir);
-    let doCCD = rayLength > 1e-4;
+    let ray_dir = (*particle).pos_displacement; // displacement vector
+    // only raycast if moved significantly
+    let ray_length = length(ray_dir);
+    let do_ccd = ray_length > 1e-4;
 
-    let numIndices = arrayLength(&colliderIndices);
-    if (numIndices == 0u) { return; }
+    let num_indices = arrayLength(&colliderIndices);
+    if num_indices == 0u { return; }
 
     let transform = uniforms.colliderTransformMat;
     
-    for (var i = 0u; i < numIndices; i += 3u) {
+    for (var i = 0u; i < num_indices; i += 3u) {
         let idx0 = colliderIndices[i];
         let idx1 = colliderIndices[i + 1u];
         let idx2 = colliderIndices[i + 2u];
@@ -135,144 +129,108 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
         let v1 = (transform * vec4f(v1_local, 1.0)).xyz;
         let v2 = (transform * vec4f(v2_local, 1.0)).xyz;
         
-        // --- Static Check ---
-        let cPoint = closestPointTriangle(currentPos, v0, v1, v2);
-        let diff = currentPos - cPoint;
-        let distSq = dot(diff, diff);
+        // static check
+
+        let c_point = closestPointTriangle(current_pos, v0, v1, v2);
+        let diff = current_pos - c_point;
+        let dist_sq = dot(diff, diff);
         
-        if (distSq < minInfoDistSq) {
-            minInfoDistSq = distSq;
-            closestPos = cPoint;
+        if dist_sq < min_info_dist_sq {
+            min_info_dist_sq = dist_sq;
+            closest_pos = c_point;
             
             let edge1 = v1 - v0;
             let edge2 = v2 - v0;
             let n = cross(edge1, edge2);
             let len = length(n);
-            if (len > 1e-6) {
-                closestNormal = n / len;
+            if len > 1e-6 {
+                closest_normal = n / len;
             }
         }
         
-        // --- CCD Check ---
-        if (doCCD) {
-            let t = intersectRayTriangle(prevPos, rayDir, v0, v1, v2);
-            if (t > 0.0 && t < minT) {
-                 // Double-sided check
-                 minT = t;
-                 hasHit = true;
+        // ccd check
+
+        if do_ccd {
+            let t = intersectRayTriangle(prev_pos, ray_dir, v0, v1, v2);
+            if t > 0.0 && t < min_t {
+                 // double-sided check
+                 min_t = t;
+                 has_hit = true;
                  
-                 // Compute intersection point exactly
-                 hitPos = prevPos + rayDir * t;
+                 // compute intersection point exactly
+                 hit_pos = prev_pos + ray_dir * t;
                  
-                 // Effective normal opposes ray direction
-                 let faceN = normalize(cross(v1 - v0, v2 - v0));
-                 if (dot(rayDir, faceN) < 0.0) {
-                     hitNormal = faceN;
-                 } else {
-                     hitNormal = -faceN;
-                 }
+                 // effective normal opposes ray direction
+                 let face_n = normalize(cross(v1 - v0, v2 - v0));
+                 hit_normal *= sign(dot(ray_dir, face_n));
             }
         }
     }
     
-    // Resolution Priority: CCD > Static
+    // ccd resolved over static
     
-    // 1. CCD Response
-    if (hasHit) {
-        let surfaceMargin = 0.02;
-        let snapPos = hitPos + hitNormal * surfaceMargin;
-        let snapVec = snapPos - 
-            (prevPos + (*particle).pos_displacement); // Vector from "intended" pos to "snapped" pos? 
-            // Actually, we want snap from "current projected pos" to "surface".
+    // ccd response
+    if has_hit {
+        let surface_margin = 0.02;
+        let snap_pos = hit_pos + hit_normal * surface_margin;
+        let snap_vec = snap_pos - prev_pos - (*particle).pos_displacement;
             
-        // Let's look at the correction vector:
-        // particle.pos (current) -> snapPos
-        // Correction = snapPos - particle.pos
         
-        // Update Position
-        (*particle).pos = snapPos;
+        (*particle).pos = snap_pos;
         
-        let oldVel = (*particle).pos_displacement / uniforms.simulationTimestep;
-        var v_rel = oldVel - uniforms.colliderVelocity;
-        let vn = dot(v_rel, hitNormal);
+        let old_vel = (*particle).pos_displacement / uniforms.simulationTimestep;
+        var v_rel = old_vel - uniforms.colliderVelocity;
+        let vn = dot(v_rel, hit_normal);
         
-        // Velocity Response
-        if (vn < 0.0) {
-            let vN = vn * hitNormal;
-            let vT = v_rel - vN;
+        // velocity response
+        if vn < 0 {
+            let v_n = vn * hit_normal;
+            let v_t = v_rel - v_n;
             let friction = 0.1;
             
-            // Standard bounce/friction response
-            var newVel = vT * (1.0 - friction) + uniforms.colliderVelocity;
+            // bounce/friction response
+            var new_vel = v_t * (1.0 - friction) + uniforms.colliderVelocity;
             
-            // EXPERIMENTAL: If the snap distance was huge, it means we were crushed/tunneling deep.
-            // The "oldVel" might be irrelevant or we shouldn't add "bounce" energy from the containment.
-            // But we are reconstructing newVel based on oldVel reflected. That is physically okay-ish.
-            
-            // The EXPLOSION happens if we do:
-            // vel = (snapPos - prevPos) / dt
-            // Because (snapPos - prevPos) includes the "teleport" out of the wall.
-            
-            // My previous code did:
-            // (*particle).pos_displacement = (*particle).pos - prevPos;
-            // var v_rel = (*particle).pos_displacement / dt ...
-            // This meant v_rel INCLUDED the teleport! That's the bug.
-            
-            // Fix: Calculate v_rel based on the particle's ARRIVAL velocity (before snap), not the SNAP velocity.
-            // "oldVel" above is correct (displacement / dt). 
-            // But wait, "pos_displacement" IS (pos - prevPos).
-            // So if we update pos first, and then calc vel from pos_displacement, we carry the snap energy.
-            
-            // Correct flow:
-            // 1. Calculate response velocity based on INCOMING velocity (oldVel).
-            // 2. Set particle.vel = response velocity.
-            // 3. Update particle.pos_displacement = particle.vel * dt (for consistency).
-            // 4. Update particle.pos = snapPos (The snap is purely kinematic position correction, not dynamic).
-            
-            (*particle).vel = newVel;
-            (*particle).pos_displacement = newVel * uniforms.simulationTimestep; 
+            (*particle).vel = new_vel;
+            (*particle).pos_displacement = new_vel * uniforms.simulationTimestep; 
         } else {
-             // Moving away? Just update displacement to match new pos to prevent drift?
-             // Or keep old velocity.
+             // moving away
              (*particle).pos_displacement = (*particle).vel * uniforms.simulationTimestep; 
         }
         return; 
     }
     
-    // 2. Static Response (Fallback)
-    // Normal-Agnostic Push
-    let dist = sqrt(minInfoDistSq);
-    let diff = currentPos - closestPos;
-    var pushDir = closestNormal;
-    let lenDiff = length(diff);
-    if (lenDiff > 1e-6) {
-        pushDir = diff / lenDiff;
+    // normal-agnostic push
+    let dist = sqrt(min_info_dist_sq);
+    let diff = current_pos - closest_pos;
+    var push_dir = closest_normal;
+    let len_diff = length(diff);
+    if len_diff > 1e-6 {
+        push_dir = diff / len_diff;
     }
     
     let threshold = 0.05; 
 
-    if (dist < threshold) {
-        let oldVel = (*particle).pos_displacement / uniforms.simulationTimestep;
-        var v_rel = oldVel - uniforms.colliderVelocity;
-        let vn = dot(v_rel, pushDir);
+    if dist < threshold {
+        let old_vel = (*particle).pos_displacement / uniforms.simulationTimestep;
+        let v_rel = old_vel - uniforms.colliderVelocity;
+        let vn = dot(v_rel, push_dir);
 
-        if (vn < 0.0) {
-            let vN = vn * pushDir;
-            let vT = v_rel - vN;
-            let friction = 0.0; 
+        if vn < 0 {
+            let v_n = vn * push_dir;
+            let v_t = v_rel - v_n;
+            let friction = 0.;
             
-            let newVel = vT * (1.0 - friction) + uniforms.colliderVelocity;
+            let new_vel = v_t * (1 - friction) + uniforms.colliderVelocity;
             
-            (*particle).vel = newVel;
-            (*particle).pos_displacement = newVel * uniforms.simulationTimestep;
+            (*particle).vel = new_vel;
+            (*particle).pos_displacement = new_vel * uniforms.simulationTimestep;
         }
         
-        // Position Correction: Enforce minimum distance
-        let surfaceMargin = 0.02;
-        if (dist < surfaceMargin) {
-             (*particle).pos = closestPos + pushDir * surfaceMargin;
-             // DO NOT Recalculate velocity from this new position.
-             // We let the position "teleport" but the velocity "reflect" normally.
+        // position correction
+        let surface_margin = 0.02;
+        if dist < surface_margin {
+            (*particle).pos = closest_pos + push_dir * surface_margin;
         }
     }
 }
