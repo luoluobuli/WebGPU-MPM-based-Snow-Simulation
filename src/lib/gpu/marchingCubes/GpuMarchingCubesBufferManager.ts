@@ -15,17 +15,12 @@ export class GpuMarchingCubesBufferManager {
     // Atomic counter for vertex allocation
     readonly atomicCounterBuffer: GPUBuffer;
     
-    // Density grid (uses MPM's mass grid, but we need our own smoothed version)
-    readonly densityGridBuffer: GPUBuffer;
+    readonly densityGridBuffer: GPUBuffer; // need our own smoothed version of the mpm mass grid
     
-    // Vertex density buffer (one value per grid vertex)
-    readonly vertexDensityBuffer: GPUBuffer;
-    
-    // Vertex gradient buffer (for precomputed normals)
-    readonly vertexGradientBuffer: GPUBuffer;
+    readonly vertexDensityBuffer: GPUBuffer; // one value per grid vertex
+    readonly vertexGradientBuffer: GPUBuffer; // for precomputed normals
 
-    // Active blocks list for sparse update
-    readonly activeBlocksBuffer: GPUBuffer;
+    readonly activeBlocksBuffer: GPUBuffer; // for sparse update
     readonly blockIndirectDispatchBuffer: GPUBuffer;
     readonly marchingCubesGridDims: [number, number, number];
     readonly simulationGridDims: [number, number, number];
