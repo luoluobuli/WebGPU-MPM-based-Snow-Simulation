@@ -18,13 +18,17 @@ const MIN_TIMESTEP_DIVISOR = 15;
 const MAX_TIMESTEP_DIVISOR = 10_000;
 
 
+const progressFromTimestep = (timestep: number) => {
+    return 1 - Math.log((1 / timestep) / MIN_TIMESTEP_DIVISOR) / Math.log(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR);
+};
+
 let timestepProgress = $derived.by(() => {
     switch (simulationState.simulationMethodType) {
         case GpuSimulationMethodType.ExplicitMpm:
-            return 1 - Math.log2((1 / simulationState.explicitMpmSimulationTimestepS) / MIN_TIMESTEP_DIVISOR) / (MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR);
+            return progressFromTimestep(simulationState.explicitMpmSimulationTimestepS);
 
         case GpuSimulationMethodType.Pbmpm:
-            return 1 - Math.log2((1 / simulationState.pbmpmSimulationTimestepS) / MIN_TIMESTEP_DIVISOR) / (MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR);
+            return progressFromTimestep(simulationState.pbmpmSimulationTimestepS);
     }
 });
 
@@ -138,12 +142,8 @@ const updateTimestep = (progress: number) => {
         <labeled-range>
             <input
                 type="range"
-                value={timestepProgress}
-                oninput={(event) => {
-                    const progress = Number(event.currentTarget.value);
-                    updateTimestep(progress);
-                    timestepProgress = progress;
-                }}
+                bind:value={timestepProgress}
+                oninput={() => updateTimestep(timestepProgress)}
                 min={0}
                 max={1}
                 step={Number.EPSILON}

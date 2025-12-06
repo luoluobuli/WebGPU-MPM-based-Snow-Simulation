@@ -6,7 +6,7 @@ import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
 import type { GpuUniformsBufferManager } from "../uniforms/GpuUniformsBufferManager";
 import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
 
-export class GpuMpmGridRenderPipelineManager implements GpuRenderMethod {
+export class GpuMpmGridRenderPipelineManager {
     readonly renderPipeline: GPURenderPipeline;
     readonly uniformsManager: GpuUniformsBufferManager;
     readonly mpmManager: GpuMpmBufferManager;

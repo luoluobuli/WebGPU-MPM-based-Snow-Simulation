@@ -4,7 +4,7 @@ import { GpuPointsRenderPipelineManager } from "./pointsRender/GpuPointsRenderPi
 import { GpuMpmPipelineManager } from "./mpm/GpuMpmPipelineManager";
 import { GpuUniformsBufferManager } from "./uniforms/GpuUniformsBufferManager";
 import { GpuMpmBufferManager } from "./mpm/GpuMpmBufferManager";
-import { GpuRenderMethodType } from "./GpuRenderMethod";
+import { GpuRenderMethodType, type GpuRenderMethod } from "./GpuRenderMethod";
 import { GpuPerformanceMeasurementBufferManager } from "./performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 import { GpuMeshBufferManager } from "./particleInitialize/GpuMeshBufferManager";
 import { GpuColliderBufferManager } from "./collider/GpuColliderBufferManager";
@@ -35,15 +35,14 @@ export class GpuSnowPipelineRunner {
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
     private readonly mpmPipelineManager: GpuMpmPipelineManager;
-    private readonly pointsRenderPipelineManager: GpuPointsRenderPipelineManager;
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
-    private readonly volumetricBufferManager: GpuVolumetricBufferManager;
-    private readonly volumetricRenderPipelineManager: GpuVolumetricRenderPipelineManager;
-    private readonly ssfrRenderPipelineManager: GpuSsfrRenderPipelineManager;
-    private readonly marchingCubesRenderPipelineManager: GpuMarchingCubesRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
     private readonly environmentRenderPipelineManager: GpuEnvironmentRenderPipelineManager;
+
+    private depthTexture: GPUTexture | null = null;
+
+    private renderMethod = $state<GpuRenderMethod | null>(null);
 
     private readonly mpmManager: GpuMpmBufferManager;
 
@@ -53,7 +52,6 @@ export class GpuSnowPipelineRunner {
     // v : [number, number, number] = [0.0, 0.0, 0.0];
 
     private readonly getSimulationMethodType: () => GpuSimulationMethodType;
-    private readonly getRenderMethodType: () => GpuRenderMethodType;
     private readonly oneSimulationStepPerFrame: () => boolean;
 
     constructor({
@@ -74,6 +72,8 @@ export class GpuSnowPipelineRunner {
         oneSimulationStepPerFrame,
         environmentImageBitmap,
         measurePerf,
+        width,
+        height,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
@@ -92,6 +92,8 @@ export class GpuSnowPipelineRunner {
         oneSimulationStepPerFrame: () => boolean,
         environmentImageBitmap: ImageBitmap,
         measurePerf: boolean,
+        width: () => number,
+        height: () => number,
     }) {
         this.device = device;
         this.context = context;
@@ -184,15 +186,6 @@ export class GpuSnowPipelineRunner {
         });
         this.rasterizeRenderPipelineManager = rasterizeRenderPipeline;
 
-        const pointsRenderPipelineManager = new GpuPointsRenderPipelineManager({
-            device,
-            format,
-            depthFormat: "depth24plus",
-            uniformsManager,
-            mpmManager,
-        });
-        this.pointsRenderPipelineManager = pointsRenderPipelineManager;
-
         const mpmGridRenderPipelineManager = new GpuMpmGridRenderPipelineManager({
             device,
             format,
@@ -201,18 +194,6 @@ export class GpuSnowPipelineRunner {
             mpmManager,
         });
         this.mpmGridRenderPipelineManager = mpmGridRenderPipelineManager;
-
-        const volumetricBufferManager = new GpuVolumetricBufferManager({
-            device,
-            gridResolutionX,
-            gridResolutionY,
-            gridResolutionZ,
-            screenDims: {
-                width: camera.screenDims.width(),
-                height: camera.screenDims.height(),
-            },
-        });
-        this.volumetricBufferManager = volumetricBufferManager;
 
 
         const environmentTextureManager = new GpuEnvironmentTextureManager({
@@ -228,40 +209,8 @@ export class GpuSnowPipelineRunner {
         });
         this.environmentRenderPipelineManager = environmentRenderPipelineManager;
 
-        const volumetricRenderPipelineManager = new GpuVolumetricRenderPipelineManager({
-            device,
-            format,
-            uniformsManager,
-            volumetricBufferManager,
-            mpmBufferManager: mpmManager,
-            environmentTextureManager,
-        });
-        this.volumetricRenderPipelineManager = volumetricRenderPipelineManager;
-
-        const ssfrRenderPipelineManager = new GpuSsfrRenderPipelineManager({
-            device,
-            format,
-            depthFormat: "depth24plus",
-            uniformsManager,
-            mpmManager,
-        });
-        this.ssfrRenderPipelineManager = ssfrRenderPipelineManager;
-
-        const marchingCubesRenderPipelineManager = new GpuMarchingCubesRenderPipelineManager({
-            device,
-            format,
-            depthFormat: "depth24plus",
-            uniformsManager,
-            mpmManager,
-            gridResolutionX,
-            gridResolutionY,
-            gridResolutionZ,
-        });
-        this.marchingCubesRenderPipelineManager = marchingCubesRenderPipelineManager;
-
 
         this.getSimulationMethodType = getSimulationMethodType;
-        this.getRenderMethodType = getRenderMethodType;
         this.oneSimulationStepPerFrame = oneSimulationStepPerFrame;
 
         this.performanceMeasurementManager = measurePerf
@@ -278,21 +227,96 @@ export class GpuSnowPipelineRunner {
                 this.uniformsManager.writeCameraPos([viewInv[12], viewInv[13], viewInv[14]]);
             });
             $effect(() => this.uniformsManager.writeSimulationTimestepS(this.selectedSimulationTimestepS));
-            return () => {};
-        });
-    }
 
-    resizeTextures(width: number, height: number) {
-        const depthTexture = this.device.createTexture({
-            size: [width, height],
-            format: "depth24plus",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-        });
-        this.depthTextureView = depthTexture.createView();
 
-        this.volumetricRenderPipelineManager.resize(this.device, width, height);
-        this.ssfrRenderPipelineManager.resize(width, height, this.depthTextureView);
-        this.marchingCubesRenderPipelineManager.resize(width, height);
+            let lastRenderMethodType: GpuRenderMethodType | null = null;
+            $effect(() => {                
+                const renderMethodType = getRenderMethodType();
+                if (renderMethodType === lastRenderMethodType) return;
+
+                this.renderMethod?.destroy();
+                lastRenderMethodType = renderMethodType;
+
+
+
+
+                switch (renderMethodType) {
+                    case GpuRenderMethodType.Points:
+                        this.renderMethod = new GpuPointsRenderPipelineManager({
+                            device,
+                            format,
+                            depthFormat: "depth24plus",
+                            uniformsManager,
+                            mpmManager,
+                        });
+                        break;
+
+                    case GpuRenderMethodType.Volumetric: {
+                        const volumetricBufferManager = new GpuVolumetricBufferManager({
+                            device,
+                            gridResolutionX,
+                            gridResolutionY,
+                            gridResolutionZ,
+                            screenDims: {
+                                width: width(),
+                                height: height(),
+                            },
+                        });
+
+                        this.renderMethod = new GpuVolumetricRenderPipelineManager({
+                            device,
+                            format,
+                            uniformsManager,
+                            volumetricBufferManager,
+                            mpmBufferManager: mpmManager,
+                            environmentTextureManager,
+                        });
+                        break;
+                    }
+
+                    case GpuRenderMethodType.Ssfr:
+                        this.renderMethod = new GpuSsfrRenderPipelineManager({
+                            device,
+                            format,
+                            depthFormat: "depth24plus",
+                            uniformsManager,
+                            mpmManager,
+                        });
+                        break;
+
+                    case GpuRenderMethodType.MarchingCubes:
+                        this.renderMethod = new GpuMarchingCubesRenderPipelineManager({
+                            device,
+                            format,
+                            depthFormat: "depth24plus",
+                            uniformsManager,
+                            mpmManager,
+                            gridResolutionX,
+                            gridResolutionY,
+                            gridResolutionZ,
+                        });
+                        break;
+                }
+            });
+
+            $effect(() => {
+                this.depthTexture?.destroy();
+
+                this.depthTexture = this.device.createTexture({
+                    size: [width(), height()],
+                    format: "depth24plus",
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+                });
+                this.depthTextureView = this.depthTexture.createView();
+
+                this.renderMethod?.resize(this.device, width(), height(), this.depthTextureView);
+            });
+
+
+            return () => {
+                this.renderMethod?.destroy();
+            };
+        });
     }
 
     scatterParticlesInMeshVolume() {
@@ -375,31 +399,15 @@ export class GpuSnowPipelineRunner {
 
     private prerenderPassRan = false;
 
-    async addRenderPass(commandEncoder: GPUCommandEncoder) {
+    async addRender(commandEncoder: GPUCommandEncoder) {
+        if (this.renderMethod === null) return;
+
         this.uniformsManager.writeTime(Date.now());
 
-        if (this.getRenderMethodType() === GpuRenderMethodType.Volumetric) {
-            commandEncoder.clearBuffer(this.volumetricBufferManager.massGridBuffer);
-
-            const prerenderComputePassEncoder = commandEncoder.beginComputePass({
-                label: "volumetric compute pass",
-                timestampWrites: this.performanceMeasurementManager !== null
-                    ? {
-                        querySet: this.performanceMeasurementManager.querySet,
-                        beginningOfPassWriteIndex: 2,
-                        endOfPassWriteIndex: 3,
-                    }
-                    : undefined,
-            });
-
-            this.volumetricRenderPipelineManager.addMassCalulationDispatch(prerenderComputePassEncoder, this.nParticles);
-            this.volumetricRenderPipelineManager.addRaymarchDispatch(prerenderComputePassEncoder);
-            
-            prerenderComputePassEncoder.end();
-
+        this.prerenderPassRan = false;
+        if (this.renderMethod.nPrerenderPasses() > 0) {
             this.prerenderPassRan = true;
-        } else {
-            this.prerenderPassRan = false;
+            this.renderMethod.addPrerenderPasses(commandEncoder, this.depthTextureView);
         }
 
         const renderPassEncoder = commandEncoder.beginRenderPass({
@@ -427,100 +435,13 @@ export class GpuSnowPipelineRunner {
                 : undefined,
         });
 
+
         this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
         this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
         this.environmentRenderPipelineManager.addDraw(renderPassEncoder);
-        
-        if (this.getRenderMethodType() !== GpuRenderMethodType.Ssfr && this.getRenderMethodType() !== GpuRenderMethodType.MarchingCubes) {
-            this.selectRenderPipelineManager().addDraw(renderPassEncoder);
-        }
+        this.renderMethod.addFinalDraw(renderPassEncoder);
 
         renderPassEncoder.end();
-
-        // SSFR post-processing: apply narrow-range filter to depth buffer
-        if (this.getRenderMethodType() === GpuRenderMethodType.Ssfr) {
-            // SSFR Impostor Pass - writes to depth and mask
-            const ssfrPassEncoder = commandEncoder.beginRenderPass({
-                label: "ssfr impostor render pass",
-                colorAttachments: [
-                    {
-                        view: this.ssfrRenderPipelineManager.maskTextureView,
-                        clearValue: { r: 1.0, g: 0, b: 0, a: 0 },
-                        loadOp: "clear",
-                        storeOp: "store",
-                    }
-                ],
-                depthStencilAttachment: {
-                    view: this.depthTextureView,
-                    depthLoadOp: "load",
-                    depthStoreOp: "store",
-                }
-            });
-            this.ssfrRenderPipelineManager.addImpostorPass(ssfrPassEncoder);
-            ssfrPassEncoder.end();
-
-            // SSS Thickness pass - accumulates particle thickness with additive blending
-            this.ssfrRenderPipelineManager.addThicknessPass(commandEncoder);
-
-            // Compute passes: NRF, Normal Reconstruction, Shading, SSS Blur, SSS Combine
-            this.ssfrRenderPipelineManager.addComputePasses(commandEncoder);
-
-            // Composite the shaded result onto the screen
-            const compositePassEncoder = commandEncoder.beginRenderPass({
-                label: "ssfr composite render pass",
-                colorAttachments: [
-                    {
-                        loadOp: "load",
-                        storeOp: "store",
-                        view: this.context.getCurrentTexture().createView(),
-                    },
-                ],
-                depthStencilAttachment: {
-                    view: this.depthTextureView,
-                    depthLoadOp: 'load',
-                    depthStoreOp: 'store',
-                },
-            });
-
-            this.ssfrRenderPipelineManager.addCompositePass(compositePassEncoder);
-            compositePassEncoder.end();
-
-            this.prerenderPassRan = true;
-        }
-
-        // Marching Cubes rendering
-        if (this.getRenderMethodType() === GpuRenderMethodType.MarchingCubes) {
-            // Compute passes: density, vertex density, mesh generation
-            this.marchingCubesRenderPipelineManager.addComputePasses(commandEncoder);
-
-            // Mesh render pass - outputs to G-buffer
-            this.marchingCubesRenderPipelineManager.addMeshRenderPass(commandEncoder, this.depthTextureView);
-
-            // Shading compute pass
-            this.marchingCubesRenderPipelineManager.addShadingPass(commandEncoder);
-
-            // Composite render pass
-            const compositePassEncoder = commandEncoder.beginRenderPass({
-                label: "mc composite render pass",
-                colorAttachments: [
-                    {
-                        loadOp: "load",
-                        storeOp: "store",
-                        view: this.context.getCurrentTexture().createView(),
-                    },
-                ],
-                depthStencilAttachment: {
-                    view: this.depthTextureView,
-                    depthLoadOp: 'load',
-                    depthStoreOp: 'store',
-                },
-            });
-
-            this.marchingCubesRenderPipelineManager.addCompositePass(compositePassEncoder);
-            compositePassEncoder.end();
-
-            this.prerenderPassRan = true;
-        }
     }
 
     loop({
@@ -588,7 +509,7 @@ export class GpuSnowPipelineRunner {
             }
             
 
-            this.addRenderPass(commandEncoder);
+            this.addRender(commandEncoder);
 
             if (this.performanceMeasurementManager !== null) {
                 this.performanceMeasurementManager.addResolve(commandEncoder);
@@ -625,22 +546,6 @@ export class GpuSnowPipelineRunner {
         };
 
         return stop;
-    }
-
-    private selectRenderPipelineManager() {
-        switch (this.getRenderMethodType()) {
-            case GpuRenderMethodType.Points:
-                return this.pointsRenderPipelineManager;
-            
-            case GpuRenderMethodType.Volumetric:
-                return this.volumetricRenderPipelineManager;
-
-            case GpuRenderMethodType.Ssfr:
-                return this.ssfrRenderPipelineManager;
-
-            case GpuRenderMethodType.MarchingCubes:
-                return this.marchingCubesRenderPipelineManager;
-        }
     }
 
     selectedSimulationTimestepS = $derived.by(() => {

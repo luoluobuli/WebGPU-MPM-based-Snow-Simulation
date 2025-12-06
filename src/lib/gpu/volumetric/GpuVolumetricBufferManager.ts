@@ -65,4 +65,10 @@ export class GpuVolumetricBufferManager {
         });
         this.depthTextureView = this.depthTexture.createView();
     }
+
+    destroy() {
+        this.massGridBuffer.destroy();
+        this.outputTexture.destroy();
+        this.depthTexture.destroy();
+    }
 }

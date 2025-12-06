@@ -8,8 +8,9 @@ import volumetricRaymarchSrc from "./volumetricRaymarch.cs.wgsl?raw";
 import volumetricVertexSrc from "./volumetricVertex.wgsl?raw";
 import volumetricFragmentSrc from "./volumetricFragment.wgsl?raw";
 import preludeSrc from "./prelude.wgsl?raw";
+import type { GpuRenderMethod } from "../GpuRenderMethod";
 
-export class GpuVolumetricRenderPipelineManager {
+export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
     readonly massCalulationPipeline: GPUComputePipeline;
     readonly volumetricRaymarchPipeline: GPUComputePipeline;
     readonly renderPipeline: GPURenderPipeline;
@@ -20,6 +21,7 @@ export class GpuVolumetricRenderPipelineManager {
 
     readonly vertBuffer: GPUBuffer;
 
+    private readonly mpmManager: GpuMpmBufferManager;
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly volumetricBufferManager: GpuVolumetricBufferManager;
     private readonly environmentTextureManager: GpuEnvironmentTextureManager;
@@ -44,6 +46,7 @@ export class GpuVolumetricRenderPipelineManager {
         this.uniformsManager = uniformsManager;
         this.volumetricBufferManager = volumetricBufferManager;
         this.environmentTextureManager = environmentTextureManager;
+        this.mpmManager = mpmBufferManager;
 
         this.sampler = device.createSampler({
             magFilter: "linear",
@@ -324,14 +327,38 @@ export class GpuVolumetricRenderPipelineManager {
         computePassEncoder.dispatchWorkgroups(Math.ceil(width / 16), Math.ceil(height / 16));
     }
 
-    addDraw(renderPassEncoder: GPURenderPassEncoder) {
+    nPrerenderPasses(): number {
+        return 1;
+    }
+
+    addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {
+        commandEncoder.clearBuffer(this.volumetricBufferManager.massGridBuffer);
+
+        const prerenderComputePassEncoder = commandEncoder.beginComputePass({
+            label: "volumetric compute pass",
+            // timestampWrites: this.performanceMeasurementManager !== null
+            //     ? {
+            //         querySet: this.performanceMeasurementManager.querySet,
+            //         beginningOfPassWriteIndex: 2,
+            //         endOfPassWriteIndex: 3,
+            //     }
+            //     : undefined,
+        });
+
+        this.addMassCalulationDispatch(prerenderComputePassEncoder, this.mpmManager.nParticles);
+        this.addRaymarchDispatch(prerenderComputePassEncoder);
+        
+        prerenderComputePassEncoder.end();
+    }
+
+    addFinalDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setPipeline(this.renderPipeline);
         renderPassEncoder.setBindGroup(0, this.renderBindGroup);
         renderPassEncoder.setVertexBuffer(0, this.vertBuffer);
         renderPassEncoder.draw(4);
     }
 
-    resize(device: GPUDevice, width: number, height: number) {
+    resize(device: GPUDevice, width: number, height: number, depthTextureView: GPUTextureView) {
         this.volumetricBufferManager.resize(device, width, height);
 
         this.raymarchBindGroup = device.createBindGroup({
@@ -382,5 +409,11 @@ export class GpuVolumetricRenderPipelineManager {
                 },
             ],
         });
+    }
+
+    destroy() {
+        this.vertBuffer.destroy();
+
+        this.volumetricBufferManager.destroy();
     }
 }

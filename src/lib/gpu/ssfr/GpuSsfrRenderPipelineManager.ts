@@ -20,23 +20,23 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
     readonly uniformsManager: GpuUniformsBufferManager;
     readonly mpmManager: GpuMpmBufferManager;
     
-    smoothedDepthTexture: GPUTexture;
-    smoothedDepthTextureView: GPUTextureView;
-    private normalTexture: GPUTexture;
-    private normalTextureView: GPUTextureView;
-    private shadedOutputTexture: GPUTexture;
-    private shadedOutputTextureView: GPUTextureView;
-    maskTexture: GPUTexture;
-    maskTextureView: GPUTextureView;
+    private smoothedDepthTexture: GPUTexture | null = null;
+    private smoothedDepthTextureView: GPUTextureView | null = null;
+    private normalTexture: GPUTexture | null = null;
+    private normalTextureView: GPUTextureView | null = null;
+    private shadedOutputTexture: GPUTexture | null = null;
+    private shadedOutputTextureView: GPUTextureView | null = null;
+    private maskTexture: GPUTexture | null = null;
+    private maskTextureView: GPUTextureView | null = null;
 
-    private thicknessTexture: GPUTexture;
-    private thicknessTextureView: GPUTextureView;
-    private diffuseTexture: GPUTexture;
-    private diffuseTextureView: GPUTextureView;
-    private specularAmbientTexture: GPUTexture;
-    private specularAmbientTextureView: GPUTextureView;
-    private subsurfaceBlurTempTexture: GPUTexture;
-    private subsurfaceBlurTempTextureView: GPUTextureView;
+    private thicknessTexture: GPUTexture | null = null;
+    private thicknessTextureView: GPUTextureView | null = null;
+    private diffuseTexture: GPUTexture | null = null;
+    private diffuseTextureView: GPUTextureView | null = null;
+    private specularAmbientTexture: GPUTexture | null = null;
+    private specularAmbientTextureView: GPUTextureView | null = null;
+    private subsurfaceBlurTempTexture: GPUTexture | null = null;
+    private subsurfaceBlurTempTextureView: GPUTextureView | null = null;
 
     private readonly bindGroup: GPUBindGroup;
     
@@ -402,63 +402,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             },
         });
 
-        this.smoothedDepthTexture = device.createTexture({
-            size: [1, 1],
-            format: "rg32float",
-            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-        });
-        this.smoothedDepthTextureView = this.smoothedDepthTexture.createView();
-
-        this.normalTexture = device.createTexture({
-            size: [1, 1],
-            format: "rgba16float",
-            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-        });
-        this.normalTextureView = this.normalTexture.createView();
-
-        this.shadedOutputTexture = device.createTexture({
-            size: [1, 1],
-            format: "rgba8unorm",
-            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-        });
-        this.shadedOutputTextureView = this.shadedOutputTexture.createView();
-
-        this.maskTexture = device.createTexture({
-            size: [1, 1],
-            format: "rg32float",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-        });
-        this.maskTextureView = this.maskTexture.createView();
-
-        // SSS Textures (1x1 placeholders)
-        this.thicknessTexture = device.createTexture({
-            size: [1, 1],
-            format: "rgba8unorm",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-        });
-        this.thicknessTextureView = this.thicknessTexture.createView();
-
-        this.diffuseTexture = device.createTexture({
-            size: [1, 1],
-            format: "rgba8unorm",
-            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-        });
-        this.diffuseTextureView = this.diffuseTexture.createView();
-
-        this.specularAmbientTexture = device.createTexture({
-            size: [1, 1],
-            format: "rgba8unorm",
-            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-        });
-        this.specularAmbientTextureView = this.specularAmbientTexture.createView();
-
-        this.subsurfaceBlurTempTexture = device.createTexture({
-            size: [1, 1],
-            format: "rgba8unorm",
-            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-        });
-        this.subsurfaceBlurTempTextureView = this.subsurfaceBlurTempTexture.createView();
-
         // ================== Thickness Render Pipeline ==================
         const thicknessBindGroupLayout = device.createBindGroupLayout({
             label: "ssfr thickness bind group layout",
@@ -615,41 +558,69 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         });
     }
 
-    resize(width: number, height: number, depthTextureView: GPUTextureView) {
-        // Recreate smoothed depth texture
-        this.smoothedDepthTexture = this.device.createTexture({
+    resize(device: GPUDevice, width: number, height: number, depthTextureView: GPUTextureView) {
+        this.destroyTextures();
+
+
+        this.smoothedDepthTexture = device.createTexture({
             size: [width, height],
             format: "rg32float",
             usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.smoothedDepthTextureView = this.smoothedDepthTexture.createView();
 
-        // Recreate normal texture
-        this.normalTexture = this.device.createTexture({
+        this.normalTexture = device.createTexture({
             size: [width, height],
             format: "rgba16float",
             usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.normalTextureView = this.normalTexture.createView();
 
-        // Recreate shaded output texture
-        this.shadedOutputTexture = this.device.createTexture({
+        this.shadedOutputTexture = device.createTexture({
             size: [width, height],
             format: "rgba8unorm",
             usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.shadedOutputTextureView = this.shadedOutputTexture.createView();
 
-        // Recreate mask texture (high precision depth)
-        this.maskTexture = this.device.createTexture({
+        this.maskTexture = device.createTexture({
             size: [width, height],
             format: "rg32float",
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.maskTextureView = this.maskTexture.createView();
 
+        // SSS Textures (1x1 placeholders)
+        this.thicknessTexture = device.createTexture({
+            size: [width, height],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.thicknessTextureView = this.thicknessTexture.createView();
+
+        this.diffuseTexture = device.createTexture({
+            size: [width, height],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.diffuseTextureView = this.diffuseTexture.createView();
+
+        this.specularAmbientTexture = device.createTexture({
+            size: [width, height],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.specularAmbientTextureView = this.specularAmbientTexture.createView();
+
+        this.subsurfaceBlurTempTexture = device.createTexture({
+            size: [width, height],
+            format: "rgba8unorm",
+            usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.subsurfaceBlurTempTextureView = this.subsurfaceBlurTempTexture.createView();
+
         // NRF bind group
-        this.nrfBindGroup = this.device.createBindGroup({
+        this.nrfBindGroup = device.createBindGroup({
             label: "ssfr nrf bind group",
             layout: this.nrfBindGroupLayout,
             entries: [
@@ -673,7 +644,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         });
 
         // Normal reconstruction bind group
-        this.normalReconstructBindGroup = this.device.createBindGroup({
+        this.normalReconstructBindGroup = device.createBindGroup({
             label: "ssfr normal reconstruct bind group",
             layout: this.normalReconstructBindGroupLayout,
             entries: [
@@ -692,7 +663,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             ],
         });
 
-        this.shadingBindGroup = this.device.createBindGroup({
+        this.shadingBindGroup = device.createBindGroup({
             label: "ssfr shading bind group",
             layout: this.shadingBindGroupLayout,
             entries: [
@@ -720,7 +691,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         });
 
         // Composite bind group
-        this.compositeBindGroup = this.device.createBindGroup({
+        this.compositeBindGroup = device.createBindGroup({
             label: "ssfr composite bind group",
             layout: this.compositeBindGroupLayout,
             entries: [
@@ -739,7 +710,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             ],
         });
 
-        this.thicknessTexture = this.device.createTexture({
+        this.thicknessTexture = device.createTexture({
             size: [width, height],
             format: "rgba8unorm",
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
@@ -816,71 +787,40 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         });
     }
 
-    addComputePasses(commandEncoder: GPUCommandEncoder) {
+    nPrerenderPasses(): number {
+        return 3;
+    }
+
+    addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {
+        if (!this.maskTexture || !this.maskTextureView) return;
         if (!this.nrfBindGroup || !this.normalReconstructBindGroup || !this.shadingBindGroup) return;
         if (!this.subsurfaceBlurHorizontalBindGroup || !this.subsurfaceBlurVerticalBindGroup || !this.subsurfaceCombineBindGroup) return;
+        if (!this.thicknessTexture || !this.diffuseTexture || !this.specularAmbientTexture || !this.subsurfaceBlurTempTexture) return;
+        if (!this.smoothedDepthTexture || !this.smoothedDepthTextureView) return;
+        if (!this.thicknessTextureView) return;
 
-        const width = this.smoothedDepthTexture.width;
-        const height = this.smoothedDepthTexture.height;
-        const workgroupsX = Math.ceil(width / 8);
-        const workgroupsY = Math.ceil(height / 8);
-
-        const nrfPass = commandEncoder.beginComputePass({
-            label: "ssfr nrf compute pass",
+        const impostorPassEncoder = commandEncoder.beginRenderPass({
+            label: "ssfr impostor render pass",
+            colorAttachments: [
+                {
+                    view: this.maskTextureView,
+                    clearValue: { r: 1.0, g: 0, b: 0, a: 0 },
+                    loadOp: "clear",
+                    storeOp: "store",
+                }
+            ],
+            depthStencilAttachment: {
+                view: depthTextureView,
+                depthLoadOp: "load",
+                depthStoreOp: "store",
+            }
         });
-        nrfPass.setPipeline(this.nrfComputePipeline);
-        nrfPass.setBindGroup(0, this.nrfBindGroup);
-        nrfPass.dispatchWorkgroups(workgroupsX, workgroupsY);
-        nrfPass.end();
+        impostorPassEncoder.setBindGroup(0, this.bindGroup);
+        impostorPassEncoder.setPipeline(this.renderPipeline);
+        impostorPassEncoder.draw(6, this.mpmManager.nParticles, 0, 0);
+        impostorPassEncoder.end();
 
-        const normalPass = commandEncoder.beginComputePass({
-            label: "ssfr normal reconstruct compute pass",
-        });
-        normalPass.setPipeline(this.normalReconstructPipeline);
-        normalPass.setBindGroup(0, this.normalReconstructBindGroup);
-        normalPass.dispatchWorkgroups(workgroupsX, workgroupsY);
-        normalPass.end();
-
-        const shadingPass = commandEncoder.beginComputePass({
-            label: "ssfr shading compute pass",
-        });
-        shadingPass.setPipeline(this.shadingPipeline);
-        shadingPass.setBindGroup(0, this.shadingBindGroup);
-        shadingPass.dispatchWorkgroups(workgroupsX, workgroupsY);
-        shadingPass.end();
-
-        const sssBlurHPass = commandEncoder.beginComputePass({
-            label: "ssfr sss blur horizontal compute pass",
-        });
-        sssBlurHPass.setPipeline(this.subsurfaceBlurHorizontalPipeline);
-        sssBlurHPass.setBindGroup(0, this.subsurfaceBlurHorizontalBindGroup);
-        sssBlurHPass.dispatchWorkgroups(workgroupsX, workgroupsY);
-        sssBlurHPass.end();
-
-        const sssBlurVPass = commandEncoder.beginComputePass({
-            label: "ssfr sss blur vertical compute pass",
-        });
-        sssBlurVPass.setPipeline(this.subsurfaceBlurVerticalPipeline);
-        sssBlurVPass.setBindGroup(0, this.subsurfaceBlurVerticalBindGroup);
-        sssBlurVPass.dispatchWorkgroups(workgroupsX, workgroupsY);
-        sssBlurVPass.end();
-
-        const sssCombinePass = commandEncoder.beginComputePass({
-            label: "ssfr sss combine compute pass",
-        });
-        sssCombinePass.setPipeline(this.subsurfaceCombinePipeline);
-        sssCombinePass.setBindGroup(0, this.subsurfaceCombineBindGroup);
-        sssCombinePass.dispatchWorkgroups(workgroupsX, workgroupsY);
-        sssCombinePass.end();
-    }
-
-    addImpostorPass(renderPassEncoder: GPURenderPassEncoder) {
-        renderPassEncoder.setBindGroup(0, this.bindGroup);
-        renderPassEncoder.setPipeline(this.renderPipeline);
-        renderPassEncoder.draw(6, this.mpmManager.nParticles, 0, 0);
-    }
-
-    addThicknessPass(commandEncoder: GPUCommandEncoder) {
+        // thickness pass accumulates particle thickness with additive blending
         const thicknessPassDescriptor: GPURenderPassDescriptor = {
             colorAttachments: [{
                 view: this.thicknessTextureView,
@@ -895,11 +835,47 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         thicknessPass.setBindGroup(0, this.thicknessBindGroup);
         thicknessPass.draw(6, this.mpmManager.nParticles, 0, 0);
         thicknessPass.end();
+
+        // nrf, normal reconstruction, shading, sss blur, sss combine
+        const width = this.smoothedDepthTexture.width;
+        const height = this.smoothedDepthTexture.height;
+        const workgroupsX = Math.ceil(width / 8);
+        const workgroupsY = Math.ceil(height / 8);
+
+        const computePass = commandEncoder.beginComputePass({
+            label: "ssfr nrf compute pass",
+        });
+        computePass.setPipeline(this.nrfComputePipeline);
+        computePass.setBindGroup(0, this.nrfBindGroup);
+        computePass.dispatchWorkgroups(workgroupsX, workgroupsY);
+
+        computePass.setPipeline(this.normalReconstructPipeline);
+        computePass.setBindGroup(0, this.normalReconstructBindGroup);
+        computePass.dispatchWorkgroups(workgroupsX, workgroupsY);
+
+        computePass.setPipeline(this.shadingPipeline);
+        computePass.setBindGroup(0, this.shadingBindGroup);
+        computePass.dispatchWorkgroups(workgroupsX, workgroupsY);
+
+        computePass.setPipeline(this.subsurfaceBlurHorizontalPipeline);
+        computePass.setBindGroup(0, this.subsurfaceBlurHorizontalBindGroup);
+        computePass.dispatchWorkgroups(workgroupsX, workgroupsY);
+
+        computePass.setPipeline(this.subsurfaceBlurVerticalPipeline);
+        computePass.setBindGroup(0, this.subsurfaceBlurVerticalBindGroup);
+        computePass.dispatchWorkgroups(workgroupsX, workgroupsY);
+
+        computePass.setPipeline(this.subsurfaceCombinePipeline);
+        computePass.setBindGroup(0, this.subsurfaceCombineBindGroup);
+        computePass.dispatchWorkgroups(workgroupsX, workgroupsY);
+
+        computePass.end();
     }
 
-    addDraw(renderPassEncoder: GPURenderPassEncoder) {
-        this.addImpostorPass(renderPassEncoder);
+    addFinalDraw(renderPassEncoder: GPURenderPassEncoder) {
+        this.addCompositePass(renderPassEncoder);
     }
+    
 
     addCompositePass(renderPassEncoder: GPURenderPassEncoder) {
         if (!this.compositeBindGroup) return;
@@ -907,5 +883,21 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         renderPassEncoder.setPipeline(this.compositePipeline);
         renderPassEncoder.setBindGroup(0, this.compositeBindGroup);
         renderPassEncoder.draw(4, 1, 0, 0);
+    }
+
+    private destroyTextures() {
+        this.smoothedDepthTexture?.destroy();
+        this.normalTexture?.destroy();
+        this.shadedOutputTexture?.destroy();
+        this.maskTexture?.destroy();
+        this.thicknessTexture?.destroy();
+        this.diffuseTexture?.destroy();
+        this.specularAmbientTexture?.destroy();
+        this.subsurfaceBlurTempTexture?.destroy();
+    }
+
+
+    destroy() {
+        this.destroyTextures();
     }
 }
