@@ -31,9 +31,9 @@ const COAT_IOR = 1.3;
 
 // Noise scales for displacement
 const NOISE_SCALE_BASIC = 8.;    // Step 2: Low frequency
-const NOISE_SCALE_DETAIL = 128.;  // Step 3: High frequency
-const NOISE_STRENGTH_BASIC = 0.75;
-const NOISE_STRENGTH_DETAIL = 0.025;
+const NOISE_SCALE_DETAIL = 196.;  // Step 3: High frequency
+const NOISE_STRENGTH_BASIC = 1.5;
+const NOISE_STRENGTH_DETAIL = 0.05;
 
 // ===== NOISE FUNCTIONS =====
 // Simple 3D hash for noise
@@ -79,7 +79,7 @@ fn fbmNoise(p: vec3f, octaves: i32) -> f32 {
     
     for (var i = 0; i < octaves; i++) {
         value += amplitude * gradientNoise(pos * frequency);
-        frequency *= 2.0;
+        frequency *= 2;
         amplitude *= 0.5;
     }
     return value;
@@ -87,14 +87,14 @@ fn fbmNoise(p: vec3f, octaves: i32) -> f32 {
 
 // Compute noise gradient for normal perturbation
 fn noiseGradient(p: vec3f, scale: f32, octaves: i32) -> vec3f {
-    let eps = 0.01;
-    let dx = fbmNoise((p + vec3f(eps, 0, 0)) * scale, octaves) - 
-             fbmNoise((p - vec3f(eps, 0, 0)) * scale, octaves);
-    let dy = fbmNoise((p + vec3f(0, eps, 0)) * scale, octaves) - 
-             fbmNoise((p - vec3f(0, eps, 0)) * scale, octaves);
-    let dz = fbmNoise((p + vec3f(0, 0, eps)) * scale, octaves) - 
-             fbmNoise((p - vec3f(0, 0, eps)) * scale, octaves);
-    return vec3f(dx, dy, dz) / (2.0 * eps);
+    const EPSILON = 1e-6;
+    let dx = fbmNoise((p + vec3f(EPSILON, 0, 0)) * scale, octaves) - 
+             fbmNoise((p - vec3f(EPSILON, 0, 0)) * scale, octaves);
+    let dy = fbmNoise((p + vec3f(0, EPSILON, 0)) * scale, octaves) - 
+             fbmNoise((p - vec3f(0, EPSILON, 0)) * scale, octaves);
+    let dz = fbmNoise((p + vec3f(0, 0, EPSILON)) * scale, octaves) - 
+             fbmNoise((p - vec3f(0, 0, EPSILON)) * scale, octaves);
+    return vec3f(dx, dy, dz) / (2 * EPSILON);
 }
 
 // ===== BRDF FUNCTIONS =====
@@ -142,7 +142,7 @@ fn subsurfaceScattering(N: vec3f, V: vec3f, L: vec3f, thickness: f32) -> vec3f {
 // Simple bright sparkles - no complex PBR needed for glints
 fn glintMask(worldPos: vec3f, N: vec3f, L: vec3f, V: vec3f) -> f32 {
     // High frequency noise for sparkle positions
-    let noiseVal = fbmNoise(worldPos * 90, 2);
+    let noiseVal = fbmNoise(worldPos * 128, 2);
     
     // Reflection-based: glints appear where view reflects light
     let H = normalize(L + V);
@@ -153,9 +153,9 @@ fn glintMask(worldPos: vec3f, N: vec3f, L: vec3f, V: vec3f) -> f32 {
     let sparkleNoise = smoothstep(GLINT_THRESHOLD, GLINT_THRESHOLD + 0.01, noiseVal);
     
     // Sharp specular falloff for tight sparkles
-    let specularFactor = pow((dot(N, H) + 1) * 0.5, 64);
+    let specularFactor = pow((dot(N, H) + 1) * 0.5, 16);
     
-    return sparkleNoise * specularFactor * 4;
+    return sparkleNoise * specularFactor;
 }
 
 fn coatSpecular(N: vec3f, V: vec3f, L: vec3f, glintStrength: f32) -> vec3f {
