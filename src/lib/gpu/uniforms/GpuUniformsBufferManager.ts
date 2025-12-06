@@ -114,4 +114,8 @@ export class GpuUniformsBufferManager {
     writeCameraPos(cameraPos: [number, number, number]) {
         this.device.queue.writeBuffer(this.buffer, 336, new Float32Array(cameraPos));
     }
+
+    writeGridCellDims(gridCellDims: [number, number, number]) {
+        this.device.queue.writeBuffer(this.buffer, 352, new Float32Array(gridCellDims));
+    }
 }

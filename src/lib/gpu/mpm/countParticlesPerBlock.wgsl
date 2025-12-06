@@ -12,8 +12,7 @@ fn countParticlesPerBlock(
     if thread_index >= arrayLength(&particle_data) { return; }
 
     let particle = particle_data[thread_index];
-    let cell_dims = calculateCellDims();
-    let cell_number = calculateCellNumber(particle.pos, cell_dims);
+    let cell_number = calculateCellNumber(particle.pos);
     let block_number = calculateBlockNumberContainingCell(cell_number);
     let block_index = retrieveBlockIndexFromHashMap(block_number);
 

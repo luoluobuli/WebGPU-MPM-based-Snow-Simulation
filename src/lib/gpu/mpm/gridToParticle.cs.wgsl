@@ -18,10 +18,9 @@ fn doGridToParticle(
     let particle_index = sortedParticleIndices[thread_index];
     var particle = particle_data[particle_index];
 
-    let cell_dims = calculateCellDims();
-    let start_cell_number = calculateCellNumber(particle.pos, cell_dims);
-    let cell_center_pos = uniforms.gridMinCoords + cell_dims * (vec3f(start_cell_number) + vec3f(0.5));
-    let cell_frac_pos = calculateFractionalPosFromCellMin(particle.pos, cell_dims, start_cell_number);
+    let start_cell_number = calculateCellNumber(particle.pos);
+    let cell_center_pos = uniforms.gridMinCoords + uniforms.gridCellDims * (vec3f(start_cell_number) + vec3f(0.5));
+    let cell_frac_pos = calculateFractionalPosFromCellMin(particle.pos, start_cell_number);
     let cell_weights = calculateQuadraticBSplineCellWeights(cell_frac_pos);
 
     if uniforms.use_pbmpm == 0 {

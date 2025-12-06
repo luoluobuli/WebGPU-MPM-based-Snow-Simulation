@@ -11,24 +11,10 @@ struct ParticleData {
     deformation_displacement: mat3x3f, // 192
 }
 
-
-fn calculateCellDims() -> vec3f {
-    let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
-    return vec3f(
-        gridRange.x / f32(uniforms.gridResolution.x),
-        gridRange.y / f32(uniforms.gridResolution.y),
-        gridRange.z / f32(uniforms.gridResolution.z),
-    );
-}
-
-fn calculateCellNumber(pos: vec3f, cellDims: vec3f) -> vec3i {
+fn calculateCellNumber(pos: vec3f) -> vec3i {
     let posFromGridMin = pos - uniforms.gridMinCoords;
 
-    return vec3i(
-        i32(posFromGridMin.x / cellDims.x),
-        i32(posFromGridMin.y / cellDims.y),
-        i32(posFromGridMin.z / cellDims.z),
-    );
+    return vec3i(posFromGridMin / uniforms.gridCellDims);
 }
 
 fn cellNumberInGridRange(cellNumber: vec3i) -> bool {
@@ -39,9 +25,9 @@ fn linearizeCellIndex(cellNumber: vec3u) -> u32 {
     return cellNumber.x + uniforms.gridResolution.x * (cellNumber.y + uniforms.gridResolution.y * cellNumber.z);
 }
 
-fn calculateFractionalPosFromCellMin(pos: vec3f, cellDims: vec3f, cellNumber: vec3i) -> vec3f {
-    let minPos = uniforms.gridMinCoords + cellDims * vec3f(cellNumber);
-    return (pos - minPos) / cellDims;
+fn calculateFractionalPosFromCellMin(pos: vec3f, cellNumber: vec3i) -> vec3f {
+    let minPos = uniforms.gridMinCoords + uniforms.gridCellDims * vec3f(cellNumber);
+    return (pos - minPos) / uniforms.gridCellDims;
 }
 
 

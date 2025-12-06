@@ -68,8 +68,7 @@ fn doGridUpdate(
         
         let cell_number = block_number * 4 + vec3i(cell_number_within_block_x, cell_number_within_block_y, cell_number_within_block_z);
         
-        let cellDims = calculateCellDims();
-        let cellWorldPos = uniforms.gridMinCoords + (vec3f(cell_number) + vec3<f32>(0.5, 0.5, 0.5)) * cellDims;
+        let cellWorldPos = uniforms.gridMinCoords + (vec3f(cell_number) + vec3<f32>(0.5, 0.5, 0.5)) * uniforms.gridCellDims;
 
 
 
@@ -133,8 +132,7 @@ fn doGridUpdate(
         
         let cell_number = block_number * 4 + vec3i(cell_number_within_block_x, cell_number_within_block_y, cell_number_within_block_z);
         
-        let cellDims = calculateCellDims();
-        let cellWorldPos = uniforms.gridMinCoords + (vec3f(cell_number) + vec3<f32>(0.5, 0.5, 0.5)) * cellDims;
+        let cellWorldPos = uniforms.gridMinCoords + (vec3f(cell_number) + vec3f(0.5)) * uniforms.gridCellDims;
 
 
 

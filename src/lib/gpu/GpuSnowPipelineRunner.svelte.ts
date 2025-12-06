@@ -111,10 +111,18 @@ export class GpuSnowPipelineRunner {
         const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
 
+        const gridMinCoords: [number, number, number] = [-5, -5, 0];
+        const gridMaxCoords: [number, number, number] = [5, 5, 4];
+
         uniformsManager.writeGridResolution([gridResolutionX, gridResolutionY, gridResolutionZ]);
+        uniformsManager.writeGridCellDims([
+            (gridMaxCoords[0] - gridMinCoords[0]) / gridResolutionX,
+            (gridMaxCoords[1] - gridMinCoords[1]) / gridResolutionY,
+            (gridMaxCoords[2] - gridMinCoords[2]) / gridResolutionZ,
+        ]);
         uniformsManager.writeFixedPointScale(FP_SCALE);
-        uniformsManager.writeGridMinCoords([-5, -5, 0]);
-        uniformsManager.writeGridMaxCoords([5, 5, 4]);
+        uniformsManager.writeGridMinCoords(gridMinCoords);
+        uniformsManager.writeGridMaxCoords(gridMaxCoords);
 
         const mpmManager = new GpuMpmBufferManager({
             device,

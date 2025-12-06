@@ -25,6 +25,8 @@ struct Uniforms {
     colliderVelocity: vec3f, // 336
     // 340
     cameraPos: vec3f, // 352
+    // 356
+    gridCellDims: vec3f, // 368
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
