@@ -21,8 +21,8 @@ struct MCParams {
 @group(0) @binding(5) var<uniform> mcParams: MCParams;
 
 // ===== CONSTANTS =====
-const LIGHT_DIR = vec3f(0.4, 0.7, 0.5);
-const AMBIENT_COLOR = vec3f(0.15, 0.17, 0.22);
+const LIGHT_DIR = vec3f(0.6, 0.4, 1);
+const AMBIENT_COLOR = vec3f(0.15, 0.22, 0.28);
 
 // Step 1: High roughness for powdery look
 const BASE_ROUGHNESS = 0.95;
@@ -31,7 +31,7 @@ const SPECULAR_ROUGHNESS = 0.8;
 // Step 4: SSS parameters from reference (boosted for visibility)
 const SSS_COLOR = vec3f(0.8, 0.85, 0.9);
 const SSS_RADIUS = vec3f(0.36, 0.46, 0.60);
-const SSS_STRENGTH = 0.5;
+const SSS_STRENGTH = 0.2;
 
 // Step 5: Glint coat parameters (coat color 1/1/1 per user)
 const COAT_COLOR = vec3f(1.0, 1.0, 1.0);
@@ -39,18 +39,14 @@ const COAT_ROUGHNESS = 0.1;
 const COAT_IOR = 1.3;
 
 // Noise scales for displacement
-const NOISE_SCALE_BASIC = 8.;    // Step 2: Low frequency
-const NOISE_SCALE_DETAIL = 196.;  // Step 3: High frequency
+const NOISE_SCALE_BASIC = 8.;
+const NOISE_SCALE_DETAIL = 196.;
 const NOISE_STRENGTH_BASIC = 1.5;
-const NOISE_STRENGTH_DETAIL = 0.05;
-
-// Ground plane
-const GROUND_COLOR = vec3f(0.35, 0.32, 0.28);  // Earthy brown
-const GROUND_ROUGHNESS = 0.9;
+const NOISE_STRENGTH_DETAIL = 0.3;
 
 // Shadow raymarch parameters
 const N_SHADOW_STEPS = 32u;
-const EXTINCTION_COEFFICIENT = 32.;
+const EXTINCTION_COEFFICIENT = 8.;
 
 // ===== NOISE FUNCTIONS =====
 // Simple 3D hash for noise
@@ -159,7 +155,7 @@ fn subsurfaceScattering(N: vec3f, V: vec3f, L: vec3f, thickness: f32) -> vec3f {
 // Simple bright sparkles - no complex PBR needed for glints
 fn glintMask(worldPos: vec3f, N: vec3f, L: vec3f, V: vec3f) -> f32 {
     // High frequency noise for sparkle positions
-    let noiseVal = fbmNoise(worldPos * 128, 2);
+    let noiseVal = fbmNoise(worldPos * 64, 2);
     
     // Reflection-based: glints appear where view reflects light
     let H = normalize(L + V);
@@ -250,34 +246,6 @@ fn raymarchShadow(worldPos: vec3f, lightDir: vec3f) -> vec3f {
     return clamp(shadow, vec3f(0), vec3f(1));
 }
 
-// ===== GROUND PLANE =====
-fn rayPlaneIntersect(rayOrigin: vec3f, rayDir: vec3f, planeZ: f32) -> f32 {
-    if (abs(rayDir.z) < 0.0001) {
-        return -1.0;
-    }
-    return (planeZ - rayOrigin.z) / rayDir.z;
-}
-
-fn shadeGround(worldPos: vec3f, lightDir: vec3f, viewDir: vec3f) -> vec3f {
-    let N = vec3f(0.0, 0.0, 1.0);  // Ground faces up (Z-up)
-    let NdotL = max(dot(N, lightDir), 0.0);
-    
-    // Raymarch shadow for ground
-    let shadow = raymarchShadow(worldPos, lightDir);
-    let shadowFactor = shadow;
-    
-    // Simple diffuse + ambient
-    let diffuse = GROUND_COLOR * NdotL * shadowFactor;
-    let ambient = GROUND_COLOR * AMBIENT_COLOR;
-    
-    // Subtle specular
-    let H = normalize(lightDir + viewDir);
-    let NdotH = max(dot(N, H), 0.0);
-    let specular = vec3f(0.02) * pow(NdotH, 32.0) * shadowFactor;
-    
-    return ambient + diffuse * 0.8 + specular;
-}
-
 // ===== MAIN SHADING =====
 @compute
 @workgroup_size(8, 8)
@@ -303,39 +271,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let rayEnd = worldFar.xyz / worldFar.w;
     let rayDir = normalize(rayEnd - rayOrigin);
     let viewDir = -rayDir;
-    
-    // Ground plane at gridMinCoords.z
-    let groundZ = uniforms.gridMinCoords.z;
-    let groundT = rayPlaneIntersect(rayOrigin, rayDir, groundZ);
-    
-    // Check if we hit ground before snow
-    var hitGround = false;
-    var groundWorldPos = vec3f(0.0);
-    
-    if (groundT > 0.0) {
-        groundWorldPos = rayOrigin + rayDir * groundT;
-        // Check if ground is within grid bounds (with extra margin for ground extent)
-        let margin = 2.0;
-        if (groundWorldPos.x >= uniforms.gridMinCoords.x - margin && 
-            groundWorldPos.x <= uniforms.gridMaxCoords.x + margin &&
-            groundWorldPos.y >= uniforms.gridMinCoords.y - margin && 
-            groundWorldPos.y <= uniforms.gridMaxCoords.y + margin) {
-            
-            // Compare ground depth with scene depth
-            let groundScreen = worldToScreen(groundWorldPos, screenSize);
-            if (depth >= 1.0 || groundScreen.z < depth) {
-                hitGround = true;
-            }
-        }
-    }
-    
-    // If we hit ground and it's in front of snow
-    if (hitGround && depth >= 1.0) {
-        let groundColor = shadeGround(groundWorldPos, lightDir, viewDir);
-        let finalColor = pow(groundColor, vec3f(1.0 / 2.2));
-        textureStore(shadedOutput, coords, vec4f(finalColor, 1.0));
-        return;
-    }
     
     // No snow and no ground - transparent
     if (depth >= 1.0) {
@@ -409,10 +344,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let glintSpec = coatSpecular(specularNormal, V, L, glint) * (0.5 + 0.5 * shadowFactor);
     
     // ===== Fresnel rim lighting =====
-    let fresnel = pow(1 - max(dot(diffuseNormal, V), 0), 3);
-    let rim = fresnel * 0.05 * vec3f(0.9, 0.95, 1) * shadowFactor;
+    let fresnel = pow(1 - max(dot(diffuseNormal, V), 0), 2.5);
+    let rim = fresnel * 0.35 * vec3f(0.9, 0.95, 1) * shadowFactor;
     
-    var color = AMBIENT_COLOR + diffuse * 0.6 + baseSpecular + sss + glintSpec + rim;
+    var color = AMBIENT_COLOR + diffuse * 0.9 + baseSpecular + sss + glintSpec + rim;
     
     // // Blend with ground if both visible
     // if (hitGround) {

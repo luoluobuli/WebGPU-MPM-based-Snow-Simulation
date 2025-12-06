@@ -1,4 +1,4 @@
-import environmentMapUrl from "$lib/assets/overcast_soil_puresky_2k.png?url";
+import environmentMapUrl from "$lib/assets/kloofendal_misty_morning_puresky_2k.png?url";
 // import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 
 export const loadEnvironmentMap = async () => {
