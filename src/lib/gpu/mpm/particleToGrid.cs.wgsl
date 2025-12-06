@@ -19,9 +19,8 @@ fn doParticleToGrid(
     let particle_index = sortedParticleIndices[thread_index];
     let particle = particleDataIn[particle_index];
 
-    let cell_dims = calculateCellDims();
-    let start_cell_number = calculateCellNumber(particle.pos, cell_dims);
-    let cell_frac_pos = calculateFractionalPosFromCellMin(particle.pos, cell_dims, start_cell_number);
+    let start_cell_number = calculateCellNumber(particle.pos);
+    let cell_frac_pos = calculateFractionalPosFromCellMin(particle.pos, start_cell_number);
     let cell_weights = calculateQuadraticBSplineCellWeights(cell_frac_pos);
 
     if uniforms.use_pbmpm == 0 {
@@ -57,7 +56,7 @@ fn doParticleToGrid(
                         cell_weights_deriv[u32(offsetX + 1)].x * cell_weights[u32(offsetY + 1)].y * cell_weights[u32(offsetZ + 1)].z,
                         cell_weights[u32(offsetX + 1)].x * cell_weights_deriv[u32(offsetY + 1)].y * cell_weights[u32(offsetZ + 1)].z,
                         cell_weights[u32(offsetX + 1)].x * cell_weights[u32(offsetY + 1)].y * cell_weights_deriv[u32(offsetZ + 1)].z
-                    ) / cell_dims;
+                    ) / uniforms.gridCellDims;
                     
                     // f = -V  Pᵀ  ∇w
                     let stress_force = -particleVolume * stressTranspose * cell_weight_gradient;

@@ -67,9 +67,8 @@ fn mapAffectedBlocks(@builtin(global_invocation_id) gid: vec3u) {
     if threadIndex >= arrayLength(&particleData) { return; }
 
     let particle = particleData[threadIndex];
-    let cellDims = calculateCellDims();
     
-    let start_cell_number = calculateCellNumber(particle.pos, cellDims);
+    let start_cell_number = calculateCellNumber(particle.pos);
     
     // allocate every cell that this particle is going to affect in the p2g step
     for (var offset_z = -1i; offset_z <= 1; offset_z++) {
