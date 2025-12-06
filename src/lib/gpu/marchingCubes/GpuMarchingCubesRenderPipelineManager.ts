@@ -556,53 +556,44 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         
         // Reset indirect dispatch/draw counters using compute shader
         // This ensures correct ordering within the command stream
-        const resetPass = commandEncoder.beginComputePass({ label: "MC reset pass" });
-        resetPass.setPipeline(this.resetPipeline);
-        resetPass.setBindGroup(0, this.resetBindGroup);
-        resetPass.dispatchWorkgroups(1);
-        resetPass.end();
+        const computePass = commandEncoder.beginComputePass({ label: "marching cubes compute pass" });
+        computePass.setPipeline(this.resetPipeline);
+        computePass.setBindGroup(0, this.resetBindGroup);
+        computePass.dispatchWorkgroups(1);
         
         // 1. Calculate density grid (scatter particles to grid)
         // This is still dense/global because particles can be anywhere
-        const densityPass = commandEncoder.beginComputePass({ label: "MC density pass" });
-        densityPass.setPipeline(this.densityPipeline);
-        densityPass.setBindGroup(0, this.uniformsManager.bindGroup);
-        densityPass.setBindGroup(1, this.densityBindGroup);
-        densityPass.dispatchWorkgroups(Math.ceil(this.mpmManager.nParticles / 256));
-        densityPass.end();
+        computePass.setPipeline(this.densityPipeline);
+        computePass.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePass.setBindGroup(1, this.densityBindGroup);
+        computePass.dispatchWorkgroups(Math.ceil(this.mpmManager.nParticles / 256));
         
         // 2. List Active Blocks
-        const listPass = commandEncoder.beginComputePass({ label: "MC list blocks pass" });
-        listPass.setPipeline(this.listBlocksPipeline);
-        listPass.setBindGroup(0, this.listBlocksBindGroup);
+        computePass.setPipeline(this.listBlocksPipeline);
+        computePass.setBindGroup(0, this.listBlocksBindGroup);
         // Total blocks / 64 threads per group
         const [gx, gy, gz] = this.bufferManager.marchingCubesGridDims;
         const totalBlocks = Math.ceil(gx/8) * Math.ceil(gy/8) * Math.ceil(gz/8);
-        listPass.dispatchWorkgroups(totalBlocks); // One workgroup per block now
-        listPass.end();
+        computePass.dispatchWorkgroups(totalBlocks); // One workgroup per block now
 
         // 3. Calculate vertex densities and gradients ONLY for active blocks
-        const vertexDensityPass = commandEncoder.beginComputePass({ label: "MC vertex density pass" });
-        vertexDensityPass.setPipeline(this.vertexDensityPipeline);
-        vertexDensityPass.setBindGroup(0, this.uniformsManager.bindGroup);
-        vertexDensityPass.setBindGroup(1, this.vertexDensityBindGroup);
-        vertexDensityPass.dispatchWorkgroupsIndirect(this.bufferManager.blockIndirectDispatchBuffer, 0);
-        vertexDensityPass.end();
+        computePass.setPipeline(this.vertexDensityPipeline);
+        computePass.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePass.setBindGroup(1, this.vertexDensityBindGroup);
+        computePass.dispatchWorkgroupsIndirect(this.bufferManager.blockIndirectDispatchBuffer, 0);
         
         // 4. Generate mesh ONLY for active blocks
-        const generatePass = commandEncoder.beginComputePass({ label: "MC generate pass" });
-        generatePass.setPipeline(this.generatePipeline);
-        generatePass.setBindGroup(0, this.uniformsManager.bindGroup);
-        generatePass.setBindGroup(1, this.generateBindGroup);
-        generatePass.dispatchWorkgroupsIndirect(this.bufferManager.blockIndirectDispatchBuffer, 0);
-        generatePass.end();
+        computePass.setPipeline(this.generatePipeline);
+        computePass.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePass.setBindGroup(1, this.generateBindGroup);
+        computePass.dispatchWorkgroupsIndirect(this.bufferManager.blockIndirectDispatchBuffer, 0);
 
         // 5. Clamp indirect args to ensure we don't draw garbage
-        const clampPass = commandEncoder.beginComputePass({ label: "MC clamp pass" });
-        clampPass.setPipeline(this.clampArgsPipeline);
-        clampPass.setBindGroup(0, this.clampArgsBindGroup);
-        clampPass.dispatchWorkgroups(1);
-        clampPass.end();
+        computePass.setPipeline(this.clampArgsPipeline);
+        computePass.setBindGroup(0, this.clampArgsBindGroup);
+        computePass.dispatchWorkgroups(1);
+
+        computePass.end();
     }
     
     addMeshRenderPass(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {
