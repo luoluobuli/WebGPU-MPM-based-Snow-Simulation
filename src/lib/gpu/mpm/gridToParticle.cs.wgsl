@@ -69,41 +69,11 @@ fn doGridToParticle(
         }
 
         particle.vel = new_particle_velocity;
-        particle.pos += new_particle_velocity * uniforms.simulationTimestep;
-        particle.deformationElastic = (IDENTITY_MAT3 + total_velocity_gradient * uniforms.simulationTimestep) * particle.deformationElastic;
-        particle.pos_displacement = new_particle_velocity * uniforms.simulationTimestep;
-
-        applyPlasticity(&particle);
         
-        // Boundary conditions
-        if particle.pos.x < uniforms.gridMinCoords.x {
-            particle.vel.x *= -0.5;
-            particle.pos.x = uniforms.gridMinCoords.x;
-        }
-        if particle.pos.x >= uniforms.gridMaxCoords.x {
-            particle.vel.x *= -0.5;
-            particle.pos.x = uniforms.gridMaxCoords.x;
-        }
-
-        if particle.pos.y < uniforms.gridMinCoords.y {
-            particle.vel.y *= -0.5;
-            particle.pos.y = uniforms.gridMinCoords.y;
-        }
-        if particle.pos.y >= uniforms.gridMaxCoords.y {
-            particle.vel.y *= -0.5;
-            particle.pos.y = uniforms.gridMaxCoords.y;
-        }
-
-        if particle.pos.z < uniforms.gridMinCoords.z {
-            particle.vel.z *= -0.5;
-            particle.pos.z = uniforms.gridMinCoords.z;
-        }
-        if particle.pos.z >= uniforms.gridMaxCoords.z {
-            particle.vel.z *= -0.5;
-            particle.pos.z = uniforms.gridMaxCoords.z;
-        }
-
-
+        // Defer position and deformation update to integrateParticles
+        particle.pos_displacement = new_particle_velocity * uniforms.simulationTimestep;
+        particle.deformation_displacement = total_velocity_gradient * uniforms.simulationTimestep;
+        
         particle_data[particle_index] = particle;
     }
 

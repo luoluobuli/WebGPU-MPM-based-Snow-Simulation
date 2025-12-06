@@ -14,9 +14,8 @@ const DIFFUSE_STRENGTH = 0.6;
 const SPECULAR_STRENGTH = 0.15;
 const SHININESS = 8.0;
 
-// Subsurface scattering approximation
-const SSS_STRENGTH = 0.25;
-const SSS_COLOR = vec3f(0.8, 0.85, 0.95);
+const SSS_STRENGTH = vec3f(0.1, 0.2, 0.25);
+const SSS_COLOR = vec3f(0.75, 0.75, 0.75);
 
 fn reconstructWorldPos(coords: vec2i, depth: f32, screenSize: vec2f) -> vec3f {
     let uv = (vec2f(coords) + 0.5) / screenSize;
@@ -70,7 +69,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     // Subsurface scattering approximation
     // View-dependent transmission
     let VdotL = max(dot(-viewDir, lightDir), 0.0);
-    let sss = pow(VdotL, 2.0) * SSS_STRENGTH;
+    let sss = pow(VdotL * SSS_STRENGTH, vec3f(1.5));
     
     // Fresnel-like rim lighting
     let fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);

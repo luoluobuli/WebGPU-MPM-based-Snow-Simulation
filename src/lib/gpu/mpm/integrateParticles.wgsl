@@ -1,3 +1,5 @@
+
+
 @group(1) @binding(0) var<storage, read_write> hash_map_entries: array<HashMapEntry>;
 @group(1) @binding(1) var<storage, read_write> n_allocated_blocks: atomic<u32>;
 @group(1) @binding(2) var<storage, read_write> mapped_block_indexes: array<u32>;
@@ -26,29 +28,38 @@ fn integrateParticles(
     if particle.pos.x < uniforms.gridMinCoords.x {
         particle.pos_displacement.x *= -0.5;
         particle.pos.x = uniforms.gridMinCoords.x;
+        particle.vel.x *= -0.5;
     }
     if particle.pos.x >= uniforms.gridMaxCoords.x {
         particle.pos_displacement.x *= -0.5;
         particle.pos.x = uniforms.gridMaxCoords.x;
+        particle.vel.x *= -0.5;
     }
 
     if particle.pos.y < uniforms.gridMinCoords.y {
         particle.pos_displacement.y *= -0.5;
         particle.pos.y = uniforms.gridMinCoords.y;
+        particle.vel.y *= -0.5;
     }
     if particle.pos.y >= uniforms.gridMaxCoords.y {
         particle.pos_displacement.y *= -0.5;
         particle.pos.y = uniforms.gridMaxCoords.y;
+        particle.vel.y *= -0.5;
     }
 
     if particle.pos.z < uniforms.gridMinCoords.z {
         particle.pos_displacement.z *= -0.5;
         particle.pos.z = uniforms.gridMinCoords.z;
+        particle.vel.z *= -0.5;
     }
     if particle.pos.z >= uniforms.gridMaxCoords.z {
         particle.pos_displacement.z *= -0.5;
         particle.pos.z = uniforms.gridMaxCoords.z;
+        particle.vel.z *= -0.5;
     }
+    
+    // Mesh Collision
+    resolveParticleCollision(&particle);
 
     particle_data[particle_index] = particle;
 }
