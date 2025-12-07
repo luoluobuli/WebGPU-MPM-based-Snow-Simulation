@@ -26,47 +26,41 @@ const nPrerenderPasses = $derived(simulationState.prerenderElapsedTimes?.length)
     <h3>Performance</h3>
 
     <h4>Simulation</h4>
-    <dl>
-        <dt>GPU simulation compute pass (sample)</dt>
-        <dd>
-            <ElapsedTimeDisplay
-                ns={simulationState.elapsedTime.gpuComputeSimulationStepTimeNs}
-            />
-        </dd>
-    </dl>
+
+    <perf-item>
+        <perf-label>GPU simulation compute pass (sample)</perf-label>
+        <ElapsedTimeDisplay
+            ns={simulationState.elapsedTime.gpuComputeSimulationStepTimeNs}
+        />
+    </perf-item>
 
     <h4>Render</h4>
 
     <div>{nPrerenderPasses ?? "(unknown)"} prerender {nPrerenderPasses === 1 ? "pass" : "passes"}</div>
 
-    <dl>
-        {#each simulationState.prerenderElapsedTimes as prerenderElapsedTime (prerenderElapsedTime.label)}
-            <dt>GPU {prerenderElapsedTime.label} pass (sample)</dt>
-            <dd>
-                <ElapsedTimeDisplay
-                    ns={prerenderElapsedTime.elapsedTimeNs ?? 0n}
-                />
-            </dd>
-        {/each}
+    {#each simulationState.prerenderElapsedTimes as prerenderElapsedTime (prerenderElapsedTime.label)}
+    <perf-item>
+        <perf-label>GPU {prerenderElapsedTime.label} pass (sample)</perf-label>
+        <ElapsedTimeDisplay
+            ns={prerenderElapsedTime.elapsedTimeNs ?? 0n}
+        />
+    </perf-item>
+    {/each}
 
-        <dt>GPU composite render pass (sample)</dt>
-        <dd>
-            <ElapsedTimeDisplay
-                ns={simulationState.elapsedTime.gpuRenderTimeNs}
-            />
-        </dd>
-    </dl>
+    <perf-item>
+        <perf-label>GPU composite render pass (sample)</perf-label>
+        <ElapsedTimeDisplay
+            ns={simulationState.elapsedTime.gpuRenderTimeNs}
+        />
+    </perf-item>
 
     <h4>Overall</h4>
-    <dl>
-        <dt>Total animation frame time</dt>
-        <dd>
-            <ElapsedTimeDisplay
-                ns={simulationState.elapsedTime.animationFrameTimeNs}
-                showMsFractionalPart={false}
-                inverseLabel="fps"
-            />
-        </dd>
-    </dl>
-
+    <perf-item>
+        <perf-label>Total animation frame time</perf-label>
+        <ElapsedTimeDisplay
+            ns={simulationState.elapsedTime.animationFrameTimeNs}
+            showMsFractionalPart={false}
+            inverseLabel="fps"
+        />
+    </perf-item>
 </OverlayPanel>
