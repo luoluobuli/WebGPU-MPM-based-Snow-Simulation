@@ -24,6 +24,8 @@ import { PrerenderPassElapsedTime } from "$lib/components/simulationViewer/Prere
 
 const MAX_SIMULATION_DRIFT_MS = 250;
 const FP_SCALE = 65536;
+const DYNAMIC = true;
+const STATIC = false;
 
 export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;
@@ -55,7 +57,7 @@ export class GpuSnowPipelineRunner {
     private readonly measurePerf: boolean;
     // debug
     // private readonly readbackBuffer : GPUBuffer;
-    // v : [number, number, number] = [0.0, 0.0, 0.0];
+    test: number = 0;
 
     private readonly getSimulationMethodType: () => GpuSimulationMethodType;
     private readonly oneSimulationStepPerFrame: () => boolean;
@@ -76,6 +78,7 @@ export class GpuSnowPipelineRunner {
         camera,
         meshVertices,
         collider,
+        dynamicCollider,
         getSimulationMethodType,
         getRenderMethodType,
         oneSimulationStepPerFrame,
@@ -99,6 +102,7 @@ export class GpuSnowPipelineRunner {
         camera: Camera,
         meshVertices: number[][],
         collider: ColliderGeometry,
+        dynamicCollider: ColliderGeometry,
         getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
         oneSimulationStepPerFrame: () => boolean,
@@ -163,13 +167,29 @@ export class GpuSnowPipelineRunner {
             textures: collider.textures,
             indices: collider.indices,
         });
-        uniformsManager.writeColliderObjects(collider.objects);
-        uniformsManager.writeColliderNumObjects(Math.min(collider.objects.length, 1024));
-        uniformsManager.writeColliderMinCoords(colliderManager.minCoords);
-        uniformsManager.writeColliderMaxCoords(colliderManager.maxCoords);
+        uniformsManager.writeColliderObjects(collider.objects, STATIC);
+        uniformsManager.writeColliderNumObjects(Math.min(collider.objects.length, 1024), STATIC);
+        uniformsManager.writeColliderMinCoords(colliderManager.minCoords, STATIC);
+        uniformsManager.writeColliderMaxCoords(colliderManager.maxCoords, STATIC);
         uniformsManager.writeColliderTransformMat(mat4.identity());
         uniformsManager.writeColliderTransformInv(mat4.identity());
         uniformsManager.writeColliderVel([0.0, 0.0, 0.0]);
+
+        const dynamicColliderManager = new GpuColliderBufferManager({
+            device, 
+            vertices: dynamicCollider.positions, 
+            normals: dynamicCollider.normals,
+            uvs: dynamicCollider.uvs,
+            materialIndices: dynamicCollider.materialIndices,
+            textures: dynamicCollider.textures,
+            indices: dynamicCollider.indices,
+        });
+        uniformsManager.writeColliderMinCoords(dynamicColliderManager.minCoords, DYNAMIC);
+        uniformsManager.writeColliderMaxCoords(dynamicColliderManager.maxCoords, DYNAMIC);
+        uniformsManager.writeColliderObjects(dynamicCollider.objects, DYNAMIC);
+        uniformsManager.writeColliderNumObjects(Math.min(dynamicCollider.objects.length, 512), DYNAMIC);
+
+        this.test = dynamicCollider.objects.length;
 
         // Compute
         const particleInitializePipelineManager = new GpuParticleInitializePipelineManager({
@@ -193,6 +213,7 @@ export class GpuSnowPipelineRunner {
             uniformsManager,
             mpmManager,
             colliderManager,
+            dynamicColliderManager,
         });
 
         this.mpmPipelineManager = mpmPipelineManager;
@@ -505,6 +526,8 @@ export class GpuSnowPipelineRunner {
             }
 
             onUserControlUpdate?.();
+
+            console.log(this.test);
 
             const commandEncoder = this.device.createCommandEncoder({
                 label: "loop command encoder",

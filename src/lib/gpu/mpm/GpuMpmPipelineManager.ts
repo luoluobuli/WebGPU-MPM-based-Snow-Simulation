@@ -51,6 +51,7 @@ export class GpuMpmPipelineManager {
         uniformsManager,
         mpmManager,
         colliderManager,
+        dynamicColliderManager,
     }: {
         device: GPUDevice,
         particleDataBuffer: GPUBuffer,
@@ -63,6 +64,7 @@ export class GpuMpmPipelineManager {
         uniformsManager: GpuUniformsBufferManager,
         mpmManager: GpuMpmBufferManager,
         colliderManager: GpuColliderBufferManager,
+        dynamicColliderManager: GpuColliderBufferManager,
     }) {
         const sparseGridBindGroupLayout = device.createBindGroupLayout({
             label: "MPM sparse grid bind group layout",
@@ -73,11 +75,11 @@ export class GpuMpmPipelineManager {
                 { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+                { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
             ],
         });
 
         uniformsManager.writeColliderNumIndices(colliderManager.numIndices);
-
 
         const sparseGridBindGroup = device.createBindGroup({
             label: "MPM sparse grid bind group",
@@ -89,6 +91,7 @@ export class GpuMpmPipelineManager {
                 { binding: 5, resource: { buffer: gridMomentumYBuffer } },
                 { binding: 6, resource: { buffer: gridMomentumZBuffer } },
                 { binding: 9, resource: { buffer: colliderManager.colliderDataBuffer } },
+                { binding: 10, resource: { buffer: dynamicColliderManager.colliderDataBuffer } },
             ],
         });
 

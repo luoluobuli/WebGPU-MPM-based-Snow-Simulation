@@ -14,7 +14,7 @@ export class GpuUniformsBufferManager {
     }) {
         const uniformsBuffer = device.createBuffer({
             label: "uniforms buffer",
-            size: 37376,
+            size: 49696,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
         });
 
@@ -95,12 +95,18 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 208, new Uint32Array(gridResolution));
     }
 
-    writeColliderMinCoords(min: [number, number, number]) {
-        this.device.queue.writeBuffer(this.buffer, 224, new Float32Array(min));
+    writeColliderMinCoords(min: [number, number, number], isDynamic: boolean) {
+        if (isDynamic)
+            this.device.queue.writeBuffer(this.buffer, 512, new Float32Array(min));
+        else
+            this.device.queue.writeBuffer(this.buffer, 224, new Float32Array(min));
     }
 
-    writeColliderMaxCoords(max: [number, number, number]) {
-        this.device.queue.writeBuffer(this.buffer, 240, new Float32Array(max));
+    writeColliderMaxCoords(max: [number, number, number], isDynamic: boolean) {
+        if (isDynamic)
+            this.device.queue.writeBuffer(this.buffer, 528, new Float32Array(max));
+        else
+            this.device.queue.writeBuffer(this.buffer, 240, new Float32Array(max));
     }
 
     writeColliderTransformMat(transformMat: Mat4) {
@@ -122,8 +128,11 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 348, new Uint32Array([numIndices]));
     }
 
-    writeColliderNumObjects(numObjects: number) {
-        this.device.queue.writeBuffer(this.buffer, 364, new Uint32Array([numObjects]));
+    writeColliderNumObjects(numObjects: number, isDynamic: boolean) {
+        if (isDynamic)
+            this.device.queue.writeBuffer(this.buffer, 540, new Uint32Array([numObjects]));
+        else
+            this.device.queue.writeBuffer(this.buffer, 364, new Uint32Array([numObjects]));
     }
 
     writeLightViewProjMat(lightViewProjMat: Mat4) {
@@ -134,7 +143,7 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 432, transformInv.buffer);
     }
 
-    writeColliderObjects(objects: { min: [number, number, number], max: [number, number, number], startIndex: number, countIndices: number }[]) {
+    writeColliderObjects(objects: { min: [number, number, number], max: [number, number, number], startIndex: number, countIndices: number }[], isDynamic: boolean) {
         const MAX_OBJECTS = 1024;
         const count = Math.min(objects.length, MAX_OBJECTS);
         const buffer = new ArrayBuffer(count * 32);
@@ -153,6 +162,10 @@ export class GpuUniformsBufferManager {
             f32[base + 6] = obj.max[2];
             u32[base + 7] = obj.countIndices;
         }
-        this.device.queue.writeBuffer(this.buffer, 496, buffer);
+
+        if (isDynamic) 
+            this.device.queue.writeBuffer(this.buffer, 33312, buffer);
+        else
+            this.device.queue.writeBuffer(this.buffer, 544, buffer);
     }
 }

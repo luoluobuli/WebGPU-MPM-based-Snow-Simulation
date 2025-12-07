@@ -245,3 +245,181 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
         }
     }
 }
+
+fn pointInsideAABB(p: vec3f, minB: vec3f, maxB: vec3f) -> bool {
+    return all(p >= minB) && all(p <= maxB);
+}
+
+fn closestPointAABB(p: vec3f, minB: vec3f, maxB: vec3f) -> vec3f {
+    return clamp(p, minB, maxB);
+}
+
+fn aabbNormal(p: vec3f, minB: vec3f, maxB: vec3f) -> vec3f {
+    let dMin = abs(p - minB);
+    let dMax = abs(maxB - p);
+
+    let minDist = min(min(dMin.x, dMin.y), min(dMin.z, min(dMax.x, min(dMax.y, dMax.z))));
+
+    if (dMin.x == minDist) { return vec3f(-1, 0, 0); }
+    if (dMax.x == minDist) { return vec3f( 1, 0, 0); }
+    if (dMin.y == minDist) { return vec3f(0, -1, 0); }
+    if (dMax.y == minDist) { return vec3f(0,  1, 0); }
+    if (dMin.z == minDist) { return vec3f(0, 0, -1); }
+    return vec3f(0, 0, 1);
+}
+
+fn rayAABB(ro: vec3f, rd: vec3f, minB: vec3f, maxB: vec3f) -> f32 {
+    let invD = 1.0 / rd;
+
+    let t0 = (minB - ro) * invD;
+    let t1 = (maxB - ro) * invD;
+
+    let tmin = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z));
+    let tmax = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
+
+    if (tmax < 0.0 || tmin > tmax) {
+        return -1.0;
+    }
+
+    return tmin;
+}
+
+fn resolveDynamicParticleCollision(particle: ptr<function, ParticleData>) {
+    // global broadphase (optional fast reject)
+    let min_b = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
+    let max_b = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMaxCoords, 1.0)).xyz;
+    
+    let margin = 1.;
+    let safety_min = min(min_b, max_b) - vec3f(margin);
+    let safety_max = max(min_b, max_b) + vec3f(margin);
+    
+    let current_pos = (*particle).pos;
+    let prev_pos = current_pos - (*particle).pos_displacement;
+    
+    let min_p = min(current_pos, prev_pos);
+    let max_p = max(current_pos, prev_pos);
+    
+    // if strictly outside global bounds, return
+    if any(min_p > safety_max) || any(max_p < safety_min) { return; }
+
+    // setup for collision check
+    var min_info_dist_sq = 1e20;
+    var closest_normal = vec3f(0.0, 0.0, 1.0);
+    var closest_pos = current_pos;
+    
+    var min_t = 1.; 
+    var hit_normal = vec3f(0.0, 0.0, 1.0);
+    var hit_pos = current_pos;
+    var has_hit = false;
+
+    let ray_dir = (*particle).pos_displacement; 
+    let ray_length = length(ray_dir);
+    let do_ccd = ray_length > 1e-4;
+
+    let num_objects = uniforms.colliderNumObjects;
+    if num_objects == 0u { return; }
+
+    let transform = uniforms.colliderTransformMat;
+    // Compute inverse transform for AABB check (world -> local)
+    // Note: this assumes transform is invertible (which it should be)
+    let invTransform = uniforms.colliderTransformInv;
+
+    let current_pos_local = (invTransform * vec4f(current_pos, 1.0)).xyz;
+    let prev_pos_local = (invTransform * vec4f(prev_pos, 1.0)).xyz;
+    let ray_dir_local = current_pos_local - prev_pos_local;
+    let min_p_local = min(current_pos_local, prev_pos_local);
+    let max_p_local = max(current_pos_local, prev_pos_local);
+
+    let local_margin = vec3f(margin); // Simplification: assuming uniform scale involved roughly matches 1.0 or we are conservative
+    for (var i = 0u; i < num_objects; i++) {
+        let obj = uniforms.objects[i];
+
+        if any(min_p_local > obj.max + local_margin) || any(max_p_local < obj.min - local_margin) {
+            continue;
+        }
+
+        let c = closestPointAABB(current_pos_local, obj.min, obj.max);
+        let diff = current_pos_local - c;
+        let dist_sq = dot(diff, diff);
+
+        if dist_sq < min_info_dist_sq {
+            min_info_dist_sq = dist_sq;
+            closest_pos = (transform * vec4f(c, 1.0)).xyz;
+            closest_normal = (transform * vec4f(aabbNormal(c, obj.min, obj.max), 0.0)).xyz;
+        }
+
+        if do_ccd {
+            let t = rayAABB(prev_pos_local, ray_dir_local, obj.min, obj.max);
+            if t >= 0.0 && t < min_t {
+                has_hit = true;
+                min_t = t;
+                hit_pos = prev_pos + ray_dir * t;
+                hit_normal = closest_normal;
+            }
+        }
+    }
+    
+    // Response logic (same as before)
+    let velocity_scale_fac = 0.2 / uniforms.simulationTimestep;
+
+    if has_hit {
+        let surface_margin = 0.05;
+        let snap_pos = hit_pos + hit_normal * surface_margin;
+            
+        (*particle).pos = snap_pos;
+        
+        let old_vel = (*particle).pos_displacement / uniforms.simulationTimestep;
+        var v_rel = old_vel - uniforms.colliderVelocity;
+        let vn = dot(v_rel, hit_normal);
+        
+        let v_n = vn * hit_normal;
+        let v_t = v_rel - v_n;
+        let friction = 0.1;
+        
+        var new_vel: vec3f;
+        if vn < 0.0 {
+            new_vel = v_t * (1.0 - friction) + uniforms.colliderVelocity * velocity_scale_fac;
+        } else {
+            new_vel = v_rel + uniforms.colliderVelocity * velocity_scale_fac;
+        }
+        
+        (*particle).vel = new_vel;
+        (*particle).pos_displacement = new_vel * uniforms.simulationTimestep; 
+        return; 
+    }
+    
+    let dist = sqrt(min_info_dist_sq);
+    let diff = current_pos - closest_pos;
+    var push_dir = closest_normal;
+    let len_diff = length(diff);
+    if len_diff > 1e-6 {
+        push_dir = diff / len_diff;
+    }
+    
+    let threshold = 0.05; 
+
+    if dist < threshold {
+        let old_vel = (*particle).pos_displacement / uniforms.simulationTimestep;
+        let v_rel = old_vel - uniforms.colliderVelocity;
+        let vn = dot(v_rel, push_dir);
+
+        let v_n = vn * push_dir;
+        let v_t = v_rel - v_n;
+        let friction = 0.0;
+        
+        var new_vel: vec3f;
+        if vn < 0.0 {
+            new_vel = v_t * (1.0 - friction) + uniforms.colliderVelocity * velocity_scale_fac;
+        } else {
+            new_vel = v_rel + uniforms.colliderVelocity * velocity_scale_fac;
+        }
+        
+        (*particle).vel = new_vel;
+        (*particle).pos_displacement = new_vel * uniforms.simulationTimestep;
+        
+        let surface_margin = 0.05;
+        if dist < surface_margin {
+            (*particle).pos = closest_pos + push_dir * surface_margin;
+        }
+    }
+}

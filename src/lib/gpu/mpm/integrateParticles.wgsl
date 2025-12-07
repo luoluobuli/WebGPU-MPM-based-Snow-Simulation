@@ -4,6 +4,7 @@
 
 @group(1) @binding(0) var<storage, read_write> sparse_grid: SparseGridStorage;
 @group(1) @binding(9) var<storage, read> colliderData: array<u32>;
+@group(1) @binding(10) var<storage, read> dynamicColliderData: array<u32>;
 
 
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
@@ -61,7 +62,8 @@ fn integrateParticles(
     }
     
     // Mesh Collision
-    resolveParticleCollision(&particle);
+    //resolveParticleCollision(&particle);
+    resolveDynamicParticleCollision(&particle);
 
     particle_data[particle_index] = particle;
 }

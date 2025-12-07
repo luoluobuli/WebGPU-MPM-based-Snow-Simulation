@@ -5,6 +5,7 @@ import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext
 import { loadGltfScene } from "./loadScene";
 import modelUrl from "$lib/assets/models/horse_statue_01_1k.glb?url";
 import colliderUrl from "$lib/assets/models/forest.glb?url";
+import dynamicColliderUrl from "$lib/assets/models/test2.glb?url";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
@@ -142,7 +143,7 @@ export class SimulationState {
 
             onStatusChange?.("loading geometry...");
             const { vertices } = await loadGltfScene(modelUrl);
-            const { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(colliderUrl);
+            var { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(colliderUrl);
 
             const collider: ColliderGeometry = {
                 positions,
@@ -153,6 +154,17 @@ export class SimulationState {
                 indices,
                 objects,
                 //transform: state.transformMat,
+            };
+
+            var { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(colliderUrl);
+            const dynamicCollider: ColliderGeometry = {
+                positions,
+                normals,
+                uvs,
+                materialIndices,
+                textures,
+                indices,
+                objects,
             };
 
             onStatusChange?.("loading environment...");
@@ -174,6 +186,7 @@ export class SimulationState {
                 camera: state.camera,
                 meshVertices: vertices,
                 collider: collider,
+                dynamicCollider: dynamicCollider,
                 getSimulationMethodType: () => state.simulationMethodType,
                 getRenderMethodType: () => state.renderMethodType,
                 oneSimulationStepPerFrame: () => state.oneSimulationStepPerFrame,
