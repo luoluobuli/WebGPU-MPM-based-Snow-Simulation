@@ -4,11 +4,19 @@ export interface ColliderGeometry {
     positions: number[];
     normals: number[];
     indices: number[];
+    objects: {
+        min: [number, number, number];
+        max: [number, number, number];
+        startIndex: number;
+        countIndices: number;
+    }[];
 }
 
 export class GpuColliderBufferManager {
     readonly colliderDataBuffer: GPUBuffer;
+    readonly colliderObjectsBuffer: GPUBuffer;
     readonly numIndices: number;
+    readonly numObjects: number;
     readonly minCoords: [number, number, number];
     readonly maxCoords: [number, number, number];
 
@@ -21,11 +29,18 @@ export class GpuColliderBufferManager {
         vertices,
         normals,
         indices,
+        objects,
     }: {
         device: GPUDevice,
         vertices: number[],
         normals: number[],
         indices: number[],
+        objects: {
+            min: [number, number, number];
+            max: [number, number, number];
+            startIndex: number;
+            countIndices: number;
+        }[],
     }) {
         // tmp stores bounding box as the collider; will use the geometry itself in the future
         const min: [number, number, number] = [Infinity, Infinity, Infinity];
@@ -43,13 +58,11 @@ export class GpuColliderBufferManager {
         this.maxCoords = max;
 
         this.numIndices = indices.length;
+        this.numObjects = objects.length;
 
         // Pack data: [Indices (u32), Vertices (f32), Normals (f32)]
         // All are 4 bytes.
         const totalSize = (indices.length + vertices.length + normals.length) * 4;
-        
-        // Use a DataView or just write separately with offsets.
-        // Actually, creating one large buffer and writing parts is fine.
         
         this.colliderDataBuffer = device.createBuffer({
             label: "collider data buffer",
@@ -93,8 +106,46 @@ export class GpuColliderBufferManager {
             flatNormals.byteOffset,
             flatNormalsBytes
         );
+
+        // Pack Objects
+        // Struct: { min: vec3f (12), startIndex: u32 (4), max: vec3f (12), countIndices: u32 (4) } = 32 bytes
+        const objectStride = 32;
+        const totalObjectsSize = objects.length * objectStride;
         
-        // Keep these for potential reuse if needed, or remove them. 
-        // The properties were removed from class def, so I won't assign them.
+        this.colliderObjectsBuffer = device.createBuffer({
+            label: "collider objects buffer",
+            size: totalObjectsSize,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
+        const objectData = new ArrayBuffer(totalObjectsSize);
+        const dataView = new DataView(objectData);
+
+        for (let i = 0; i < objects.length; i++) {
+            const obj = objects[i];
+            const offset = i * objectStride;
+            
+            // min (0)
+            dataView.setFloat32(offset + 0, obj.min[0], true);
+            dataView.setFloat32(offset + 4, obj.min[1], true);
+            dataView.setFloat32(offset + 8, obj.min[2], true);
+            
+            // startIndex (12)
+            dataView.setUint32(offset + 12, obj.startIndex, true);
+            
+            // max (16)
+            dataView.setFloat32(offset + 16, obj.max[0], true);
+            dataView.setFloat32(offset + 20, obj.max[1], true);
+            dataView.setFloat32(offset + 24, obj.max[2], true);
+            
+            // countIndices (28)
+            dataView.setUint32(offset + 28, obj.countIndices, true);
+        }
+
+        device.queue.writeBuffer(
+            this.colliderObjectsBuffer,
+            0,
+            objectData
+        );
     }
 }

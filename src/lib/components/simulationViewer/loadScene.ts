@@ -30,6 +30,7 @@ const vec = (array: Float32Array, mat: Matrix4) => {
 
 export const loadGltfScene = async (url: string) => {
     const gltf = await new Promise<GLTF>((resolve, _reject) => new GLTFLoader().load(url, resolve));
+    gltf.scene.updateMatrixWorld(true);
 
     let nTriBytes = 0;
     let nMaterialBytes = 0;
@@ -68,9 +69,9 @@ export const loadGltfScene = async (url: string) => {
         const index = child.geometry.index.array;
 
         for (let i = 0; i < index.length; i += 3) {
-            const v0 = vec(pos.slice(3 * index[i], 3 * index[i] + 3), child.matrix);
-            const v1 = vec(pos.slice(3 * index[i + 1], 3 * index[i + 1] + 3), child.matrix);
-            const v2 = vec(pos.slice(3 * index[i + 2], 3 * index[i + 2] + 3), child.matrix);
+            const v0 = vec(pos.slice(3 * index[i], 3 * index[i] + 3), child.matrixWorld);
+            const v1 = vec(pos.slice(3 * index[i + 1], 3 * index[i + 1] + 3), child.matrixWorld);
+            const v2 = vec(pos.slice(3 * index[i + 2], 3 * index[i + 2] + 3), child.matrixWorld);
 
             new Float32Array(triangles, triOffset).set(v0);
             new Float32Array(triangles, triOffset + 16).set(v1);
@@ -120,6 +121,15 @@ export const loadGltfScene = async (url: string) => {
     const positions: number[] = [];
     const normals: number[] = [];
     const indices: number[] = [];
+    
+    // Track objects for broadphase collision
+    const objects: {
+        min: [number, number, number];
+        max: [number, number, number];
+        startIndex: number;
+        countIndices: number;
+    }[] = [];
+
     var vertexOffset = 0;
 
     traverseChildren(gltf.scene, child => {
@@ -129,19 +139,34 @@ export const loadGltfScene = async (url: string) => {
         const nor_in = child.geometry.attributes.normal?.array;
         const idx_in = child.geometry.index.array;
         
+        const startIndex = indices.length;
+        const objectMin: [number, number, number] = [Infinity, Infinity, Infinity];
+        const objectMax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+
         // indices
         for (let i = 0; i < idx_in.length; i++) {
-            const v = vec(pos_in.slice(3 * idx_in[i], 3 * idx_in[i] + 3), child.matrix);
+            const v = vec(pos_in.slice(3 * idx_in[i], 3 * idx_in[i] + 3), child.matrixWorld);
+            
+            // Update object bounds
+            objectMin[0] = Math.min(objectMin[0], v[0]);
+            objectMin[1] = Math.min(objectMin[1], v[1]);
+            objectMin[2] = Math.min(objectMin[2], v[2]);
+            objectMax[0] = Math.max(objectMax[0], v[0]);
+            objectMax[1] = Math.max(objectMax[1], v[1]);
+            objectMax[2] = Math.max(objectMax[2], v[2]);
+
+            // For visual mesh (unrelated to collider really, but kept for legacy compat)
             vertices.push(v);
+            
             indices.push(idx_in[i] + vertexOffset);
         }
 
-        const invTransMat = new Matrix3().getNormalMatrix(child.matrix);
+        const invTransMat = new Matrix3().getNormalMatrix(child.matrixWorld);
 
         // flat vertex attributes
         for (let i = 0; i < pos_in.length; i+= 3) {
             // positions
-            const p = vec(new Float32Array([pos_in[i], pos_in[i+1], pos_in[i+2]]), child.matrix);
+            const p = vec(new Float32Array([pos_in[i], pos_in[i+1], pos_in[i+2]]), child.matrixWorld);
             positions.push(p[0], p[1], p[2]);
 
             // normals
@@ -152,15 +177,22 @@ export const loadGltfScene = async (url: string) => {
         }
         vertexOffset += pos_in.length / 3;
 
+        objects.push({
+            min: objectMin,
+            max: objectMax,
+            startIndex: startIndex,
+            countIndices: indices.length - startIndex,
+        });
     });
 
     return {
-        boundingBoxes,
-        triangles,
+        // boundingBoxes, // Removed unused
+        // triangles,     // Removed unused
         materials,
         vertices,
         positions,
         normals,
         indices,
+        objects,
     };
 };
