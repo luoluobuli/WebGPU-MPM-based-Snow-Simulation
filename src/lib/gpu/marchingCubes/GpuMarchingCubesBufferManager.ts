@@ -46,9 +46,9 @@ export class GpuMarchingCubesBufferManager {
         this.densityGridResolution = [gridResolutionX, gridResolutionY, gridResolutionZ];
         
         // MC mesh resolution (can be different from density grid)
-        const mcResX = mcGridResolutionX ?? Math.floor(gridResolutionX * 1.5);
-        const mcResY = mcGridResolutionY ?? Math.floor(gridResolutionY * 1.5);
-        const mcResZ = mcGridResolutionZ ?? Math.floor(gridResolutionZ * 1.5);
+        const mcResX = mcGridResolutionX ?? Math.floor(gridResolutionX * 2);
+        const mcResY = mcGridResolutionY ?? Math.floor(gridResolutionY * 2);
+        const mcResZ = mcGridResolutionZ ?? Math.floor(gridResolutionZ * 2);
         this.mcGridResolution = [mcResX, mcResY, mcResZ];
         
         this.vertexBuffer = device.createBuffer({
@@ -86,10 +86,10 @@ export class GpuMarchingCubesBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
         
-        // Vertex gradient (vec4f per vertex for alignment) for precomputed normals
+        // Vertex gradient packed into u32 (snorm8x4)
         this.vertexGradientBuffer = device.createBuffer({
             label: "MC vertex gradient buffer",
-            size: numMcVertices * 16, // vec4f = 16 bytes
+            size: numMcVertices * 4, // u32 = 4 bytes (packed vec4f)
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
