@@ -29,7 +29,6 @@ let {
         <dd>
             <ElapsedTimeDisplay
                 ns={simulationState.elapsedTime.gpuComputeSimulationStepTimeNs}
-                inverseLabel="commands / s"
             />
         </dd>
     </dl>
@@ -44,7 +43,6 @@ let {
             <dd>
                 <ElapsedTimeDisplay
                     ns={prerenderElapsedTime.elapsedTimeNs ?? 0n}
-                    inverseLabel="commands / s"
                 />
             </dd>
         {/each}
@@ -56,7 +54,6 @@ let {
         <dd>
             <ElapsedTimeDisplay
                 ns={simulationState.elapsedTime.gpuRenderTimeNs}
-                inverseLabel="commands / s"
             />
         </dd>
     </dl>
@@ -68,6 +65,7 @@ let {
             <ElapsedTimeDisplay
                 ns={simulationState.elapsedTime.animationFrameTimeNs}
                 showMsFractionalPart={false}
+                inverseLabel="fps"
             />
         </dd>
     </dl>

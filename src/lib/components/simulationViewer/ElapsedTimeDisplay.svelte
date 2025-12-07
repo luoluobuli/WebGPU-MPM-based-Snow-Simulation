@@ -2,7 +2,7 @@
 const {
     ns,
     showMsFractionalPart = true,
-    inverseLabel = "fps",
+    inverseLabel = "Hz",
 }: {
     ns: bigint,
     showMsFractionalPart?: boolean,
