@@ -341,8 +341,8 @@ One major assumption we made above is that we're starting from the identity matr
 
 $$\begin{align*}
     \dfrac{\partial \mathbf F}{\partial t} = \dfrac{\partial \mathbf v_\text{material}}{\partial \mathbf x} \cdot \mathbf F
-    & \implies \mathbf F_\text{next} = \mathbf F + \dfrac{\partial \mathbf v_\text{material} \cdot \Delta t}{\partial \mathbf x} \cdot \mathbf F \\
-    & \implies \mathbf F_\text{next} = \left(\mathbf I + \dfrac{\partial \mathbf v_\text{material} \cdot \Delta t}{\partial \mathbf x}\right) \cdot \mathbf F
+    & \implies \mathbf F_\text{next} = \mathbf F + \dfrac{\partial \mathbf v_\text{material}}{\partial \mathbf x} \cdot \mathbf F \cdot \Delta t \\
+    & \implies \mathbf F_\text{next} = \left(\mathbf I + \dfrac{\partial \mathbf v_\text{material}}{\partial \mathbf x} \cdot \Delta t\right) \cdot \mathbf F
 \end{align*}$$
 
 One problem, though: we don't exactly have a continuous velocity field to differentiate, but a set of discrete velocities at the center of each grid cell. We need some way to interpolate those grid cell velocities into a continuous field.
