@@ -1,6 +1,6 @@
 import type { GpuUniformsBufferManager } from "$lib/gpu/uniforms/GpuUniformsBufferManager";
-import ssfrDepthImpostorVertSrc from "./ssfrDepthImpostor.vert.wgsl?raw";
-import ssfrDepthImpostorFragSrc from "./ssfrDepthImpostor.frag.wgsl?raw";
+import ssfrDepthVertSrc from "./ssfrDepth.vert.wgsl?raw";
+import ssfrDepthFragSrc from "./ssfrDepth.frag.wgsl?raw";
 import ssfrNarrowRangeFilterSrc from "./ssfrNarrowRangeFilter.cs.wgsl?raw";
 import ssfrNormalReconstructSrc from "./ssfrNormalReconstruct.cs.wgsl?raw";
 import ssfrShadingSrc from "./ssfrShading.cs.wgsl?raw";
@@ -16,13 +16,13 @@ import { attachPrelude } from "$lib/gpu/shaderPrelude";
 import type { GpuPerformanceMeasurementBufferManager } from "../performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 
 const prerenderPasses: string[] = [
-    "SSFR impostor render",
+    "SSFR depth render",
     "SSFR thickness render",
     "SSFR NRF compute",
 ];
 
 export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
-    readonly renderPipeline: GPURenderPipeline;
+    readonly depthRenderPipeline: GPURenderPipeline;
 
     readonly uniformsManager: GpuUniformsBufferManager;
     readonly mpmManager: GpuMpmBufferManager;
@@ -138,31 +138,31 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             ],
         });
 
-        const vertexModule = device.createShaderModule({
-            label: "ssfr depth impostor vertex module",
-            code: attachPrelude(ssfrDepthImpostorVertSrc),
+        const depthVertexModule = device.createShaderModule({
+            label: "ssfr depth vertex module",
+            code: attachPrelude(ssfrDepthVertSrc),
         });
-        const fragmentModule = device.createShaderModule({
-            label: "ssfr depth impostor fragment module",
-            code: attachPrelude(ssfrDepthImpostorFragSrc),
+        const depthFragmentModule = device.createShaderModule({
+            label: "ssfr depth fragment module",
+            code: attachPrelude(ssfrDepthFragSrc),
         });
         
-        const renderPipelineLayout = device.createPipelineLayout({
-            label: "ssfr render pipeline layout",
+        const depthRenderPipelineLayout = device.createPipelineLayout({
+            label: "ssfr depth render pipeline layout",
             bindGroupLayouts: [bindGroupLayout],
         });
-        this.renderPipeline = device.createRenderPipeline({
-            label: "ssfr render pipeline",
+        this.depthRenderPipeline = device.createRenderPipeline({
+            label: "ssfr depth render pipeline",
 
-            layout: renderPipelineLayout,
+            layout: depthRenderPipelineLayout,
 
             vertex: {
-                module: vertexModule,
+                module: depthVertexModule,
                 entryPoint: "vert",
             },
 
             fragment: {
-                module: fragmentModule,
+                module: depthFragmentModule,
                 entryPoint: "frag",
                 targets: [
                     {
@@ -810,8 +810,8 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         if (!this.smoothedDepthTexture || !this.smoothedDepthTextureView) return;
         if (!this.thicknessTextureView) return;
 
-        const impostorPassEncoder = commandEncoder.beginRenderPass({
-            label: "ssfr impostor render pass",
+        const depthPassEncoder = commandEncoder.beginRenderPass({
+            label: "ssfr depth render pass",
             colorAttachments: [
                 {
                     view: this.maskTextureView,
@@ -826,18 +826,12 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                 depthStoreOp: "store",
             },
             
-            timestampWrites: this.performanceMeasurementManager !== null
-                ? {
-                    querySet: this.performanceMeasurementManager.querySet,
-                    beginningOfPassWriteIndex: 4,
-                    endOfPassWriteIndex: 5,
-                }
-                : undefined,
+            timestampWrites: this.performanceMeasurementManager?.buildPrerenderTimestampWritesDescriptor(0),
         });
-        impostorPassEncoder.setBindGroup(0, this.bindGroup);
-        impostorPassEncoder.setPipeline(this.renderPipeline);
-        impostorPassEncoder.draw(6, this.mpmManager.nParticles, 0, 0);
-        impostorPassEncoder.end();
+        depthPassEncoder.setBindGroup(0, this.bindGroup);
+        depthPassEncoder.setPipeline(this.depthRenderPipeline);
+        depthPassEncoder.draw(6, this.mpmManager.nParticles, 0, 0);
+        depthPassEncoder.end();
 
         const thicknessPass = commandEncoder.beginRenderPass({
             label: "ssfr thickness render pass",
@@ -847,13 +841,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                 loadOp: "clear",
                 storeOp: "store",
             }],
-            timestampWrites: this.performanceMeasurementManager !== null
-                ? {
-                    querySet: this.performanceMeasurementManager.querySet,
-                    beginningOfPassWriteIndex: 6,
-                    endOfPassWriteIndex: 7,
-                }
-                : undefined,
+            timestampWrites: this.performanceMeasurementManager?.buildPrerenderTimestampWritesDescriptor(1),
         });
         thicknessPass.setPipeline(this.thicknessPipeline);
         thicknessPass.setBindGroup(0, this.thicknessBindGroup);
@@ -868,13 +856,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
 
         const computePass = commandEncoder.beginComputePass({
             label: "ssfr nrf compute pass",
-            timestampWrites: this.performanceMeasurementManager !== null
-                ? {
-                    querySet: this.performanceMeasurementManager.querySet,
-                    beginningOfPassWriteIndex: 8,
-                    endOfPassWriteIndex: 9,
-                }
-                : undefined,
+            timestampWrites: this.performanceMeasurementManager?.buildPrerenderTimestampWritesDescriptor(2),
         });
         computePass.setPipeline(this.nrfComputePipeline);
         computePass.setBindGroup(0, this.nrfBindGroup);

@@ -52,4 +52,12 @@ export class GpuPerformanceMeasurementBufferManager {
 
         this.resultBuffer.unmap();
     }
+
+    buildPrerenderTimestampWritesDescriptor(prerenderPassIndex: number) {
+        return {
+            querySet: this.querySet,
+            beginningOfPassWriteIndex: 2 * (prerenderPassIndex + 2),
+            endOfPassWriteIndex: 2 * (prerenderPassIndex + 2) + 1,
+        };
+    }
 }
