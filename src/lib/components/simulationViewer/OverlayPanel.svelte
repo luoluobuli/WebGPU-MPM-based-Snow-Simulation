@@ -35,13 +35,13 @@ overlay-panel {
     background: oklch(0 0 0 / 0.75);
 
     :global(h3) {
-        margin-top: 0.5rem;
-        font-size: 1.5rem;
+        margin-top: 0.25rem;
+        font-size: 1.25rem;
     }
 
     :global(h4) {
-        margin-top: 0.5rem;
-        font-size: 1.125rem;
+        margin-top: 0.25rem;
+        font-size: 1rem;
     }
 
     :global(input[type="range"]) {
