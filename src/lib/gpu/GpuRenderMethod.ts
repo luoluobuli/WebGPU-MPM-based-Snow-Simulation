@@ -8,7 +8,7 @@ export enum GpuRenderMethodType {
 export interface GpuRenderMethod {
     prerenderPasses(): string[];
     addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView): void;
-    addFinalDraw(renderPassEncoder: GPURenderPassEncoder): void;
+    addCompositeDraw(renderPassEncoder: GPURenderPassEncoder): void;
     resize(device: GPUDevice, width: number, height: number, depthTextureView: GPUTextureView): void;
     destroy(): void;
 }

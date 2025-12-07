@@ -138,7 +138,7 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
     
     addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {}
 
-    addFinalDraw(renderPassEncoder: GPURenderPassEncoder) {
+    addCompositeDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setBindGroup(0, this.bindGroup);
         renderPassEncoder.setVertexBuffer(0, this.mpmManager.particleDataBuffer);
         renderPassEncoder.setPipeline(this.renderPipeline);

@@ -354,7 +354,7 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
         prerenderComputePassEncoder.end();
     }
 
-    addFinalDraw(renderPassEncoder: GPURenderPassEncoder) {
+    addCompositeDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setPipeline(this.renderPipeline);
         renderPassEncoder.setBindGroup(0, this.renderBindGroup);
         renderPassEncoder.setVertexBuffer(0, this.vertBuffer);

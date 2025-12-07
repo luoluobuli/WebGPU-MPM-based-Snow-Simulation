@@ -885,7 +885,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         computePass.end();
     }
 
-    addFinalDraw(renderPassEncoder: GPURenderPassEncoder) {
+    addCompositeDraw(renderPassEncoder: GPURenderPassEncoder) {
         this.addCompositePass(renderPassEncoder);
     }
     
