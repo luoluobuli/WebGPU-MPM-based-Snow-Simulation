@@ -20,9 +20,9 @@ import mcClampArgsSrc from "./mcClampArgs.cs.wgsl?raw";
 import type { GpuPerformanceMeasurementBufferManager } from "../performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 
 const prerenderPasses = [
-    "marching cubes mesh generation compute",
-    "marching cubes mesh depth render",
-    "marching cubes mesh shading compute",
+    "marching cubes meshing compute",
+    "marching cubes G-buffer render",
+    "marching cubes shading compute",
 ];
 
 export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {

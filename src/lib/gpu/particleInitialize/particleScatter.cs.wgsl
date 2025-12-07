@@ -46,7 +46,7 @@ fn scatterParticles(
 
 
 
-    const REJECTION_SAMPLING_N_MAX_ATTEMPTS = 32u;
+    const REJECTION_SAMPLING_N_MAX_ATTEMPTS = 128u;
 
     let nTriangles = arrayLength(&meshVertices) / 3;
     var seed = hash4(vec4u(threadIndex, 100, 200, 300));
@@ -56,6 +56,8 @@ fn scatterParticles(
         candidatePos = randVec3(&seed, uniforms.meshMinCoords, uniforms.meshMaxCoords);
         if pointInsideMesh(candidatePos, nTriangles) { break; }
     }
+
+    workgroupBarrier();
 
     let noiseScale = 0.1;
     let NOISE_FREQ = 4.;

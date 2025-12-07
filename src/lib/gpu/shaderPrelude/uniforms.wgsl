@@ -35,8 +35,19 @@ struct Uniforms {
     colliderNumIndices: u32, // 356
     gridCellDims: vec3f, // 364
     colliderNumObjects: u32, // 368
-    // 380 (padding to 384)
-    lightViewProjMat: mat4x4f, // 448
-    colliderTransformInv: mat4x4f, // 512
-    objects: array<ColliderObject, 1024>, // 37376
+    
+    
+    lightViewProjMat: mat4x4f, // 368
+    colliderTransformInv: mat4x4f, // 432
+
+    // New Interaction Fields (Start 496)
+    interactionPos: vec3f, // 496
+    interactionStrength: f32, // 508
+    interactionRadius: f32, // 512
+    isInteracting: u32, // 516
+    
+    // Padding to 528
+    _pad_interaction2: vec2f, // 520 -> 528
+
+    objects: array<ColliderObject, 1024>, // 528
 }

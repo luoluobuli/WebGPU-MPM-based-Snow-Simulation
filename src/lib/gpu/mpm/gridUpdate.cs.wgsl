@@ -65,6 +65,46 @@ fn doGridUpdate(
 
         let gravitational_acceleration = vec3f(0, 0, -9.81) / 3;
         cell_velocity += gravitational_acceleration * uniforms.simulationTimestep;
+
+        // Interaction
+        if (uniforms.isInteracting != 0u) {
+            let cell_coord = vec3f(
+                f32(block_number.x * 4 + i32(lid.x % 4u)) - 0.5, // Approx? Wait.
+                // Reconstruct cell coord from block index and lid
+                // lid is 0..63.
+                // block_number is vec3i.
+                // block is 4x4x4.
+                0.0, 0.0 // placeholder
+            );
+             // We need real cell coords.
+        }
+        // Wait, I need to reconstruct cell coords.
+        // lid.x is cell_index_within_block (0-63).
+        // sparseGridPrelude has helpers?
+        // No, I have block_number.
+        
+        let cell_offset = vec3f(
+            f32(lid.x % 4u),
+            f32((lid.x / 4u) % 4u),
+            f32(lid.x / 16u)
+        );
+        let grid_node_pos = vec3f(block_number * 4) + cell_offset;
+
+        if (uniforms.isInteracting != 0u) {
+            let dist = distance(grid_node_pos, uniforms.interactionPos);
+            if (dist < uniforms.interactionRadius) {
+                let offset = grid_node_pos - uniforms.interactionPos;
+                var dir = vec3f(0.0, 0.0, 1.0);
+                if (length(offset) > 0.001) {
+                    dir = normalize(offset);
+                }
+                
+                let falloff = 1.0 - (dist / uniforms.interactionRadius);
+                let accel = dir * uniforms.interactionStrength * falloff / 3.0; // Divide by 3 for iterations
+                
+                cell_velocity += accel * uniforms.simulationTimestep;
+            }
+        }
         
 
 

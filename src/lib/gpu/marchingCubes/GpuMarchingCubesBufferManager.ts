@@ -46,9 +46,9 @@ export class GpuMarchingCubesBufferManager {
         this.densityGridResolution = [gridResolutionX, gridResolutionY, gridResolutionZ];
         
         // MC mesh resolution (can be different from density grid)
-        const mcResX = mcGridResolutionX ?? Math.floor(gridResolutionX * 1.25);
-        const mcResY = mcGridResolutionY ?? Math.floor(gridResolutionY * 1.25);
-        const mcResZ = mcGridResolutionZ ?? Math.floor(gridResolutionZ * 1.25);
+        const mcResX = mcGridResolutionX ?? Math.floor(gridResolutionX * 1.45);
+        const mcResY = mcGridResolutionY ?? Math.floor(gridResolutionY * 1.45);
+        const mcResZ = mcGridResolutionZ ?? Math.floor(gridResolutionZ * 1.45);
         this.mcGridResolution = [mcResX, mcResY, mcResZ];
         
         this.vertexBuffer = device.createBuffer({
