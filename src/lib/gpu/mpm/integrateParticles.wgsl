@@ -2,6 +2,7 @@
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
+@group(1) @binding(0) var<storage, read_write> sparse_grid: SparseGridStorage;
 @group(1) @binding(9) var<storage, read> colliderData: array<u32>;
 
 

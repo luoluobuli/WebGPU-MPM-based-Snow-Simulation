@@ -23,8 +23,6 @@ struct SparseGridStorage {
     block_particle_offsets: array<atomic<u32>, N_MAX_BLOCKS_IN_HASH_MAP>,
 }
 
-@group(1) @binding(0) var<storage, read_write> sparse_grid : SparseGridStorage;
-
 fn calculateBlockNumberContainingCell(cell_number: vec3i) -> vec3i {
     return cell_number >> vec3u(LOG_BLOCK_SIZE);
 }
