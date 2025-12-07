@@ -1,5 +1,7 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
+@group(1) @binding(0) var<storage, read_write> sparse_grid : SparseGridStorage;
+
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
 @group(2) @binding(1) var<storage, read_write> sorted_particle_indices: array<u32>;
 
