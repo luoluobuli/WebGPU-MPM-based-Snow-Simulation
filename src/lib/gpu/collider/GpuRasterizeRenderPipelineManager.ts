@@ -12,6 +12,8 @@ export class GpuRasterizeRenderPipelineManager {
 
     readonly uniformsManager: GpuUniformsBufferManager;
     readonly colliderManager: GpuColliderBufferManager;
+    readonly textureBindGroup: GPUBindGroup;
+    readonly textureBindGroupLayout: GPUBindGroupLayout;
 
 
     constructor({
@@ -37,10 +39,38 @@ export class GpuRasterizeRenderPipelineManager {
             code: attachPrelude(rasterizeFragmentModuleSrc),
         });
         
+        // Create texture bind group layout
+        this.textureBindGroupLayout = device.createBindGroupLayout({
+            label: "collider texture bind group layout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    sampler: { type: "filtering" },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: { sampleType: "float", viewDimension: "2d-array" },
+                },
+            ],
+        });
+        
+        // Create texture bind group
+        this.textureBindGroup = device.createBindGroup({
+            label: "collider texture bind group",
+            layout: this.textureBindGroupLayout,
+            entries: [
+                { binding: 0, resource: colliderManager.sampler },
+                { binding: 1, resource: colliderManager.textureArrayView! },
+            ],
+        });
+        
         const renderPipelineLayout = device.createPipelineLayout({
             label: "rasterize render pipeline layout",
             bindGroupLayouts: [
                 uniformsManager.bindGroupLayout,
+                this.textureBindGroupLayout,
             ],
         });
 
@@ -72,6 +102,28 @@ export class GpuRasterizeRenderPipelineManager {
                             },
                         ],
                         arrayStride: 12,
+                        stepMode: "vertex",
+                    },
+                    { // UVs
+                        attributes: [
+                            {
+                                shaderLocation: 2,
+                                offset: 0,
+                                format: "float32x2",
+                            },
+                        ],
+                        arrayStride: 8,
+                        stepMode: "vertex",
+                    },
+                    { // Material indices
+                        attributes: [
+                            {
+                                shaderLocation: 3,
+                                offset: 0,
+                                format: "uint32",
+                            },
+                        ],
+                        arrayStride: 4,
                         stepMode: "vertex",
                     },
                 ],
@@ -108,9 +160,12 @@ export class GpuRasterizeRenderPipelineManager {
 
     addDraw(renderPassEncoder: GPURenderPassEncoder) {
         renderPassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        renderPassEncoder.setBindGroup(1, this.textureBindGroup);
         renderPassEncoder.setPipeline(this.renderPipeline);
         renderPassEncoder.setVertexBuffer(0, this.colliderManager.colliderDataBuffer, this.colliderManager.verticesOffset);
         renderPassEncoder.setVertexBuffer(1, this.colliderManager.colliderDataBuffer, this.colliderManager.normalsOffset);
+        renderPassEncoder.setVertexBuffer(2, this.colliderManager.colliderDataBuffer, this.colliderManager.uvsOffset);
+        renderPassEncoder.setVertexBuffer(3, this.colliderManager.colliderDataBuffer, this.colliderManager.materialIndicesOffset);
         renderPassEncoder.setIndexBuffer(this.colliderManager.colliderDataBuffer, "uint32", this.colliderManager.indicesOffset);
         renderPassEncoder.drawIndexed(this.indexCount);
     }

@@ -10,6 +10,10 @@ import volumetricFragmentSrc from "./volumetricFragment.wgsl?raw";
 import preludeSrc from "./prelude.wgsl?raw";
 import type { GpuRenderMethod } from "../GpuRenderMethod";
 
+const prerenderPasses = [
+    "volumetric raymarch compute",
+];
+
 export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
     readonly massCalulationPipeline: GPUComputePipeline;
     readonly volumetricRaymarchPipeline: GPUComputePipeline;
@@ -327,8 +331,8 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
         computePassEncoder.dispatchWorkgroups(Math.ceil(width / 16), Math.ceil(height / 16));
     }
 
-    nPrerenderPasses(): number {
-        return 1;
+    prerenderPasses() {
+        return prerenderPasses;
     }
 
     addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {

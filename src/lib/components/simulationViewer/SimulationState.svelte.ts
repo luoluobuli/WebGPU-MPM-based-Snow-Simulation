@@ -142,11 +142,14 @@ export class SimulationState {
 
             onStatusChange?.("loading geometry...");
             const { vertices } = await loadGltfScene(modelUrl);
-            const { positions, normals, indices, objects } = await loadGltfScene(colliderUrl);
+            const { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(colliderUrl);
 
             const collider: ColliderGeometry = {
                 positions,
                 normals,
+                uvs,
+                materialIndices,
+                textures,
                 indices,
                 objects,
                 //transform: state.transformMat,

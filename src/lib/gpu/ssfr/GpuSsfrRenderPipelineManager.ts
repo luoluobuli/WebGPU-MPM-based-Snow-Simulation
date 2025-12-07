@@ -14,6 +14,12 @@ import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
 import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
 import { attachPrelude } from "$lib/gpu/shaderPrelude";
 
+const prerenderPasses: string[] = [
+    "SSFR impostor render",
+    "SSFR thickness render",
+    "SSFR NRF compute",
+];
+
 export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;
 
@@ -787,8 +793,8 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         });
     }
 
-    nPrerenderPasses(): number {
-        return 3;
+    prerenderPasses(): string[] {
+        return prerenderPasses;
     }
 
     addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {
