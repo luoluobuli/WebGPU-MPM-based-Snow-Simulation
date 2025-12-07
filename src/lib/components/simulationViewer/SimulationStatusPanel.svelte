@@ -13,6 +13,8 @@ let {
     status: string,
     err: string | null,
 } = $props();
+
+const nPrerenderPasses = $derived(simulationState.prerenderElapsedTimes?.length);
 </script>
 
 <OverlayPanel>
@@ -33,9 +35,9 @@ let {
         </dd>
     </dl>
 
-    <h4>Prerender</h4>
+    <h4>Render</h4>
 
-    <div>{simulationState.prerenderElapsedTimes?.length ?? "(unknown)"} {simulationState.prerenderElapsedTimes?.length === 1 ? "pass" : "passes"}</div>
+    <div>{nPrerenderPasses ?? "(unknown)"} prerender {nPrerenderPasses === 1 ? "pass" : "passes"}</div>
 
     <dl>
         {#each simulationState.prerenderElapsedTimes as prerenderElapsedTime}
@@ -46,10 +48,7 @@ let {
                 />
             </dd>
         {/each}
-    </dl>
 
-    <h4>Render</h4>
-    <dl>
         <dt>GPU render pass (sample)</dt>
         <dd>
             <ElapsedTimeDisplay
