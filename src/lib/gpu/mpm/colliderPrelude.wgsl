@@ -185,7 +185,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
     let velocity_scale_fac = 0.2 / uniforms.simulationTimestep;
 
     if has_hit {
-        let surface_margin = 0.02;
+        let surface_margin = 0.05;
         let snap_pos = hit_pos + hit_normal * surface_margin;
             
         (*particle).pos = snap_pos;
@@ -239,7 +239,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
         (*particle).vel = new_vel;
         (*particle).pos_displacement = new_vel * uniforms.simulationTimestep;
         
-        let surface_margin = 0.02;
+        let surface_margin = 0.05;
         if dist < surface_margin {
             (*particle).pos = closest_pos + push_dir * surface_margin;
         }
