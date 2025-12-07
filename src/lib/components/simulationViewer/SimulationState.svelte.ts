@@ -4,7 +4,7 @@ import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner.svelte";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
 import modelUrl from "$lib/assets/models/horse_statue_01_1k.glb?url";
-import colliderUrl from "$lib/assets/models/test2.glb?url";
+import colliderUrl from "$lib/assets/models/forest.glb?url";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
@@ -142,12 +142,13 @@ export class SimulationState {
 
             onStatusChange?.("loading geometry...");
             const { vertices } = await loadGltfScene(modelUrl);
-            const { positions, normals, indices } = await loadGltfScene(colliderUrl);
+            const { positions, normals, indices, objects } = await loadGltfScene(colliderUrl);
 
             const collider: ColliderGeometry = {
                 positions,
                 normals,
                 indices,
+                objects,
                 //transform: state.transformMat,
             };
 

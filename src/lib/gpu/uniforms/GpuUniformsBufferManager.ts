@@ -14,7 +14,7 @@ export class GpuUniformsBufferManager {
     }) {
         const uniformsBuffer = device.createBuffer({
             label: "uniforms buffer",
-            size: 448, // Increased for lightViewProjMat
+            size: 512,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
         });
 
@@ -122,7 +122,15 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 348, new Uint32Array([numIndices]));
     }
 
+    writeColliderNumObjects(numObjects: number) {
+        this.device.queue.writeBuffer(this.buffer, 364, new Uint32Array([numObjects]));
+    }
+
     writeLightViewProjMat(lightViewProjMat: Mat4) {
         this.device.queue.writeBuffer(this.buffer, 384, lightViewProjMat.buffer);
+    }
+
+    writeColliderTransformInv(transformInv: Mat4) {
+        this.device.queue.writeBuffer(this.buffer, 448, transformInv.buffer);
     }
 }

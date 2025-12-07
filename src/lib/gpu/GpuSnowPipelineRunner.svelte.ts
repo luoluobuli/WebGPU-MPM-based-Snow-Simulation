@@ -141,10 +141,12 @@ export class GpuSnowPipelineRunner {
             vertices: collider.positions, 
             normals: collider.normals,
             indices: collider.indices,
+            objects: collider.objects,
         });
         uniformsManager.writeColliderMinCoords(colliderManager.minCoords);
         uniformsManager.writeColliderMaxCoords(colliderManager.maxCoords);
         uniformsManager.writeColliderTransformMat(mat4.identity());
+        uniformsManager.writeColliderTransformInv(mat4.identity());
         uniformsManager.writeColliderVel([0.0, 0.0, 0.0]);
 
         // Compute
@@ -331,6 +333,7 @@ export class GpuSnowPipelineRunner {
 
     updateColliderTransformMat(transformMat: Mat4) {
         this.uniformsManager.writeColliderTransformMat(transformMat);
+        this.uniformsManager.writeColliderTransformInv(mat4.inverse(transformMat));
     }
 
     updateColliderVel(transform: [number, number, number]) {

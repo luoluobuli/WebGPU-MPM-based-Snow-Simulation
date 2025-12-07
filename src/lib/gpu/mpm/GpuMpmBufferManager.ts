@@ -9,8 +9,8 @@ export class GpuMpmBufferManager {
     readonly sortedParticleIndicesBuffer: GPUBuffer;
 
     readonly nParticles: number;
-    readonly nMaxBlocksInHashMap = 150_000;
-    readonly hashMapSize = 300_007;
+    readonly nMaxBlocksInHashMap = 300_000;
+    readonly hashMapSize = 900_001;
 
     constructor({
         device,
@@ -38,29 +38,27 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        const poolSize = this.nMaxBlocksInHashMap * 64 * 4;
-
         const gridMassBuffer = device.createBuffer({
             label: "MPM physical mass buffer",
-            size: poolSize,
+            size: this.hashMapSize * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
         const gridMomentumXBuffer = device.createBuffer({
             label: "MPM physical momentum X buffer",
-            size: poolSize,
+            size: this.hashMapSize * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
         const gridMomentumYBuffer = device.createBuffer({
             label: "MPM physical momentum Y buffer",
-            size: poolSize,
+            size: this.hashMapSize * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
         const gridMomentumZBuffer = device.createBuffer({
             label: "MPM physical momentum Z buffer",
-            size: poolSize,
+            size: this.hashMapSize * 4,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
