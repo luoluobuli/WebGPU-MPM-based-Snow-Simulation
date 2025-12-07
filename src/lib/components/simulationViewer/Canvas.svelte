@@ -16,8 +16,14 @@ let {
     bind:clientHeight={null, clientHeight => simulationState.height = clientHeight!}
 >
     <Draggable
-        onDown={() => {
-            canvas?.requestPointerLock();
+        onDown={({ pointerEvent }) => {
+            if (pointerEvent.button === 2) {
+                // Right click: Interact
+                simulationState.onInteractionStart(pointerEvent);
+            } else {
+                // Left/Middle: Camera
+                canvas?.requestPointerLock();
+            }
         }}
 
         onDrag={async ({ movement, button, pointerEvent }) => {
@@ -29,13 +35,21 @@ let {
                 case 1:
                     simulationState.orbit.pan(movement);
                     break;
+                
+                case 2:
+                    simulationState.onInteractionDrag(pointerEvent);
+                    break;
             }
 
             pointerEvent.preventDefault();
         }}
 
-        onUp={() => {
-            document.exitPointerLock();
+        onUp={({ pointerEvent }) => {
+            if (pointerEvent.button === 2) {
+                simulationState.onInteractionEnd();
+            } else {
+                document.exitPointerLock();
+            }
         }}
     >
         {#snippet dragTarget({ onpointerdown })}
@@ -44,6 +58,7 @@ let {
                 width={simulationState.width}
                 height={simulationState.height}
                 {onpointerdown}
+                oncontextmenu={(e) => { e.preventDefault(); }}
                 onwheel={(event) => {
                     simulationState.orbit.radius *= 2 ** (event.deltaY * 0.001);
                     event.preventDefault();

@@ -86,8 +86,14 @@ fn pbmpm(
     let particle_index = sortedParticleIndices[thread_index];
     var particle = particle_data[particle_index];
 
-    solveParticleConstraints(&particle);
-    transferParticlesToGrid(&particle);
+    // for (var i = 0u; i < 4; i++) {
+        // clearGrid();
+        solveParticleConstraints(&particle);
+        transferParticlesToGrid(&particle);
+        // updateGrid();
+        // transferGridToParticles(&particle);
+    // }
+    // updateParticle(&particle);
 
     particle_data[particle_index] = particle;
 }

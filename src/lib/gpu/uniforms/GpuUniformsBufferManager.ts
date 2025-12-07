@@ -134,6 +134,23 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 432, transformInv.buffer);
     }
 
+    // Interaction Uniforms (Start 496)
+    writeInteractionPos(pos: [number, number, number]) {
+        this.device.queue.writeBuffer(this.buffer, 496, new Float32Array(pos));
+    }
+
+    writeInteractionStrength(strength: number) {
+        this.device.queue.writeBuffer(this.buffer, 508, new Float32Array([strength]));
+    }
+
+    writeInteractionRadius(radius: number) {
+        this.device.queue.writeBuffer(this.buffer, 512, new Float32Array([radius]));
+    }
+
+    writeIsInteracting(isInteracting: boolean) {
+        this.device.queue.writeBuffer(this.buffer, 516, new Uint32Array([isInteracting ? 1 : 0]));
+    }
+
     writeColliderObjects(objects: { min: [number, number, number], max: [number, number, number], startIndex: number, countIndices: number }[]) {
         const MAX_OBJECTS = 1024;
         const count = Math.min(objects.length, MAX_OBJECTS);
@@ -153,6 +170,6 @@ export class GpuUniformsBufferManager {
             f32[base + 6] = obj.max[2];
             u32[base + 7] = obj.countIndices;
         }
-        this.device.queue.writeBuffer(this.buffer, 496, buffer);
+        this.device.queue.writeBuffer(this.buffer, 528, buffer);
     }
 }

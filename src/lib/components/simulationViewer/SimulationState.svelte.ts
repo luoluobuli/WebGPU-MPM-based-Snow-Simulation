@@ -114,6 +114,92 @@ export class SimulationState {
         this.runner?.updateColliderVel(step);
     }
 
+    isInteracting = $state(false);
+    interactionPos = $state<[number, number, number]>([0, 0, 0]);
+    readonly interactionRadiusVal = 20;
+    readonly interactionStrength = 2000; // positive is repulsive
+
+    onInteractionStart(event: PointerEvent) {
+        this.isInteracting = true;
+        this.updateInteractionRay(event);
+    }
+
+    onInteractionDrag(event: PointerEvent) {
+        if (!this.isInteracting) return;
+        this.updateInteractionRay(event);
+    }
+
+    onInteractionEnd() {
+        this.isInteracting = false;
+        this.runner?.uniformsManager.writeIsInteracting(false);
+    }
+
+    updateInteractionRay(event: PointerEvent) {
+        if (!this.runner) return;
+
+        const x = event.clientX;
+        const y = event.clientY;
+        const rect = (event.target as HTMLElement).getBoundingClientRect();
+        
+        // NDC
+        const ndcX = ((x - rect.left) / rect.width) * 2 - 1;
+        const ndcY = 1 - ((y - rect.top) / rect.height) * 2; // WebGPU Y is up in NDC? No, -1 to 1. HTML Y is down.
+        
+        // Ray generation
+        const invViewProj = this.camera.viewProjInvMat;
+        
+        const near = this.unproject(ndcX, ndcY, 0.0, invViewProj);
+        const far = this.unproject(ndcX, ndcY, 1.0, invViewProj);
+        
+        const dir = [far[0] - near[0], far[1] - near[1], far[2] - near[2]];
+        const len = Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
+        const dirNorm = [dir[0]/len, dir[1]/len, dir[2]/len];
+        
+        // Intersect with Plane Z=0 (approx ground)
+        // Ray: O + tD. P.z = 0.
+        // normalized Dir.
+        // t = -O.z / D.z
+        
+        if (Math.abs(dirNorm[2]) > 1e-4) {
+            const t = -near[2] / dirNorm[2];
+            if (t > 0) {
+                const intersectX = near[0] + t * dirNorm[0];
+                const intersectY = near[1] + t * dirNorm[1];
+                const intersectZ = 0;
+                
+                // Convert World Pos to Grid Index Space
+                // Grid [-5, 5], Res 128.
+                const minC = -5;
+                const maxC = 5;
+                const range = maxC - minC;
+                const res = this.gridResolutionX; // Assuming uniform
+                
+                const gridX = ((intersectX - minC) / range) * res;
+                const gridY = ((intersectY - minC) / range) * res;
+                const gridZ = ((intersectZ - minC) / range) * res;
+                
+                this.runner.uniformsManager.writeInteractionPos([gridX, gridY, gridZ]);
+                this.runner.uniformsManager.writeInteractionStrength(this.interactionStrength);
+                this.runner.uniformsManager.writeInteractionRadius(this.interactionRadiusVal);
+                this.runner.uniformsManager.writeIsInteracting(true);
+            }
+        }
+    }
+
+    private unproject(x: number, y: number, z: number, invMat: Float32Array): [number, number, number] {
+        const v = [x, y, z, 1.0];
+        // transform
+        const out = [0,0,0,0];
+        // Mat4 is column major.
+        // x' = m00*x + m10*y + m20*z + m30*w
+        out[0] = invMat[0]*v[0] + invMat[4]*v[1] + invMat[8]*v[2] + invMat[12]*v[3];
+        out[1] = invMat[1]*v[0] + invMat[5]*v[1] + invMat[9]*v[2] + invMat[13]*v[3];
+        out[2] = invMat[2]*v[0] + invMat[6]*v[1] + invMat[10]*v[2] + invMat[14]*v[3];
+        out[3] = invMat[3]*v[0] + invMat[7]*v[1] + invMat[11]*v[2] + invMat[15]*v[3];
+        
+        return [out[0]/out[3], out[1]/out[3], out[2]/out[3]];
+    }
+
     static loadOntoCanvas({
         canvasPromise,
         onStatusChange,

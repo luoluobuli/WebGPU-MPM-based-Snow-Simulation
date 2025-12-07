@@ -30,8 +30,9 @@ const BASE_ROUGHNESS = 0.95;
 const SPECULAR_ROUGHNESS = 0.8;
 
 const SSS_COLOR = vec3f(0.8, 0.85, 0.9);
+const SSS_EXTINCTION = vec3f(1) / SSS_COLOR;
 const SSS_RADIUS = vec3f(0.36, 0.46, 0.60);
-const SSS_STRENGTH = 0.85;
+const SSS_STRENGTH = 1.;
 
 const COAT_COLOR = vec3f(1.0, 1.0, 1.0);
 const COAT_ROUGHNESS = 0.1;
@@ -215,7 +216,7 @@ fn raymarchShadow(worldPos: vec3f, lightDir: vec3f) -> vec3f {
     for (var i = 0u; i < N_SHADOW_STEPS; i++) {
         let density = sampleDensity(rayPos);
         
-        shadow *= exp(-density * EXTINCTION_COEFFICIENT * stepSize * SSS_COLOR);
+        shadow *= exp(-density * EXTINCTION_COEFFICIENT * stepSize * SSS_EXTINCTION);
         
         if all(shadow < vec3f(0.01)) {
             return vec3f(0);
@@ -267,6 +268,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     } else {
         normal /= normal_length;
     }
+
+    workgroupBarrier();
     
     // normal *= sign(dot(normal, viewDir));
     
@@ -276,7 +279,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let shadowFactor = shadow;
     
     let basicGrad = noiseGradient(worldPos, NOISE_SCALE_BASIC, 4);
-    let detailGrad = noiseGradient(worldPos, NOISE_SCALE_DETAIL, 2);
+    let detailGrad = noiseGradient(worldPos, NOISE_SCALE_DETAIL, 4);
     
     // Perturb normal using noise gradients
     var perturbedNormal = normal;
