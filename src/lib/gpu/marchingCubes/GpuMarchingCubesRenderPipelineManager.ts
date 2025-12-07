@@ -21,7 +21,7 @@ import type { GpuPerformanceMeasurementBufferManager } from "../performanceMeasu
 
 const prerenderPasses = [
     "marching cubes mesh generation compute",
-    "marching cubes mesh render",
+    "marching cubes mesh depth render",
     "marching cubes mesh shading compute",
 ];
 
@@ -567,7 +567,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         this.compositeBindGroup = this.createCompositeBindGroup();
     }
     
-    addMeshGenerationPasses(commandEncoder: GPUCommandEncoder) {
+    addMeshGenerationPass(commandEncoder: GPUCommandEncoder) {
         // Clear density buffer (but NOT the indirect draw buffer - that would race with queue.writeBuffer)
         commandEncoder.clearBuffer(this.bufferManager.densityGridBuffer);
         
@@ -616,7 +616,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         computePass.end();
     }
     
-    addMeshRenderPass(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {
+    addMeshDepthGbufferRenderPass(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {
         const renderPass = commandEncoder.beginRenderPass({
             label: "MC mesh render pass",
             colorAttachments: [
@@ -677,17 +677,12 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
     }
     
     addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView): void {
-        // density, vertex density, mesh generation
-        this.addMeshGenerationPasses(commandEncoder);
-
-        // mesh render pass - outputs to G-buffer
-        this.addMeshRenderPass(commandEncoder, depthTextureView);
-
-        // shading pass
+        this.addMeshGenerationPass(commandEncoder);
+        this.addMeshDepthGbufferRenderPass(commandEncoder, depthTextureView);
         this.addShadingPass(commandEncoder);
     }
 
-    addFinalDraw(renderPassEncoder: GPURenderPassEncoder): void {
+    addCompositeDraw(renderPassEncoder: GPURenderPassEncoder): void {
         this.addCompositePass(renderPassEncoder);
     }
 

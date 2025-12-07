@@ -300,7 +300,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     // This prevents harsh splotchy shadows
     let diffuseNdotL = max(dot(diffuseNormal, L), 0.0);
     let wrapDiffuse = max((dot(diffuseNormal, L) + 0.6) / 2.5, 0.0);  // More wrap for softness
-    let diffuse = vec3f(0.92, 0.94, 0.98) * wrapDiffuse * shadowFactor;
+    let diffuse = vec3f(0.975, 0.975, 0.975) * wrapDiffuse * shadowFactor;
     
     // Very soft specular with perturbed normal (keeps detail visible)
     let H = normalize(L + V);
@@ -326,7 +326,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     
     // ===== Fresnel rim lighting =====
     let fresnel = pow(1 - max(dot(diffuseNormal, V), 0), 2.5);
-    let rim = fresnel * 0.35 * vec3f(0.9, 0.95, 1) * shadowFactor;
+    let rim = fresnel * 0.15 * vec3f(0.9, 0.95, 1) * shadowFactor;
     
     var color = AMBIENT_COLOR + diffuse * 0.9 + baseSpecular + sss + glint_color + rim;
     

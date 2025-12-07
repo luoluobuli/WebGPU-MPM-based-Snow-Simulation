@@ -40,7 +40,7 @@ const nPrerenderPasses = $derived(simulationState.prerenderElapsedTimes?.length)
     <div>{nPrerenderPasses ?? "(unknown)"} prerender {nPrerenderPasses === 1 ? "pass" : "passes"}</div>
 
     <dl>
-        {#each simulationState.prerenderElapsedTimes as prerenderElapsedTime}
+        {#each simulationState.prerenderElapsedTimes as prerenderElapsedTime (prerenderElapsedTime.label)}
             <dt>GPU {prerenderElapsedTime.label} pass (sample)</dt>
             <dd>
                 <ElapsedTimeDisplay
@@ -49,7 +49,7 @@ const nPrerenderPasses = $derived(simulationState.prerenderElapsedTimes?.length)
             </dd>
         {/each}
 
-        <dt>GPU render pass (sample)</dt>
+        <dt>GPU composite render pass (sample)</dt>
         <dd>
             <ElapsedTimeDisplay
                 ns={simulationState.elapsedTime.gpuRenderTimeNs}

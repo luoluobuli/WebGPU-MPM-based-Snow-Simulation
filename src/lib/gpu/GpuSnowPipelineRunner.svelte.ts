@@ -174,6 +174,7 @@ export class GpuSnowPipelineRunner {
         });
         this.particleInitializePipelineManager = particleInitializePipelineManager;
 
+
         const mpmPipelineManager = new GpuMpmPipelineManager({
             device,
             particleDataBuffer: mpmManager.particleDataBuffer,
@@ -187,6 +188,7 @@ export class GpuSnowPipelineRunner {
             mpmManager,
             colliderManager,
         });
+
         this.mpmPipelineManager = mpmPipelineManager;
 
         // Render
@@ -455,7 +457,7 @@ export class GpuSnowPipelineRunner {
         this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
         this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
         this.environmentRenderPipelineManager.addDraw(renderPassEncoder);
-        this.renderMethod.addFinalDraw(renderPassEncoder);
+        this.renderMethod.addCompositeDraw(renderPassEncoder);
 
         renderPassEncoder.end();
     }
