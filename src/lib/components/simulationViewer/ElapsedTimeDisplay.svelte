@@ -11,7 +11,7 @@ const {
     ns,
     showMsFractionalPart = true,
     inverseLabel = "Hz",
-    chartMax = 1000 / 24,
+    chartMax = 1000 / 30,
 }: {
     ns: bigint,
     showMsFractionalPart?: boolean,
@@ -83,7 +83,7 @@ onMount(() => {
                 y: {
                     display: false,
                     beginAtZero: true,
-                    max: Math.max(chartMax, ...dataHistory),
+                    max: chartMax,
                 },
             },
             elements: {
@@ -134,38 +134,46 @@ onDestroy(() => {
     display: flex;
     align-items: center;
     width: 100%;
+    line-height: 1.25;
+
+    > * {
+        width: 50%;
+    }
 }
 
 .chart-container {
-    width: 50%;
     height: 3rem;
     position: relative;
 }
 
 elapsed-time-display {
-    width: 50%;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
 }
 
 elapsed-time-measurement {
-    display: flex;
-    gap: 0.25rem;
+    text-align: right;
     align-items: flex-end;
+    font-size: 0.5rem;
+
+    vertical-align: baseline;
     
     white-space: nowrap;
     text-align: right;
     width: 100%;
-    justify-content: flex-end;
 }
 
 integral-part {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
+}
+
+radix-point {
+    font-size: 0.85rem;
 }
 
 fractional-part {
-    font-size: 1rem;
+    font-size: 0.85rem;
 }
 
 integral-part,
@@ -175,6 +183,8 @@ fractional-part {
 }
 
 units-label {
+    font-size: 0.85rem;
+
     opacity: 0.5;
 }
 </style>
