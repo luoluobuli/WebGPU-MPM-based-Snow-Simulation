@@ -146,19 +146,14 @@ fn subsurfaceScattering(N: vec3f, V: vec3f, L: vec3f, thickness: f32) -> vec3f {
 fn glintMask(worldPos: vec3f, N: vec3f, L: vec3f, V: vec3f) -> f32 {
     let noiseVal = fbmNoise(worldPos * NOISE_SCALE_GLINTS, 2);
     
-    // Reflection-based: glints appear where view reflects light
-    let H = reflect(V, N);
-    let specularFactor = pow((dot(H, L) + 1) * 0.5, 16);
+    let H = normalize(L + V);
+    let specularFactor = pow(max(dot(N, H), 0), 40);
     
-    // Combine noise threshold with specular alignment
-    // Noise creates sparse distribution, NdotH makes them view-dependent
-    let glint_threshold = 0.4 - specularFactor * 0.15;
-    
+    let glint_threshold = 0.4 - specularFactor * 0.2;
     return smoothstep(glint_threshold, glint_threshold + 0.1, noiseVal);
 }
 
 fn coatSpecular(N: vec3f, V: vec3f, L: vec3f, glintStrength: f32) -> vec3f {
-    // Simple and bright - just return white sparkles
     return COAT_COLOR * glintStrength;
 }
 
@@ -180,9 +175,8 @@ fn worldToScreen(worldPos: vec3f, screenSize: vec2f) -> vec3f {
 
 // sampling
 fn sampleDensity(worldPos: vec3f) -> f32 {
-    // Check bounds
-    if (any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords)) {
-        return 0.0;
+    if any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords) {
+        return 0;
     }
     
     let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
@@ -193,9 +187,8 @@ fn sampleDensity(worldPos: vec3f) -> f32 {
     let cellCoord = posFromMin / cellSize;
     let cellIndex = vec3i(floor(cellCoord));
     
-    // Bounds check
-    if (any(cellIndex < vec3i(0)) || any(cellIndex >= vec3i(mcParams.mcGridRes))) {
-        return 0.0;
+    if any(cellIndex < vec3i(0)) || any(cellIndex >= vec3i(mcParams.mcGridRes)) {
+        return 0;
     }
     
     let idx = cellIndex.x + cellIndex.y * i32(mcParams.mcGridRes.x) + 
@@ -212,15 +205,13 @@ fn raymarchShadow(worldPos: vec3f, lightDir: vec3f) -> vec3f {
     let stepSize = 0.02;
     
     var shadow = vec3f(1);
-    var rayPos = worldPos + lightDir * stepSize;  // Start slightly offset
+    var rayPos = worldPos + lightDir * stepSize;
     
     for (var i = 0u; i < N_SHADOW_STEPS; i++) {
         let density = sampleDensity(rayPos);
         
-        // Accumulate shadow based on density
         shadow *= exp(-density * EXTINCTION_COEFFICIENT * stepSize * SSS_COLOR);
         
-        // Early exit if fully shadowed
         if all(shadow < vec3f(0.01)) {
             return vec3f(0);
         }
@@ -322,7 +313,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     // ===== STEP 5: Light glints with PERTURBED normal =====
     let glint = glintMask(worldPos, specularNormal, L, V);
     let glintSpec = coatSpecular(specularNormal, V, L, glint) * (0.5 + 0.5 * shadowFactor);
-    let glint_color = glintSpec * (0.35 + 0.15 * gradientNoise(worldPos * 4));
+    let glint_color = glintSpec * (0.5 + 0.15 * gradientNoise(worldPos * 4));
     
     // ===== Fresnel rim lighting =====
     let fresnel = pow(1 - max(dot(diffuseNormal, V), 0), 2.5);
