@@ -256,33 +256,30 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let rayDir = normalize(rayEnd - rayOrigin);
     let viewDir = -rayDir;
     
-    // No snow and no ground - transparent
-    if (depth >= 1.0) {
-        textureStore(shadedOutput, coords, vec4f(0.0, 0.0, 0.0, 0.0));
+    if depth >= 1 {
+        // this is a bg pixel
+        textureStore(shadedOutput, coords, vec4f());
         return;
     }
     
     // Load and normalize base normal
     let normalData = textureLoad(normalTexture, coords, 0);
     var normal = normalData.xyz;
-    let normalLen = length(normal);
-    
-    if normalLen < 0.0001 {
+    let normal_length = length(normal);
+    if normal_length == 0 {
         normal = vec3f(0.0, 0.0, 1.0);
     } else {
-        normal = normal / normalLen;
+        normal /= normal_length;
     }
+    
+    // normal *= sign(dot(normal, viewDir));
     
     let worldPos = reconstructWorldPos(coords, depth, screenSize);
     
-    // ===== DENSITY GRID SHADOW RAYMARCH =====
     let shadow = raymarchShadow(worldPos, lightDir);
     let shadowFactor = shadow;
     
-    // ===== STEP 2 & 3: Normal perturbation from displacement noise =====
-    // Basic displacement (low frequency for unevenness)
     let basicGrad = noiseGradient(worldPos, NOISE_SCALE_BASIC, 4);
-    // Detailed displacement (high frequency for breakup)
     let detailGrad = noiseGradient(worldPos, NOISE_SCALE_DETAIL, 2);
     
     // Perturb normal using noise gradients
@@ -291,7 +288,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     perturbedNormal -= detailGrad * NOISE_STRENGTH_DETAIL;
     perturbedNormal = normalize(perturbedNormal);
     
-    // === KEY INSIGHT ===
     // Use BLENDED normal for diffuse (smooth + subtle detail)
     // Use FULL perturbed normal for specular/glints (shows detail)
     let diffuseNormal = normalize(mix(normal, perturbedNormal, 0.2));

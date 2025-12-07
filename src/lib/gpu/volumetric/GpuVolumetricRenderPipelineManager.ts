@@ -345,13 +345,7 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
 
         const prerenderComputePassEncoder = commandEncoder.beginComputePass({
             label: "volumetric compute pass",
-            timestampWrites: this.performanceMeasurementManager !== null
-                ? {
-                    querySet: this.performanceMeasurementManager.querySet,
-                    beginningOfPassWriteIndex: 4,
-                    endOfPassWriteIndex: 5,
-                }
-                : undefined,
+            timestampWrites: this.performanceMeasurementManager?.buildPrerenderTimestampWritesDescriptor(0),
         });
 
         this.addMassCalulationDispatch(prerenderComputePassEncoder, this.mpmManager.nParticles);

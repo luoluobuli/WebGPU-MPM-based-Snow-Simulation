@@ -575,13 +575,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         // This ensures correct ordering within the command stream
         const computePass = commandEncoder.beginComputePass({
             label: "marching cubes compute pass",
-            timestampWrites: this.performanceMeasurementManager !== null
-                ? {
-                    querySet: this.performanceMeasurementManager.querySet,
-                    beginningOfPassWriteIndex: 4,
-                    endOfPassWriteIndex: 5,
-                }
-                : undefined,
+            timestampWrites: this.performanceMeasurementManager?.buildPrerenderTimestampWritesDescriptor(0),
         });
         computePass.setPipeline(this.resetPipeline);
         computePass.setBindGroup(0, this.resetBindGroup);
@@ -645,13 +639,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
                 depthStoreOp: "store",
                 depthClearValue: 1.0,
             },
-            timestampWrites: this.performanceMeasurementManager !== null
-                ? {
-                    querySet: this.performanceMeasurementManager.querySet,
-                    beginningOfPassWriteIndex: 6,
-                    endOfPassWriteIndex: 7,
-                }
-                : undefined,
+            timestampWrites: this.performanceMeasurementManager?.buildPrerenderTimestampWritesDescriptor(1),
         });
         
         renderPass.setPipeline(this.meshRenderPipeline);
@@ -665,13 +653,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
     addShadingPass(commandEncoder: GPUCommandEncoder) {
         const computePass = commandEncoder.beginComputePass({
             label: "MC shading pass",
-            timestampWrites: this.performanceMeasurementManager !== null
-                ? {
-                    querySet: this.performanceMeasurementManager.querySet,
-                    beginningOfPassWriteIndex: 8,
-                    endOfPassWriteIndex: 9,
-                }
-                : undefined,
+            timestampWrites: this.performanceMeasurementManager?.buildPrerenderTimestampWritesDescriptor(2),
         });
         
         computePass.setPipeline(this.shadingPipeline);
