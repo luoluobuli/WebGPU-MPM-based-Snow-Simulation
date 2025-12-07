@@ -8,6 +8,8 @@
 struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
+    densityGridRes: vec3u,
+    _padding: u32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -20,8 +22,9 @@ struct MCParams {
 const DENSITY_SCALE = 65536.0;
 const BLOCK_SIZE = 8u;
 
-fn getGlobalDensity(cellCoord: vec3i) -> f32 {
-    let res = vec3i(mcParams.mcGridRes);
+// Get density from a cell in the DENSITY grid (at densityGridRes)
+fn getDensityGridValue(cellCoord: vec3i) -> f32 {
+    let res = vec3i(mcParams.densityGridRes);
     if (any(cellCoord < vec3i(0)) || any(cellCoord >= res)) {
         return 0.0;
     }
@@ -29,18 +32,46 @@ fn getGlobalDensity(cellCoord: vec3i) -> f32 {
     return f32(densityGrid[idx]) / DENSITY_SCALE;
 }
 
+// Sample density at a world position using trilinear interpolation from density grid
+fn sampleDensityAtWorldPos(worldPos: vec3f) -> f32 {
+    let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
+    let densityRes = vec3f(mcParams.densityGridRes);
+    let densityCellSize = gridRange / densityRes;
+    
+    // Convert world pos to density grid cell coordinates
+    let posFromMin = worldPos - uniforms.gridMinCoords;
+    let cellPosF = posFromMin / densityCellSize - 0.5;
+    let cellPos0 = vec3i(floor(cellPosF));
+    let frac = cellPosF - vec3f(cellPos0);
+    
+    // Trilinear interpolation
+    var density = 0.0;
+    for (var dz = 0; dz <= 1; dz++) {
+        for (var dy = 0; dy <= 1; dy++) {
+            for (var dx = 0; dx <= 1; dx++) {
+                let cellCoord = cellPos0 + vec3i(dx, dy, dz);
+                let wx = select(1.0 - frac.x, frac.x, dx == 1);
+                let wy = select(1.0 - frac.y, frac.y, dy == 1);
+                let wz = select(1.0 - frac.z, frac.z, dz == 1);
+                let weight = wx * wy * wz;
+                density += getDensityGridValue(cellCoord) * weight;
+            }
+        }
+    }
+    return density;
+}
+
+// Get MC vertex world position
+fn mcVertexToWorld(vertCoord: vec3i) -> vec3f {
+    let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
+    let mcRes = vec3f(mcParams.mcGridRes);
+    let mcCellSize = gridRange / mcRes;
+    return uniforms.gridMinCoords + vec3f(vertCoord) * mcCellSize;
+}
+
 fn vertexIndex(coord: vec3i) -> u32 {
     let res = vec3i(mcParams.mcGridRes) + vec3i(1);
     return u32(coord.x + coord.y * res.x + coord.z * res.x * res.y);
-}
-
-// Shared memory for 10x10x10 tile of density values
-// Size: 1000 entries
-var<workgroup> s_density: array<f32, 1000>;
-
-fn sharedIndex(lx: i32, ly: i32, lz: i32) -> i32 {
-    // lx, ly, lz are 0..9
-    return lx + ly * 10 + lz * 100;
 }
 
 @compute
@@ -52,8 +83,6 @@ fn computeVertexDensity(
     @builtin(local_invocation_index) local_idx: u32
 ) {
     // 1. Identify which block we are processing
-    // Indirect dispatch x = number of active blocks
-    // group_id.x is the index into activeBlocks array
     let blockIdx = activeBlocks[group_id.x];
     
     // Reconstruct 3D block coordinate
@@ -68,39 +97,8 @@ fn computeVertexDensity(
     // Base cell for this block (top-left-front)
     let baseCell = blockCoord * 8; // BLOCK_SIZE=8
     
-    // We need cells from baseCell - 1 to baseCell + 8
-    // This is a 10x10x10 volume starting at baseCell - 1
-    let volumeStart = baseCell - vec3i(1);
+    // No need for shared memory loading anymore - we sample directly
     
-    let num_loads = 1000u;
-    
-    // Cooperative load
-    // 256 threads. Need 4 loops to cover 1000 items.
-    for (var i = 0u; i < 4u; i++) {
-        let idx = local_idx + i * 256u;
-        if (idx < num_loads) {
-            let lz = i32(idx / 100u);
-            let rem2 = i32(idx % 100u);
-            let ly = rem2 / 10;
-            let lx = rem2 % 10;
-            
-            let cellPos = volumeStart + vec3i(lx, ly, lz);
-            s_density[idx] = getGlobalDensity(cellPos);
-        }
-    }
-    
-    workgroupBarrier();
-    
-    // Compute for 9x9x9 vertices
-    // We have 256 threads (8x8x4).
-    // Let's iterate z to cover 0..8
-    // Thread covers (lx, ly) 0..7
-    // That's 8x8 = 64. 4 z-layers?
-    // We need 9x9x9 = 729 vertices.
-    // 256 threads * 3 = 768.
-    
-    // Process items by 3 chunks?
-    // Or just map local_idx to 0..728
     let num_vertices = 729u; // 9^3
     
     for (var i = 0u; i < 3u; i++) {
@@ -111,82 +109,41 @@ fn computeVertexDensity(
             let ly = rem2 / 9;
             let lx = rem2 % 9;
             
-            // This is the vertex coordinate relative to baseCell
-            // Relative to volumeStart (which is -1), offset is lx+1, ly+1, lz+1
-            // Actually:
-            // vertices are 0..8 relative to baseCell
-            // s_density indices 0..9 correspond to cells -1..8
-            // vertex at 0 needs cells -1, 0. s_density index 0, 1.
-            // vertex at x needs cells x-1, x. s_density index x, x+1.
-            
-            // So s_idx offsets are just lx, ly, lz (for cell -1) and +1 for cell 0
-            
+            // Current vertex coord in MC grid
             let vertCoord = baseCell + vec3i(lx, ly, lz);
             let vertRes = vec3i(mcParams.mcGridRes) + vec3i(1);
             
             if (all(vertCoord < vertRes) && all(vertCoord >= vec3i(0))) {
+                // Determine world position of this vertex
+                let worldPos = mcVertexToWorld(vertCoord);
                 
-                var densitySum = 0.0;
-                var count = 0.0;
-                var sumX_pos = 0.0; var sumX_neg = 0.0;
-                var sumY_pos = 0.0; var sumY_neg = 0.0;
-                var sumZ_pos = 0.0; var sumZ_neg = 0.0;
-                
-                // For a vertex at integer coord V, it is surrounded by cells:
-                // (V-1), (V) in 3D.
-                // dx, dy, dz in -1..0
-                // s_density index corresponds to cell coord.
-                // vertCoord + d corresponds to actual cell.
-                // local s index: (lx + dx + 1) NO.
-                // Let's trace:
-                // vertCoord.x corresponds to lx relative to baseCell.
-                // cell depends on dx (-1 or 0).
-                // cell x = vertCoord.x + dx = baseCell.x + lx + dx.
-                // volumeStart.x = baseCell.x - 1.
-                // offset in s_density = cell.x - volumeStart.x = lx + dx + 1.
-                
-                // Example: lx=0, dx=-1. offset = 0 - 1 + 1 = 0. Correct (index 0).
-                // Example: lx=0, dx=0. offset = 0 + 0 + 1 = 1. Correct (index 1).
-                
-                let sx = lx + 1;
-                let sy = ly + 1;
-                let sz = lz + 1;
-                
-                for (var dz = -1; dz <= 0; dz++) {
-                    for (var dy = -1; dy <= 0; dy++) {
-                        for (var dx = -1; dx <= 0; dx++) {
-                            let s_idx = sharedIndex(sx + dx, sy + dy, sz + dz);
-                            let val = s_density[s_idx];
-                            
-                            // Check boundary of ORIGINAL cells for 'count'
-                            let cellGlobal = vertCoord + vec3i(dx, dy, dz);
-                            if (all(cellGlobal >= vec3i(0)) && all(cellGlobal < vec3i(mcParams.mcGridRes))) {
-                                densitySum += val;
-                                count += 1.0;
-                                
-                                if (dx == 0) { sumX_pos += val; } else { sumX_neg += val; }
-                                if (dy == 0) { sumY_pos += val; } else { sumY_neg += val; }
-                                if (dz == 0) { sumZ_pos += val; } else { sumZ_neg += val; }
-                            }
-                        }
-                    }
-                }
+                // Sample density at this vertex position
+                let density = sampleDensityAtWorldPos(worldPos);
                 
                 let globalIdx = vertexIndex(vertCoord);
+                vertexDensity[globalIdx] = density;
                 
-                if (count > 0.0) {
-                    vertexDensity[globalIdx] = densitySum / count;
-                    let divisor = max(1.0, count * 0.5);
-                    vertexGradient[globalIdx] = vec4f(
-                        (sumX_pos - sumX_neg) / divisor,
-                        (sumY_pos - sumY_neg) / divisor,
-                        (sumZ_pos - sumZ_neg) / divisor,
-                        0.0
-                    );
-                } else {
-                    vertexDensity[globalIdx] = 0.0;
-                    vertexGradient[globalIdx] = vec4f(0.0, 1.0, 0.0, 0.0);
-                }
+                // Compute gradient using finite differences in world space
+                // Using a small epsilon related to density grid size
+                let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
+                let densityRes = vec3f(mcParams.densityGridRes);
+                let densityCellSize = gridRange / densityRes;
+                let eps = densityCellSize * 0.5;
+                
+                let dx = sampleDensityAtWorldPos(worldPos + vec3f(eps.x, 0.0, 0.0)) - 
+                         sampleDensityAtWorldPos(worldPos - vec3f(eps.x, 0.0, 0.0));
+                let dy = sampleDensityAtWorldPos(worldPos + vec3f(0.0, eps.y, 0.0)) - 
+                         sampleDensityAtWorldPos(worldPos - vec3f(0.0, eps.y, 0.0));
+                let dz = sampleDensityAtWorldPos(worldPos + vec3f(0.0, 0.0, eps.z)) - 
+                         sampleDensityAtWorldPos(worldPos - vec3f(0.0, 0.0, eps.z));
+                         
+                // Normalize gradient? Original code divided by count/divisor which was sort of normalizing
+                // Here we just store the gradient vector. It doesn't need to be normalized yet, mesh gen will normalize.
+                // But we should scale it to be somewhat consistent with original scale
+                // Original used simple sum differences. Here we use actual differences.
+                // Let's just store the vector.
+                
+                vertexGradient[globalIdx] = vec4f(dx, dy, dz, 0.0);
             }
         }
     }

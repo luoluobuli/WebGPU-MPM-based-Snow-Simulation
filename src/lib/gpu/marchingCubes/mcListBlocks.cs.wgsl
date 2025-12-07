@@ -5,6 +5,8 @@
 struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
+    densityGridRes: vec3u,
+    _padding: u32,
 }
 
 struct IndirectDispatchArgs {
@@ -57,6 +59,7 @@ fn listBlocks(
     // Each thread checks ceil(1000/64) = 16 items.
     
     let numItems = 1000u;
+    
     for (var i = 0u; i < 16u; i++) {
         let itemIdx = local_idx + i * 64u;
         if (itemIdx < numItems) {
@@ -72,9 +75,15 @@ fn listBlocks(
             let offset = vec3i(ix, iy, iz) - vec3i(1); // -1..8
             let cellI = startCell + offset;
             
-            if (all(cellI >= vec3i(0)) && all(cellI < vec3i(gridRes))) {
-                let cellU = vec3u(cellI);
-                let idx = cellU.x + cellU.y * gridRes.x + cellU.z * gridRes.x * gridRes.y;
+            // Map MC cell coordinate to density grid coordinate to check for activity
+            // MC grid and density grid cover the same world space
+            let densityRes = mcParams.densityGridRes;
+            let densityCellF = vec3f(cellI) * vec3f(densityRes) / vec3f(gridRes);
+            let densityCellI = vec3i(floor(densityCellF));
+            
+            if (all(densityCellI >= vec3i(0)) && all(densityCellI < vec3i(densityRes))) {
+                let cellU = vec3u(densityCellI);
+                let idx = cellU.x + cellU.y * densityRes.x + cellU.z * densityRes.x * densityRes.y;
                 if (densityGrid[idx] > 0u) {
                     atomicStore(&s_blockActive, 1u);
                 }

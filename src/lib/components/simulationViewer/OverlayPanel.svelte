@@ -17,7 +17,7 @@ let {
 overlay-panel {
     width: 20rem;
     margin: 0.5rem;
-    padding: 1rem;
+    padding: 0.75rem;
 
     display: flex;
     align-items: stretch;

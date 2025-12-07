@@ -1,6 +1,8 @@
 struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
+    densityGridRes: vec3u,
+    _padding: u32,
 }
 
 struct IndirectDrawArgs {

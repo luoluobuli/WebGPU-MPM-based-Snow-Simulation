@@ -11,6 +11,8 @@ struct IndirectDrawArgs {
 struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
+    densityGridRes: vec3u,
+    _padding: u32,
     maxVertices: u32, // Passed via uniform
 }
 
