@@ -35,14 +35,12 @@ const COAT_COLOR = vec3f(1.0, 1.0, 1.0);
 const COAT_ROUGHNESS = 0.1;
 const COAT_IOR = 1.3;
 
-// Noise scales for displacement
 const NOISE_SCALE_BASIC = 8.;
 const NOISE_SCALE_DETAIL = 196.;
-const NOISE_SCALE_GLINTS = 32.;
+const NOISE_SCALE_GLINTS = 144.;
 const NOISE_STRENGTH_BASIC = 1.5;
 const NOISE_STRENGTH_DETAIL = 0.3;
 
-// Shadow raymarch parameters
 const N_SHADOW_STEPS = 32u;
 const EXTINCTION_COEFFICIENT = 8.;
 
@@ -149,17 +147,14 @@ fn glintMask(worldPos: vec3f, N: vec3f, L: vec3f, V: vec3f) -> f32 {
     let noiseVal = fbmNoise(worldPos * NOISE_SCALE_GLINTS, 2);
     
     // Reflection-based: glints appear where view reflects light
-    let H = normalize(L + V);
+    let H = reflect(V, N);
+    let specularFactor = pow((dot(H, L) + 1) * 0.5, 16);
     
     // Combine noise threshold with specular alignment
     // Noise creates sparse distribution, NdotH makes them view-dependent
-    const GLINT_THRESHOLD = 0.35;
-    let sparkleNoise = smoothstep(GLINT_THRESHOLD, GLINT_THRESHOLD + 0.01, noiseVal);
+    let glint_threshold = 0.4 - specularFactor * 0.15;
     
-    // Sharp specular falloff for tight sparkles
-    let specularFactor = pow((dot(N, H) + 1) * 0.5, 16);
-    
-    return sparkleNoise * specularFactor;
+    return smoothstep(glint_threshold, glint_threshold + 0.1, noiseVal);
 }
 
 fn coatSpecular(N: vec3f, V: vec3f, L: vec3f, glintStrength: f32) -> vec3f {
@@ -336,7 +331,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let fresnel = pow(1 - max(dot(diffuseNormal, V), 0), 2.5);
     let rim = fresnel * 0.35 * vec3f(0.9, 0.95, 1) * shadowFactor;
     
-    var color = AMBIENT_COLOR + diffuse * 0.9 + baseSpecular + sss + glintSpec + rim;
+    var color = AMBIENT_COLOR + diffuse * 0.9 + baseSpecular + sss + glintSpec * 0.35 + rim;
     
     // // Blend with ground if both visible
     // if (hitGround) {
