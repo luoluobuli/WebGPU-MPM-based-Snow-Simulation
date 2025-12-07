@@ -55,9 +55,15 @@ An additional point of interest is animated characters. Even in industry tooling
 
 ## Acknowledgments
 
-### Libraries used
-1. **[SASS](https://sass-lang.com/).** CSS preprocessing.
-1. **[SvelteKit](https://svelte.dev/).** UI/reactivity.
-1. **[THREE.js](https://threejs.org/).** gLTF/gLB loading.
-1. **[Vite](https://vite.dev/).** Bundling and development environment.
-1. **[wgpu-matrix](https://github.com/greggman/wgpu-matrix).** Helper classes for operations involving WGSL builtins on the CPU.
+### Libraries
+1. **[Chart.js](https://www.chartjs.rg/).** Performance graphs
+1. **[SASS](https://sass-lang.com/).** CSS preprocessing
+1. **[SvelteKit](https://svelte.dev/).** UI/reactivity
+1. **[THREE.js](https://threejs.org/).** gLTF/gLB loading
+1. **[Vite](https://vite.dev/).** Bundling and development environment
+1. **[wgpu-matrix](https://github.com/greggman/wgpu-matrix).** Helper classes for operations involving WGSL builtins on the CPU
+
+### Assets
+1. **[Free Low Poly Forest](https://sketchfab.com/3d-models/free-low-poly-forest-6dc8c85121234cb59dbd53a673fa2b8f) by [purepoly](https://sketchfab.com/purepoly).** Scene model
+1. **[Horse Statue 01](https://polyhaven.com/a/horse_statue_01) by [Rico Cilliers](https://www.artstation.com/rico_b3d).** Particle scatter model
+1. **[Kloofendal Misty Morning (Pure Sky)](https://polyhaven.com/a/kloofendal_misty_morning_puresky) by [Greg Zaal](https://gregzaal.com/).** Environment map
