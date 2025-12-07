@@ -71,7 +71,71 @@ fn transferParticlesToGrid(particle: ptr<function, ParticleData>) {
             }
         }
     }
+}
 
+
+fn updateGrid(particle: ptr<function, ParticleData>) {
+    let start_cell_number = calculateCellNumber((*particle).pos);
+    let cell_frac_pos = calculateFractionalPosFromCellMin((*particle).pos, start_cell_number);
+    let cell_weights = calculateQuadraticBSplineCellWeights(cell_frac_pos);
+    
+    // Iterate over 3x3x3 neighborhood
+    for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
+        for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
+            for (var offsetX = -1i; offsetX <= 1i; offsetX++) {
+                let cell_number = start_cell_number + vec3i(offsetX, offsetY, offsetZ);
+                if !cellNumberInGridRange(cell_number) { continue; }
+
+                let cell_index = calculateCellIndexFromCellNumber(cell_number);
+                if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
+                
+                let cell_weight = cell_weights[u32(offsetX + 1)].x
+                    * cell_weights[u32(offsetY + 1)].y
+                    * cell_weights[u32(offsetZ + 1)].z;
+
+                let weighted_mass = cell_weight * (*particle).mass;
+
+                // Forces: Gravity
+                var forces = vec3f(0.0, 0.0, -9.81);
+
+                // Forces: Interaction
+                if (uniforms.isInteracting != 0u) {
+                    let grid_node_pos = vec3f(cell_number);
+                    
+                    // Ray-Point Distance
+                    let ray_origin = uniforms.interactionPos;
+                    let ray_dir = uniforms.interactionDir;
+                    
+                    let p_minus_o = grid_node_pos - ray_origin;
+                    let t = dot(p_minus_o, ray_dir);
+                    let closest_point_on_ray = ray_origin + ray_dir * t;
+                    
+                    let dist = distance(grid_node_pos, closest_point_on_ray);
+
+                    if (dist < uniforms.interactionRadius) {
+                        let offset = grid_node_pos - closest_point_on_ray;
+                        var push_dir = vec3f(0.0, 0.0, 1.0);
+                        if (length(offset) > 0.001) {
+                            push_dir = normalize(offset);
+                        }
+                        
+                        let falloff = 1.0 - (dist / uniforms.interactionRadius);
+                        let accel = push_dir * uniforms.interactionStrength * falloff;
+                        forces += accel;
+                    }
+                }
+
+                // PBMPM Loop runs 3 times, so apply 1/3 of the force per iteration
+                forces = forces / 3.0;
+
+                let momentum_change = forces * weighted_mass * uniforms.simulationTimestep;
+
+                atomicAdd(&grid_momentum_x[cell_index], i32(momentum_change.x * uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_y[cell_index], i32(momentum_change.y * uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_z[cell_index], i32(momentum_change.z * uniforms.fixedPointScale));
+            }
+        }
+    }
 }
 
 
@@ -89,8 +153,13 @@ fn pbmpm(
     // for (var i = 0u; i < 4; i++) {
         // clearGrid();
         solveParticleConstraints(&particle);
+        workgroupBarrier();
+    
         transferParticlesToGrid(&particle);
-        // updateGrid();
+        workgroupBarrier();
+
+        updateGrid(&particle);
+        workgroupBarrier();
         // transferGridToParticles(&particle);
     // }
     // updateParticle(&particle);
