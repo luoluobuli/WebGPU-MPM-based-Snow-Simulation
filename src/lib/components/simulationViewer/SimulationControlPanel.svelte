@@ -50,53 +50,49 @@ const updateTimestep = (progress: number) => {
 <OverlayPanel>
     <h3>Render method</h3>
 
-    <div>
+    <label>
         <input
             type="radio"
             name="render-method-type"
             bind:group={simulationState.renderMethodType}
             value={GpuRenderMethodType.Points}
-            id="render-method-type_points"
         />
-        <label for="render-method-type_points">Points</label>
-    </div>
+        Points
+    </label>
 
-    <div>
+    <label>
         <input
             type="radio"
             name="render-method-type"
             bind:group={simulationState.renderMethodType}
             value={GpuRenderMethodType.Volumetric}
-            id="render-method-type_volumetric"
         />
-        <label for="render-method-type_volumetric">Volumetric</label>
-    </div>
+        Volumetric
+    </label>
 
-    <div>
+    <label>
         <input
             type="radio"
             name="render-method-type"
             bind:group={simulationState.renderMethodType}
             value={GpuRenderMethodType.Ssfr}
-            id="render-method-type_ssfr"
         />
-        <label for="render-method-type_ssfr">SSFR</label>
-    </div>
+        SSFR
+    </label>
 
-    <div>
+    <label>
         <input
             type="radio"
             name="render-method-type"
             bind:group={simulationState.renderMethodType}
             value={GpuRenderMethodType.MarchingCubes}
-            id="render-method-type_marching-cubes"
         />
-        <label for="render-method-type_marching-cubes">Marching cubes</label>
-    </div>
+        Marching cubes
+    </label>
 
     <Separator />
 
-    <h3>Simulation controls</h3>
+    <h3>Simulation</h3>
 
     <div>
         <Hotkey
@@ -114,57 +110,52 @@ const updateTimestep = (progress: number) => {
 
     <h4>Method</h4>
 
-    <div>
+    <label>
         <input
             type="radio"
             name="simulation-method-type"
             bind:group={simulationState.simulationMethodType}
             value={GpuSimulationMethodType.ExplicitMpm}
-            id="simulation-method-type_explicit-mpm"
         />
-        <label for="simulation-method-type_explicit-mpm">Explicit MPM</label>
-    </div>
+        Explicit MPM
+    </label>
 
-    <div>
+    <label>
         <input
             type="radio"
             name="simulation-method-type"
             bind:group={simulationState.simulationMethodType}
             value={GpuSimulationMethodType.Pbmpm}
-            id="simulation-method-type_pbmpm"
         />
-        <label for="simulation-method-type_pbmpm">PBMPM</label>
-    </div>
+        PBMPM
+    </label>
 
-    <div>
-        <h4>Timestep</h4>
+    <h4>Timestep</h4>
 
-        <labeled-range>
-            <input
-                type="range"
-                bind:value={timestepProgress}
-                oninput={() => updateTimestep(timestepProgress)}
-                min={0}
-                max={1}
-                step={Number.EPSILON}
-                id="simulation-timestep"
-            />
+    <labeled-range>
+        <input
+            type="range"
+            bind:value={timestepProgress}
+            oninput={() => updateTimestep(timestepProgress)}
+            min={0}
+            max={1}
+            step={Number.EPSILON}
+            id="simulation-timestep"
+        />
 
-            <span>
-                <sup>1</sup>⁄<sub>{timestepDivisor.toFixed(1)}</sub>
-                s
-            </span>
-        </labeled-range>
-    </div>
+        <span>
+            <sup>1</sup>⁄<sub>{timestepDivisor.toFixed(1)}</sub>
+            s
+        </span>
+    </labeled-range>
     
-    <div>
+    <label>
         <input
             type="checkbox"
             bind:checked={simulationState.oneSimulationStepPerFrame}
-            id="one-simulation-step-per-frame"
         />
-        <label for="one-simulation-step-per-frame">Limit to 1 simulation step per frame</label>
-    </div>
+        Limit to 1 simulation step per frame
+    </label>
 </OverlayPanel>
 
 <Hotkey key="q"
