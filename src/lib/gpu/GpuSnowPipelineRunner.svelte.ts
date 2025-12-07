@@ -141,8 +141,9 @@ export class GpuSnowPipelineRunner {
             vertices: collider.positions, 
             normals: collider.normals,
             indices: collider.indices,
-            objects: collider.objects,
         });
+        uniformsManager.writeColliderObjects(collider.objects);
+        uniformsManager.writeColliderNumObjects(collider.objects.length);
         uniformsManager.writeColliderMinCoords(colliderManager.minCoords);
         uniformsManager.writeColliderMaxCoords(colliderManager.maxCoords);
         uniformsManager.writeColliderTransformMat(mat4.identity());
