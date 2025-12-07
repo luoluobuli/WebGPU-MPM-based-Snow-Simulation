@@ -6,7 +6,7 @@ import sparseGridPreludeSrc from "./sparseGridPrelude.wgsl?raw";
 import mapAffectedBlocksSrc from "./mapAffectedBlocks.wgsl?raw";
 import clearHashMapSrc from "./clearHashMap.wgsl?raw";
 import clearMappedBlocksSrc from "./clearMappedBlocks.wgsl?raw";
-import solveParticleConstraintsSrc from "./solveParticleConstraints.wgsl?raw";
+import pbmpmSrc from "./pbmpm.wgsl?raw";
 import integrateParticlesSrc from "./integrateParticles.wgsl?raw";
 import countParticlesPerBlockSrc from "./countParticlesPerBlock.wgsl?raw";
 import computeBlockOffsetsSrc from "./computeBlockOffsets.wgsl?raw";
@@ -23,7 +23,6 @@ export class GpuMpmPipelineManager {
     readonly sparseGridBindGroupLayout: GPUBindGroupLayout;
     readonly sparseGridBindGroup: GPUBindGroup;
 
-    readonly solveParticleConstraintsPipeline: GPUComputePipeline;
     readonly clearHashMapPipeline: GPUComputePipeline;
     readonly mapAffectedBlocksPipeline: GPUComputePipeline;
     readonly clearMappedBlocksPipeline: GPUComputePipeline;
@@ -35,6 +34,7 @@ export class GpuMpmPipelineManager {
     readonly computeBlockOffsetsPipeline: GPUComputePipeline;
     readonly binParticlesPipeline: GPUComputePipeline;
     readonly clearBlockParticleCountsPipeline: GPUComputePipeline;
+    readonly pbmpmPipeline: GPUComputePipeline;
 
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly mpmManager: GpuMpmBufferManager;
@@ -182,18 +182,6 @@ export class GpuMpmPipelineManager {
             },
         });
 
-        this.solveParticleConstraintsPipeline = device.createComputePipeline({
-            label: "solve particle constraints pipeline",
-            layout: particlePipelineLayout,
-            compute: {
-                module: device.createShaderModule({
-                    label: "solve particle constraints module",
-                    code: attachPrelude(`${sparseGridPreludeSrc}\n${solveParticleConstraintsSrc}`),
-                }),
-                entryPoint: "solveParticleConstraints",
-            },
-        });
-
         this.p2gComputePipeline = device.createComputePipeline({
             label: "particle to grid pipeline",
             layout: particlePipelineLayout,
@@ -287,6 +275,18 @@ export class GpuMpmPipelineManager {
                     code: attachPrelude(`${sparseGridPreludeSrc}\n${clearBlockParticleCountsSrc}`),
                 }),
                 entryPoint: "clearBlockParticleCounts",
+            },
+        });
+
+        this.pbmpmPipeline = device.createComputePipeline({
+            label: "pbmpm fused pipeline",
+            layout: particlePipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "pbmpm fused module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${pbmpmSrc}`),
+                }),
+                entryPoint: "pbmpm",
             },
         });
 
@@ -486,31 +486,23 @@ export class GpuMpmPipelineManager {
         });
 
         for (let i = 0; i < nSolveConstraintIterations; i++) {
-            // solve constraints
-            this.addDispatch({
-                computePassEncoder,
-                pipeline: this.solveParticleConstraintsPipeline,
-                dispatchX: Math.ceil(nParticles / 256),
-                useParticles: true,
-            });
-
-            // clear grid
+            // Clear grid each iteration
             this.addDispatch({
                 computePassEncoder,
                 pipeline: this.clearMappedBlocksPipeline,
                 dispatchX: gridCellDispatchX,
                 dispatchY: gridCellDispatchY,
             });
-        
-            // particle-to-grid
+
+            // Fused solveConstraints + P2G (one dispatch instead of two)
             this.addDispatch({
                 computePassEncoder,
-                pipeline: this.p2gComputePipeline,
+                pipeline: this.pbmpmPipeline,
                 dispatchX: Math.ceil(nParticles / 256),
                 useParticles: true,
             });
 
-            // grid update
+            // grid update (needs global synchronization)
             this.addDispatch({
                 computePassEncoder,
                 pipeline: this.gridComputePipeline,
@@ -518,7 +510,7 @@ export class GpuMpmPipelineManager {
                 dispatchY: gridCellDispatchY,
             });
 
-            // grid-to-particle
+            // grid-to-particle (needs global synchronization)
             this.addDispatch({
                 computePassEncoder,
                 pipeline: this.g2pComputePipeline,
