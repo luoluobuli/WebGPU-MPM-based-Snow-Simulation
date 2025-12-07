@@ -15,7 +15,7 @@ struct MCParams {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(1) @binding(0) var<storage, read> densityGrid: array<u32>;
 @group(1) @binding(1) var<storage, read_write> vertexDensity: array<f32>;
-@group(1) @binding(2) var<storage, read_write> vertexGradient: array<vec4f>;
+@group(1) @binding(2) var<storage, read_write> vertexGradient: array<u32>;
 @group(1) @binding(3) var<uniform> mcParams: MCParams;
 @group(1) @binding(4) var<storage, read> activeBlocks: array<u32>;
 
@@ -143,9 +143,17 @@ fn computeVertexDensity(
                 // Original used simple sum differences. Here we use actual differences.
                 // Let's just store the vector.
                 
-                vertexGradient[globalIdx] = vec4f(dx, dy, dz, 0.0);
+                // Normalize and pack gradient
+                let grad = vec4f(dx, dy, dz, 0.0);
+                var packedGrad = 0u;
+                if (length(grad.xyz) > 1e-6) {
+                    packedGrad = pack4x8snorm(normalize(grad));
+                } else {
+                    packedGrad = 0u;
+                }
+                
+                vertexGradient[globalIdx] = packedGrad;
             }
         }
     }
 }
-

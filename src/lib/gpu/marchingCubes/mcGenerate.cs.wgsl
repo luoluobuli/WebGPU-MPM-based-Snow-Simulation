@@ -15,13 +15,13 @@ struct IndirectDrawArgs {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 @group(1) @binding(0) var<storage, read> vertexDensity: array<f32>;
-@group(1) @binding(1) var<storage, read> vertexGradient: array<vec4f>;
+@group(1) @binding(1) var<storage, read> vertexGradient: array<u32>;
 @group(1) @binding(2) var<storage, read_write> outputVertices: array<f32>;
 @group(1) @binding(3) var<storage, read_write> indirectDraw: IndirectDrawArgs;
 @group(1) @binding(4) var<uniform> mcParams: MCParams;
 @group(1) @binding(5) var<storage, read> activeBlocks: array<u32>;
 
-const ISOVALUE = 0.1; 
+const ISOVALUE = 0.08; 
 const BLOCK_SIZE = 8u;
 
 fn vertexIndex(coord: vec3i) -> u32 {
@@ -44,7 +44,9 @@ fn getGlobalVertexDensity(vCoord: vec3i) -> f32 {
 
 fn getGlobalVertexGradient(vCoord: vec3i) -> vec3f {
     let idx = vertexIndex(vCoord);
-    return vertexGradient[idx].xyz;
+    let packed = vertexGradient[idx];
+    let unpacked = unpack4x8snorm(packed);
+    return unpacked.xyz;
 }
 
 // shared memory for 9x9x9 tile of vertices (8x8x8 + 1 border)
