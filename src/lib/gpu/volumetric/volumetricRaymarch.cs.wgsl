@@ -35,6 +35,8 @@ fn readDensity(worldPos: vec3f) -> f32 {
     for (var z = 0u; z < 2; z++) {
         for (var y = 0u; y < 2; y++) {
             for (var x = 0u; x < 2; x++) {
+                workgroupBarrier();
+
                 let cell_number = start_cell_number + vec3u(x, y, z);
                 
                 if !cellNumberInGridRange(vec3i(cell_number)) { continue; }
@@ -50,6 +52,9 @@ fn readDensity(worldPos: vec3f) -> f32 {
         }
     }
     
+    workgroupBarrier();
+    
+
     let cellVolume = cellSize.x * cellSize.y * cellSize.z;
     return mass / cellVolume * 0.00001;
 }
@@ -105,9 +110,7 @@ fn doVolumetricRaymarch(
     @builtin(global_invocation_id) global_id: vec3u,
 ) {
     let texture_dims = textureDimensions(outputTexture);
-    if global_id.x >= texture_dims.x || global_id.y >= texture_dims.y {
-        return;
-    }
+    if global_id.x >= texture_dims.x || global_id.y >= texture_dims.y { return; }
 
     let uv = vec2f(global_id.xy) / vec2f(texture_dims);
     let ray = calculateViewRay(uv, texture_dims);
@@ -138,6 +141,8 @@ fn doVolumetricRaymarch(
             }
         }
     }
+
+    workgroupBarrier();
 
     let ray_hits_volume = distance_near <= distance_far && distance_far >= 0;
 
@@ -192,6 +197,8 @@ fn doVolumetricRaymarch(
         current_ray_distance += STEP_SIZE;
     }
 
+    workgroupBarrier();
+
     if hit_ground && any(transmittance > vec3f(0.01)) {
         let pos = ray_origin + distance_ground * ray_dir;
         let shadow = raymarchShadow(pos, light_dir);
@@ -204,6 +211,8 @@ fn doVolumetricRaymarch(
             recorded_depth = distance_ground;
         }
     }
+
+    workgroupBarrier();
 
     let alpha = 1 - max(transmittance.r, max(transmittance.g, transmittance.b));
     textureStore(outputTexture, global_id.xy, vec4f(
