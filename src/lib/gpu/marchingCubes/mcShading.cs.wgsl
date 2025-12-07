@@ -144,10 +144,12 @@ fn subsurfaceScattering(N: vec3f, V: vec3f, L: vec3f, thickness: f32) -> vec3f {
 
 // glints
 fn glintMask(worldPos: vec3f, N: vec3f, L: vec3f, V: vec3f) -> f32 {
-    let noiseVal = fbmNoise(worldPos * NOISE_SCALE_GLINTS, 2);
-    
     let H = normalize(L + V);
-    let specularFactor = pow(max(dot(N, H), 0), 40);
+    let HdotN = dot(H, N);
+    
+    let noiseVal = fbmNoise((worldPos + H * 0.1 + V * 0.1) * NOISE_SCALE_GLINTS, 2);
+    
+    let specularFactor = pow((HdotN + 1) * 0.5, 16);
     
     let glint_threshold = 0.4 - specularFactor * 0.2;
     return smoothstep(glint_threshold, glint_threshold + 0.1, noiseVal);
