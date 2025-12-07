@@ -143,7 +143,7 @@ export class GpuSnowPipelineRunner {
             indices: collider.indices,
         });
         uniformsManager.writeColliderObjects(collider.objects);
-        uniformsManager.writeColliderNumObjects(collider.objects.length);
+        uniformsManager.writeColliderNumObjects(Math.min(collider.objects.length, 1024));
         uniformsManager.writeColliderMinCoords(colliderManager.minCoords);
         uniformsManager.writeColliderMaxCoords(colliderManager.maxCoords);
         uniformsManager.writeColliderTransformMat(mat4.identity());

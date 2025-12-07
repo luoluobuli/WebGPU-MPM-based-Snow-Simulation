@@ -38,5 +38,5 @@ struct Uniforms {
     // 380 (padding to 384)
     lightViewProjMat: mat4x4f, // 448
     colliderTransformInv: mat4x4f, // 512
-    objects: array<ColliderObject, 128>, // 4608
+    objects: array<ColliderObject, 1024>, // 37376
 }

@@ -20,20 +20,17 @@ struct MCParams {
 @group(0) @binding(4) var<storage, read> densityGrid: array<u32>;
 @group(0) @binding(5) var<uniform> mcParams: MCParams;
 
-// ===== CONSTANTS =====
 const LIGHT_DIR = vec3f(0.6, 0.4, 1);
 const AMBIENT_COLOR = vec3f(0.15, 0.22, 0.28);
 
-// Step 1: High roughness for powdery look
+// high roughness for powdery look
 const BASE_ROUGHNESS = 0.95;
 const SPECULAR_ROUGHNESS = 0.8;
 
-// Step 4: SSS parameters from reference (boosted for visibility)
 const SSS_COLOR = vec3f(0.8, 0.85, 0.9);
 const SSS_RADIUS = vec3f(0.36, 0.46, 0.60);
-const SSS_STRENGTH = 0.2;
+const SSS_STRENGTH = 0.5;
 
-// Step 5: Glint coat parameters (coat color 1/1/1 per user)
 const COAT_COLOR = vec3f(1.0, 1.0, 1.0);
 const COAT_ROUGHNESS = 0.1;
 const COAT_IOR = 1.3;
@@ -41,6 +38,7 @@ const COAT_IOR = 1.3;
 // Noise scales for displacement
 const NOISE_SCALE_BASIC = 8.;
 const NOISE_SCALE_DETAIL = 196.;
+const NOISE_SCALE_GLINTS = 32.;
 const NOISE_STRENGTH_BASIC = 1.5;
 const NOISE_STRENGTH_DETAIL = 0.3;
 
@@ -48,8 +46,6 @@ const NOISE_STRENGTH_DETAIL = 0.3;
 const N_SHADOW_STEPS = 32u;
 const EXTINCTION_COEFFICIENT = 8.;
 
-// ===== NOISE FUNCTIONS =====
-// Simple 3D hash for noise
 fn hash31(p: vec3f) -> f32 {
     var p3 = fract(p * 0.1031);
     p3 += dot(p3, p3.yzx + 33.33);
@@ -62,7 +58,6 @@ fn hash33(p: vec3f) -> vec3f {
     return fract((p3.xxy + p3.yxx) * p3.zyx);
 }
 
-// Gradient noise
 fn gradientNoise(p: vec3f) -> f32 {
     let i = floor(p);
     let f = fract(p);
@@ -83,7 +78,6 @@ fn gradientNoise(p: vec3f) -> f32 {
     ) * 2 - 1;
 }
 
-// FBM noise with octaves
 fn fbmNoise(p: vec3f, octaves: i32) -> f32 {
     var value = 0.0;
     var amplitude = 0.5;
@@ -98,7 +92,7 @@ fn fbmNoise(p: vec3f, octaves: i32) -> f32 {
     return value;
 }
 
-// Compute noise gradient for normal perturbation
+// for normal preturbation
 fn noiseGradient(p: vec3f, scale: f32, octaves: i32) -> vec3f {
     const EPSILON = 1e-6;
     let dx = fbmNoise((p + vec3f(EPSILON, 0, 0)) * scale, octaves) - 
@@ -110,7 +104,7 @@ fn noiseGradient(p: vec3f, scale: f32, octaves: i32) -> vec3f {
     return vec3f(dx, dy, dz) / (2 * EPSILON);
 }
 
-// ===== BRDF FUNCTIONS =====
+// brdf
 fn fresnelSchlick(cosTheta: f32, F0: vec3f) -> vec3f {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
@@ -132,8 +126,7 @@ fn geometrySmith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
     return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);
 }
 
-// ===== SUBSURFACE SCATTERING =====
-// Approximation based on translucency and view-dependent transmission
+// subsurface
 fn subsurfaceScattering(N: vec3f, V: vec3f, L: vec3f, thickness: f32) -> vec3f {
     // Back-lighting / translucency - stronger effect
     let VdotL = max(dot(-V, L), 0.0);
@@ -151,11 +144,9 @@ fn subsurfaceScattering(N: vec3f, V: vec3f, L: vec3f, thickness: f32) -> vec3f {
     return sss * SSS_STRENGTH;
 }
 
-// ===== LIGHT GLINTS (Step 5) =====
-// Simple bright sparkles - no complex PBR needed for glints
+// glints
 fn glintMask(worldPos: vec3f, N: vec3f, L: vec3f, V: vec3f) -> f32 {
-    // High frequency noise for sparkle positions
-    let noiseVal = fbmNoise(worldPos * 64, 2);
+    let noiseVal = fbmNoise(worldPos * NOISE_SCALE_GLINTS, 2);
     
     // Reflection-based: glints appear where view reflects light
     let H = normalize(L + V);
@@ -176,7 +167,7 @@ fn coatSpecular(N: vec3f, V: vec3f, L: vec3f, glintStrength: f32) -> vec3f {
     return COAT_COLOR * glintStrength;
 }
 
-// ===== WORLD POSITION RECONSTRUCTION =====
+// world pos
 fn reconstructWorldPos(coords: vec2i, depth: f32, screenSize: vec2f) -> vec3f {
     let uv = (vec2f(coords) + 0.5) / screenSize;
     let ndc = vec2f(uv.x, 1.0 - uv.y) * 2.0 - 1.0;
@@ -192,7 +183,7 @@ fn worldToScreen(worldPos: vec3f, screenSize: vec2f) -> vec3f {
     return vec3f(uv.x * screenSize.x, (1.0 - uv.y) * screenSize.y, ndc.z * 0.5 + 0.5);
 }
 
-// ===== DENSITY GRID SAMPLING =====
+// sampling
 fn sampleDensity(worldPos: vec3f) -> f32 {
     // Check bounds
     if (any(worldPos < uniforms.gridMinCoords) || any(worldPos >= uniforms.gridMaxCoords)) {
@@ -218,8 +209,7 @@ fn sampleDensity(worldPos: vec3f) -> f32 {
     return f32(densityGrid[idx]) / uniforms.fixedPointScale;
 }
 
-// ===== DENSITY GRID SHADOW RAYMARCH =====
-// Raymarch through the density grid toward the light to compute shadow
+// shadow raymarch
 fn raymarchShadow(worldPos: vec3f, lightDir: vec3f) -> vec3f {
     let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
     let maxDist = length(gridRange);
@@ -246,7 +236,6 @@ fn raymarchShadow(worldPos: vec3f, lightDir: vec3f) -> vec3f {
     return clamp(shadow, vec3f(0), vec3f(1));
 }
 
-// ===== MAIN SHADING =====
 @compute
 @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) global_id: vec3u) {
