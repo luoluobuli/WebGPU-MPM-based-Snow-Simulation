@@ -46,8 +46,11 @@ struct Uniforms {
     interactionRadius: f32, // 512
     isInteracting: u32, // 516
     
-    // Padding to 528
+    // 520. Next align 16 is 528.
     _pad_interaction2: vec2f, // 520 -> 528
-
-    objects: array<ColliderObject, 1024>, // 528
+    
+    interactionDir: vec3f, // 528
+    _pad_interaction3: f32, // 540 -> 544
+    
+    objects: array<ColliderObject, 1024>, // 544
 }
