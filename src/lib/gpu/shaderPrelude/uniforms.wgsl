@@ -1,3 +1,10 @@
+struct ColliderObject {
+    min: vec3f,
+    startIndex: u32,
+    max: vec3f,
+    countIndices: u32,
+}
+
 struct Uniforms {
     // 0
 
@@ -31,4 +38,5 @@ struct Uniforms {
     // 380 (padding to 384)
     lightViewProjMat: mat4x4f, // 448
     colliderTransformInv: mat4x4f, // 512
+    objects: array<ColliderObject, 128>, // 4608
 }

@@ -1,10 +1,3 @@
-struct ColliderObject {
-    min: vec3f,
-    startIndex: u32,
-    max: vec3f,
-    countIndices: u32,
-}
-
 fn getColliderVertex(index: u32) -> vec3f {
     let base_offset = uniforms.colliderNumIndices + index * 3u;
     let x = bitcast<f32>(colliderData[base_offset]);
@@ -128,7 +121,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
     let local_margin = vec3f(margin); // Simplification: assuming uniform scale involved roughly matches 1.0 or we are conservative
 
     for (var i = 0u; i < num_objects; i++) {
-        let obj = colliderObjects[i];
+        let obj = uniforms.objects[i];
 
         // AABB check in local space
         let safety_min_local = obj.min - local_margin;
