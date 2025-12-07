@@ -17,6 +17,7 @@ import mcCompositeVertSrc from "./mcComposite.vert.wgsl?raw";
 import mcCompositeFragSrc from "./mcComposite.frag.wgsl?raw";
 import mcResetSrc from "./mcReset.cs.wgsl?raw";
 import mcClampArgsSrc from "./mcClampArgs.cs.wgsl?raw";
+import type { GpuPerformanceMeasurementBufferManager } from "../performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 
 const prerenderPasses = [
     "marching cubes mesh generation compute",
@@ -29,6 +30,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly mpmManager: GpuMpmBufferManager;
     private readonly bufferManager: GpuMarchingCubesBufferManager;
+    private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
     
     // Compute pipelines
     private readonly densityPipeline: GPUComputePipeline;
@@ -83,6 +85,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         gridResolutionX,
         gridResolutionY,
         gridResolutionZ,
+        performanceMeasurementManager = null,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
@@ -92,10 +95,12 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         gridResolutionX: number,
         gridResolutionY: number,
         gridResolutionZ: number,
+        performanceMeasurementManager?: GpuPerformanceMeasurementBufferManager | null,
     }) {
         this.device = device;
         this.uniformsManager = uniformsManager;
         this.mpmManager = mpmManager;
+        this.performanceMeasurementManager = performanceMeasurementManager;
         
         this.bufferManager = new GpuMarchingCubesBufferManager({
             device,
@@ -568,7 +573,16 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         
         // Reset indirect dispatch/draw counters using compute shader
         // This ensures correct ordering within the command stream
-        const computePass = commandEncoder.beginComputePass({ label: "marching cubes compute pass" });
+        const computePass = commandEncoder.beginComputePass({
+            label: "marching cubes compute pass",
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 4,
+                    endOfPassWriteIndex: 5,
+                }
+                : undefined,
+        });
         computePass.setPipeline(this.resetPipeline);
         computePass.setBindGroup(0, this.resetBindGroup);
         computePass.dispatchWorkgroups(1);
@@ -631,6 +645,13 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
                 depthStoreOp: "store",
                 depthClearValue: 1.0,
             },
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 6,
+                    endOfPassWriteIndex: 7,
+                }
+                : undefined,
         });
         
         renderPass.setPipeline(this.meshRenderPipeline);
@@ -644,6 +665,13 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
     addShadingPass(commandEncoder: GPUCommandEncoder) {
         const computePass = commandEncoder.beginComputePass({
             label: "MC shading pass",
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 8,
+                    endOfPassWriteIndex: 9,
+                }
+                : undefined,
         });
         
         computePass.setPipeline(this.shadingPipeline);

@@ -9,6 +9,7 @@ import volumetricVertexSrc from "./volumetricVertex.wgsl?raw";
 import volumetricFragmentSrc from "./volumetricFragment.wgsl?raw";
 import preludeSrc from "./prelude.wgsl?raw";
 import type { GpuRenderMethod } from "../GpuRenderMethod";
+import type { GpuPerformanceMeasurementBufferManager } from "../performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 
 const prerenderPasses = [
     "volumetric raymarch compute",
@@ -30,6 +31,7 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
     private readonly volumetricBufferManager: GpuVolumetricBufferManager;
     private readonly environmentTextureManager: GpuEnvironmentTextureManager;
     private readonly raymarchBindGroupLayout: GPUBindGroupLayout;
+    private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
     private readonly sampler: GPUSampler;
 
     constructor({
@@ -39,6 +41,7 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
         volumetricBufferManager,
         mpmBufferManager,
         environmentTextureManager,
+        performanceMeasurementManager = null,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
@@ -46,11 +49,13 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
         volumetricBufferManager: GpuVolumetricBufferManager,
         mpmBufferManager: GpuMpmBufferManager,
         environmentTextureManager: GpuEnvironmentTextureManager,
+        performanceMeasurementManager?: GpuPerformanceMeasurementBufferManager | null,
     }) {
         this.uniformsManager = uniformsManager;
         this.volumetricBufferManager = volumetricBufferManager;
         this.environmentTextureManager = environmentTextureManager;
         this.mpmManager = mpmBufferManager;
+        this.performanceMeasurementManager = performanceMeasurementManager;
 
         this.sampler = device.createSampler({
             magFilter: "linear",
@@ -340,13 +345,13 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
 
         const prerenderComputePassEncoder = commandEncoder.beginComputePass({
             label: "volumetric compute pass",
-            // timestampWrites: this.performanceMeasurementManager !== null
-            //     ? {
-            //         querySet: this.performanceMeasurementManager.querySet,
-            //         beginningOfPassWriteIndex: 2,
-            //         endOfPassWriteIndex: 3,
-            //     }
-            //     : undefined,
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 4,
+                    endOfPassWriteIndex: 5,
+                }
+                : undefined,
         });
 
         this.addMassCalulationDispatch(prerenderComputePassEncoder, this.mpmManager.nParticles);

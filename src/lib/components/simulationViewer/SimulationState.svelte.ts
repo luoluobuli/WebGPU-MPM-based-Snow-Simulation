@@ -37,6 +37,7 @@ export class SimulationState {
     simulationMethodType = $state(GpuSimulationMethodType.Pbmpm);
     renderMethodType = $state(GpuRenderMethodType.MarchingCubes);
 
+
     readonly orbit = new CameraOrbit();
     readonly camera = new Camera({
         controlScheme: this.orbit,
@@ -51,7 +52,7 @@ export class SimulationState {
 
     private stopSimulation = $state<(() => void) | null>(null);
     private runner = $state<GpuSnowPipelineRunner | null>(null);
-
+    prerenderElapsedTimes = $derived(this.runner?.prerenderElapsedTimes ?? null);
 
     private onStatusChange: ((status: string) => void) | null = null;
     private onErr: ((err: string) => void) | null = null;
@@ -91,7 +92,6 @@ export class SimulationState {
                 )),
             onGpuTimeUpdate: (times) => {
                 this.elapsedTime.gpuComputeSimulationStepTimeNs = times.computeSimulationStepNs;
-                this.elapsedTime.gpuComputePrerenderTimeNs = times.computePrerenderNs;
                 this.elapsedTime.gpuRenderTimeNs = times.renderNs;
             },
             onUserControlUpdate: () => {

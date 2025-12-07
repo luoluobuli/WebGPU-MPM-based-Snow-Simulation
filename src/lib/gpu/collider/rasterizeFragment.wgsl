@@ -10,8 +10,8 @@ struct FSIn {
 
 @fragment
 fn frag(in: FSIn) -> @location(0) vec4<f32> {
-    // Sample texture array using UV and material index
-    let texColor = textureSample(texArray, texSampler, in.uv, in.materialIndex);
+    let texutre_color = textureSample(texArray, texSampler, in.uv, in.materialIndex);
+    let texture_color_linear = pow(texutre_color.rgb, vec3f(2.2));
     
     // Directional light for diffuse shading
     let lightDir = normalize(vec3f(1.0, -1.0, -1.0));
@@ -20,13 +20,11 @@ fn frag(in: FSIn) -> @location(0) vec4<f32> {
     let normal = normalize(in.normal);
     let diffuse = max(dot(normal, -lightDir), 0.0);
     
-    // Ambient + diffuse lighting
-    let ambient = 0.2;
-    let lighting = ambient + (1.0 - ambient) * diffuse;
+    const AMBIENT_COLOR = vec3f(0.3, 0.32, 0.35);
+    let lighting = AMBIENT_COLOR + (1.0 - AMBIENT_COLOR) * diffuse;
     
-    // Apply texture color as diffuse material
-    var color = texColor.rgb * lightColor * lighting;
+    var color = texture_color_linear * lightColor * lighting;
     color = clamp(color, vec3f(0.0), vec3f(1.0));
 
-    return vec4f(color, texColor.a);
+    return vec4f(pow(color, vec3f(1 / 2.2)), texutre_color.a);
 }

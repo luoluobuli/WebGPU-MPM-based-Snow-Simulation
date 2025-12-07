@@ -125,7 +125,6 @@ export const loadGltfScene = async (url: string) => {
     const materialIndices: number[] = [];
     const indices: number[] = [];
     
-    // Collect unique textures from materials
     const textureMap = new Map<THREE.Texture, number>();
     const textures: THREE.Texture[] = [];
     
@@ -147,7 +146,6 @@ export const loadGltfScene = async (url: string) => {
         const uv_in = child.geometry.attributes.uv?.array;
         const idx_in = child.geometry.index.array;
         
-        // Get texture from material
         const material = child.material as MeshStandardMaterial;
         const texture = material?.map;
         
@@ -168,7 +166,6 @@ export const loadGltfScene = async (url: string) => {
         for (let i = 0; i < idx_in.length; i++) {
             const v = vec(pos_in.slice(3 * idx_in[i], 3 * idx_in[i] + 3), child.matrixWorld);
             
-            // Update object bounds
             objectMin[0] = Math.min(objectMin[0], v[0]);
             objectMin[1] = Math.min(objectMin[1], v[1]);
             objectMin[2] = Math.min(objectMin[2], v[2]);
@@ -176,7 +173,6 @@ export const loadGltfScene = async (url: string) => {
             objectMax[1] = Math.max(objectMax[1], v[1]);
             objectMax[2] = Math.max(objectMax[2], v[2]);
 
-            // For visual mesh (unrelated to collider really, but kept for legacy compat)
             vertices.push(v);
             
             indices.push(idx_in[i] + vertexOffset);
@@ -196,7 +192,7 @@ export const loadGltfScene = async (url: string) => {
                 normals.push(n.x, n.y, n.z);
             }
 
-            // UVs
+            // uvs
             const vertIdx = i / 3;
             if (uv_in) {
                 uvs.push(uv_in[vertIdx * 2], uv_in[vertIdx * 2 + 1]);
@@ -204,7 +200,6 @@ export const loadGltfScene = async (url: string) => {
                 uvs.push(0, 0);
             }
             
-            // Material index for texture array
             materialIndices.push(materialIndex);
         }
         vertexOffset += pos_in.length / 3;
@@ -217,22 +212,16 @@ export const loadGltfScene = async (url: string) => {
         });
     });
     
-    console.log(`Loaded ${textures.length} unique textures`);
-    
-    // Convert THREE.Textures to ImageBitmaps
+
     const textureBitmaps: ImageBitmap[] = [];
     for (const texture of textures) {
         if (texture.image) {
             try {
-                // texture.image is usually an HTMLImageElement, ImageBitmap, or HTMLCanvasElement
-                const bitmap = await createImageBitmap(texture.image);
+                const bitmap = await createImageBitmap(texture.image as ImageBitmapSource);
                 textureBitmaps.push(bitmap);
             } catch (e) {
                 console.warn("Failed to convert texture to ImageBitmap:", e);
-                // Create a fallback 1x1 white bitmap
-                const canvas = document.createElement("canvas");
-                canvas.width = 1;
-                canvas.height = 1;
+                const canvas = new OffscreenCanvas(1, 1);
                 const ctx = canvas.getContext("2d")!;
                 ctx.fillStyle = "white";
                 ctx.fillRect(0, 0, 1, 1);
@@ -240,10 +229,7 @@ export const loadGltfScene = async (url: string) => {
                 textureBitmaps.push(bitmap);
             }
         } else {
-            // Create a fallback 1x1 white bitmap
-            const canvas = document.createElement("canvas");
-            canvas.width = 1;
-            canvas.height = 1;
+            const canvas = new OffscreenCanvas(1, 1);
             const ctx = canvas.getContext("2d")!;
             ctx.fillStyle = "white";
             ctx.fillRect(0, 0, 1, 1);
@@ -253,8 +239,6 @@ export const loadGltfScene = async (url: string) => {
     }
 
     return {
-        // boundingBoxes, // Removed unused
-        // triangles,     // Removed unused
         materials,
         vertices,
         positions,
