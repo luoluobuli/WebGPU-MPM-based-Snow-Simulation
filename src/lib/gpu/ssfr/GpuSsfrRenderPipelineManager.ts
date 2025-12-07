@@ -13,6 +13,7 @@ import ssfrSubsurfaceCombineSrc from "./ssfrSubsurfaceCombine.wgsl?raw";
 import type { GpuMpmBufferManager } from "../mpm/GpuMpmBufferManager";
 import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
 import { attachPrelude } from "$lib/gpu/shaderPrelude";
+import type { GpuPerformanceMeasurementBufferManager } from "../performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 
 const prerenderPasses: string[] = [
     "SSFR impostor render",
@@ -25,6 +26,7 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
 
     readonly uniformsManager: GpuUniformsBufferManager;
     readonly mpmManager: GpuMpmBufferManager;
+    readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
     
     private smoothedDepthTexture: GPUTexture | null = null;
     private smoothedDepthTextureView: GPUTextureView | null = null;
@@ -83,16 +85,19 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
         depthFormat,
         uniformsManager,
         mpmManager,
+        performanceMeasurementManager = null,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
         depthFormat: GPUTextureFormat,
         uniformsManager: GpuUniformsBufferManager,
         mpmManager: GpuMpmBufferManager,
+        performanceMeasurementManager?: GpuPerformanceMeasurementBufferManager | null,
     }) {
         this.device = device;
         this.uniformsManager = uniformsManager;
         this.mpmManager = mpmManager;
+        this.performanceMeasurementManager = performanceMeasurementManager;
 
         const bindGroupLayout = device.createBindGroupLayout({
             label: "ssfr render pipeline bind group layout",
@@ -819,24 +824,37 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                 view: depthTextureView,
                 depthLoadOp: "load",
                 depthStoreOp: "store",
-            }
+            },
+            
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 4,
+                    endOfPassWriteIndex: 5,
+                }
+                : undefined,
         });
         impostorPassEncoder.setBindGroup(0, this.bindGroup);
         impostorPassEncoder.setPipeline(this.renderPipeline);
         impostorPassEncoder.draw(6, this.mpmManager.nParticles, 0, 0);
         impostorPassEncoder.end();
 
-        // thickness pass accumulates particle thickness with additive blending
-        const thicknessPassDescriptor: GPURenderPassDescriptor = {
+        const thicknessPass = commandEncoder.beginRenderPass({
+            label: "ssfr thickness render pass",
             colorAttachments: [{
                 view: this.thicknessTextureView,
                 clearValue: { r: 0, g: 0, b: 0, a: 0 },
                 loadOp: "clear",
                 storeOp: "store",
             }],
-        };
-
-        const thicknessPass = commandEncoder.beginRenderPass(thicknessPassDescriptor);
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 6,
+                    endOfPassWriteIndex: 7,
+                }
+                : undefined,
+        });
         thicknessPass.setPipeline(this.thicknessPipeline);
         thicknessPass.setBindGroup(0, this.thicknessBindGroup);
         thicknessPass.draw(6, this.mpmManager.nParticles, 0, 0);
@@ -850,6 +868,13 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
 
         const computePass = commandEncoder.beginComputePass({
             label: "ssfr nrf compute pass",
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 8,
+                    endOfPassWriteIndex: 9,
+                }
+                : undefined,
         });
         computePass.setPipeline(this.nrfComputePipeline);
         computePass.setBindGroup(0, this.nrfBindGroup);

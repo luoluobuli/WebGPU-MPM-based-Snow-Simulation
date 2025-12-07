@@ -11,12 +11,12 @@ export class GpuPerformanceMeasurementBufferManager {
     }) {
         const querySet = device.createQuerySet({
             type: "timestamp",
-            count: 6,
+            count: 16,
         });
 
 
         const resolveRenderBuffer = device.createBuffer({
-            size: querySet.count * 8,
+            size: querySet.count * 32,
             usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
         });
 
@@ -42,22 +42,14 @@ export class GpuPerformanceMeasurementBufferManager {
     }
 
 
-    async mapTime() {
+    async mapTime(fn: (timestamps: BigUint64Array) => void) {
         if (this.resultBuffer.mapState === "pending") return null;
         
         await this.resultBuffer.mapAsync(GPUMapMode.READ);
 
         const startEndGpuTimestamps = new BigUint64Array(this.resultBuffer.getMappedRange());
-        const computeSimulationStepNs = startEndGpuTimestamps[1] - startEndGpuTimestamps[0];
-        const computePrerenderNs = startEndGpuTimestamps[3] - startEndGpuTimestamps[2];
-        const renderNs = startEndGpuTimestamps[5] - startEndGpuTimestamps[4];
+        fn(startEndGpuTimestamps);
 
         this.resultBuffer.unmap();
-
-        return {
-            computeSimulationStepNs,
-            computePrerenderNs,
-            renderNs,
-        };
     }
 }

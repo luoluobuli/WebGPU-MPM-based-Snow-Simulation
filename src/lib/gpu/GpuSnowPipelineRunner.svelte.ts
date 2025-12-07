@@ -19,6 +19,8 @@ import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
 import { GpuSimulationMethodType } from "./GpuSimulationMethod";
 import { GpuEnvironmentRenderPipelineManager } from "./environmentMap/GpuEnvironmentRenderPipelineManager";
 import { GpuEnvironmentTextureManager } from "./environmentMap/GpuEnvironmentTextureManager";
+import { untrack } from "svelte";
+import { PrerenderPassElapsedTime } from "$lib/components/simulationViewer/PrerenderPassElapsedTime.svelte";
 
 const MAX_SIMULATION_DRIFT_MS = 250;
 const FP_SCALE = 65536;
@@ -43,8 +45,10 @@ export class GpuSnowPipelineRunner {
     private depthTexture: GPUTexture | null = null;
 
     private renderMethod = $state<GpuRenderMethod | null>(null);
-    readonly prerenderPases = $derived(this.renderMethod?.prerenderPasses() ?? null);
-    elapsedTimes = $state<bigint[] | null>(null);
+    readonly prerenderPasses = $derived(this.renderMethod?.prerenderPasses() ?? null);
+    #prerenderElapsedTimes = $state<PrerenderPassElapsedTime[] | null>(null);
+    readonly prerenderElapsedTimes = $derived(this.#prerenderElapsedTimes);
+
 
     private readonly mpmManager: GpuMpmBufferManager;
 
@@ -127,6 +131,12 @@ export class GpuSnowPipelineRunner {
         uniformsManager.writeFixedPointScale(FP_SCALE);
         uniformsManager.writeGridMinCoords(gridMinCoords);
         uniformsManager.writeGridMaxCoords(gridMaxCoords);
+
+        this.performanceMeasurementManager = measurePerf
+            ? new GpuPerformanceMeasurementBufferManager({device})
+            : null;
+
+        this.measurePerf = measurePerf;
 
         const mpmManager = new GpuMpmBufferManager({
             device,
@@ -216,12 +226,6 @@ export class GpuSnowPipelineRunner {
         this.getSimulationMethodType = getSimulationMethodType;
         this.oneSimulationStepPerFrame = oneSimulationStepPerFrame;
 
-        this.performanceMeasurementManager = measurePerf
-            ? new GpuPerformanceMeasurementBufferManager({device})
-            : null;
-
-        this.measurePerf = measurePerf;
-
         $effect.root(() => {
             $effect(() => this.uniformsManager.writeViewProjMat(this.camera.viewProjMat));
             $effect(() => this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat));
@@ -273,6 +277,7 @@ export class GpuSnowPipelineRunner {
                             volumetricBufferManager,
                             mpmBufferManager: mpmManager,
                             environmentTextureManager,
+                            performanceMeasurementManager: this.performanceMeasurementManager,
                         });
                         break;
                     }
@@ -284,6 +289,7 @@ export class GpuSnowPipelineRunner {
                             depthFormat: "depth24plus",
                             uniformsManager,
                             mpmManager,
+                            performanceMeasurementManager: this.performanceMeasurementManager,
                         });
                         break;
 
@@ -297,6 +303,7 @@ export class GpuSnowPipelineRunner {
                             gridResolutionX,
                             gridResolutionY,
                             gridResolutionZ,
+                            performanceMeasurementManager: this.performanceMeasurementManager,
                         });
                         break;
                 }
@@ -313,6 +320,15 @@ export class GpuSnowPipelineRunner {
                 this.depthTextureView = this.depthTexture.createView();
 
                 this.renderMethod?.resize(this.device, width(), height(), this.depthTextureView);
+            });
+
+            $effect(() => {
+                const prerenderPasses = this.prerenderPasses;
+                if (prerenderPasses === null) return;
+
+                untrack(() => {
+                    this.#prerenderElapsedTimes = prerenderPasses.map(passLabel => new PrerenderPassElapsedTime(passLabel));
+                });
             });
 
 
@@ -401,16 +417,12 @@ export class GpuSnowPipelineRunner {
         computePassEncoder.end();
     }
 
-    private prerenderPassRan = false;
-
     async addRender(commandEncoder: GPUCommandEncoder) {
         if (this.renderMethod === null) return;
 
         this.uniformsManager.writeTime(Date.now());
 
-        this.prerenderPassRan = false;
         if (this.renderMethod.prerenderPasses().length > 0) {
-            this.prerenderPassRan = true;
             this.renderMethod.addPrerenderPasses(commandEncoder, this.depthTextureView);
         }
 
@@ -433,8 +445,8 @@ export class GpuSnowPipelineRunner {
             timestampWrites: this.performanceMeasurementManager !== null
                 ? {
                     querySet: this.performanceMeasurementManager.querySet,
-                    beginningOfPassWriteIndex: 4,
-                    endOfPassWriteIndex: 5,
+                    beginningOfPassWriteIndex: 2,
+                    endOfPassWriteIndex: 3,
                 }
                 : undefined,
         });
@@ -455,7 +467,6 @@ export class GpuSnowPipelineRunner {
     }: {
         onGpuTimeUpdate?: (times: {
             computeSimulationStepNs: bigint,
-            computePrerenderNs: bigint,
             renderNs: bigint,
         }) => void,
         onAnimationFrameTimeUpdate?: (ms: number) => void,
@@ -522,16 +533,22 @@ export class GpuSnowPipelineRunner {
             this.device.queue.submit([commandEncoder.finish()]);
 
             if (this.performanceMeasurementManager !== null) {
-                this.performanceMeasurementManager.mapTime()
-                    .then(times => {
-                        if (times === null) return;
-
-                        if (!this.prerenderPassRan) {
-                            times.computePrerenderNs = 0n;
+                this.performanceMeasurementManager.mapTime(timestamps => {
+                    const computeSimulationStepNs = timestamps[1] - timestamps[0];
+                    const renderNs = timestamps[3] - timestamps[2];
+                    
+                    if (this.#prerenderElapsedTimes !== null) {
+                        for (let i = 0; i < this.#prerenderElapsedTimes.length; i++) {
+                            const index = 2 * (i + 2);
+                            this.#prerenderElapsedTimes[i].elapsedTimeNs = timestamps[index + 1] - timestamps[index];
                         }
-
-                        onGpuTimeUpdate?.(times);
-                    })
+                    }
+                    
+                    onGpuTimeUpdate?.({
+                        computeSimulationStepNs,
+                        renderNs,
+                    });
+                })
                     .catch(error => {
                         console.error(error);
                         stop();

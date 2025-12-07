@@ -21,8 +21,9 @@ let {
 
     <Separator />
 
-    <h3>Elapsed time</h3>
+    <h3>Performance</h3>
 
+    <h4>Simulation</h4>
     <dl>
         <dt>GPU simulation compute pass (sample)</dt>
         <dd>
@@ -31,15 +32,26 @@ let {
                 inverseLabel="commands / s"
             />
         </dd>
+    </dl>
 
-        <dt>GPU prerender compute pass (sample)</dt>
-        <dd>
-            <ElapsedTimeDisplay
-                ns={simulationState.elapsedTime.gpuComputePrerenderTimeNs}
-                inverseLabel="commands / s"
-            />
-        </dd>
+    <h4>Prerender</h4>
 
+    <div>{simulationState.prerenderElapsedTimes?.length ?? "(unknown)"} {simulationState.prerenderElapsedTimes?.length === 1 ? "pass" : "passes"}</div>
+
+    <dl>
+        {#each simulationState.prerenderElapsedTimes as prerenderElapsedTime}
+            <dt>GPU {prerenderElapsedTime.label} pass (sample)</dt>
+            <dd>
+                <ElapsedTimeDisplay
+                    ns={prerenderElapsedTime.elapsedTimeNs ?? 0n}
+                    inverseLabel="commands / s"
+                />
+            </dd>
+        {/each}
+    </dl>
+
+    <h4>Render</h4>
+    <dl>
         <dt>GPU render pass (sample)</dt>
         <dd>
             <ElapsedTimeDisplay
@@ -47,7 +59,10 @@ let {
                 inverseLabel="commands / s"
             />
         </dd>
+    </dl>
 
+    <h4>Overall</h4>
+    <dl>
         <dt>Total animation frame time</dt>
         <dd>
             <ElapsedTimeDisplay
