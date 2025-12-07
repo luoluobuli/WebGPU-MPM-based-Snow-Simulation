@@ -494,7 +494,6 @@ export class GpuMpmPipelineManager {
                 dispatchY: gridCellDispatchY,
             });
 
-            // Fused solveConstraints + P2G (one dispatch instead of two)
             this.addDispatch({
                 computePassEncoder,
                 pipeline: this.pbmpmPipeline,
