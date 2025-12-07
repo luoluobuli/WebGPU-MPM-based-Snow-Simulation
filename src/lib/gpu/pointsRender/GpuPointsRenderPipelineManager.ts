@@ -6,6 +6,8 @@ import type { GpuRenderMethod } from "$lib/gpu/GpuRenderMethod";
 import { attachPrelude } from "$lib/gpu/shaderPrelude";
 import preludeSrc from "./prelude.wgsl?raw";
 
+const prerenderPasses: string[] = [];
+
 export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
     readonly renderPipeline: GPURenderPipeline;
 
@@ -130,8 +132,8 @@ export class GpuPointsRenderPipelineManager implements GpuRenderMethod {
         this.bindGroup = bindGroup;
     }
 
-    nPrerenderPasses(): number {
-        return 0;
+    prerenderPasses(): string[] {
+        return prerenderPasses;
     }
     
     addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView) {}

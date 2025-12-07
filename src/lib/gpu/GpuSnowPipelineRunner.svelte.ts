@@ -43,6 +43,8 @@ export class GpuSnowPipelineRunner {
     private depthTexture: GPUTexture | null = null;
 
     private renderMethod = $state<GpuRenderMethod | null>(null);
+    readonly prerenderPases = $derived(this.renderMethod?.prerenderPasses() ?? null);
+    elapsedTimes = $state<bigint[] | null>(null);
 
     private readonly mpmManager: GpuMpmBufferManager;
 
@@ -140,6 +142,9 @@ export class GpuSnowPipelineRunner {
             device, 
             vertices: collider.positions, 
             normals: collider.normals,
+            uvs: collider.uvs,
+            materialIndices: collider.materialIndices,
+            textures: collider.textures,
             indices: collider.indices,
         });
         uniformsManager.writeColliderObjects(collider.objects);
@@ -404,7 +409,7 @@ export class GpuSnowPipelineRunner {
         this.uniformsManager.writeTime(Date.now());
 
         this.prerenderPassRan = false;
-        if (this.renderMethod.nPrerenderPasses() > 0) {
+        if (this.renderMethod.prerenderPasses().length > 0) {
             this.prerenderPassRan = true;
             this.renderMethod.addPrerenderPasses(commandEncoder, this.depthTextureView);
         }

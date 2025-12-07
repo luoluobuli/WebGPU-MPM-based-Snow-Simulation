@@ -326,12 +326,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     // ===== STEP 5: Light glints with PERTURBED normal =====
     let glint = glintMask(worldPos, specularNormal, L, V);
     let glintSpec = coatSpecular(specularNormal, V, L, glint) * (0.5 + 0.5 * shadowFactor);
+    let glint_color = glintSpec * (0.35 + 0.15 * gradientNoise(worldPos * 4));
     
     // ===== Fresnel rim lighting =====
     let fresnel = pow(1 - max(dot(diffuseNormal, V), 0), 2.5);
     let rim = fresnel * 0.35 * vec3f(0.9, 0.95, 1) * shadowFactor;
     
-    var color = AMBIENT_COLOR + diffuse * 0.9 + baseSpecular + sss + glintSpec * 0.35 + rim;
+    var color = AMBIENT_COLOR + diffuse * 0.9 + baseSpecular + sss + glint_color + rim;
     
     // // Blend with ground if both visible
     // if (hitGround) {

@@ -18,6 +18,12 @@ import mcCompositeFragSrc from "./mcComposite.frag.wgsl?raw";
 import mcResetSrc from "./mcReset.cs.wgsl?raw";
 import mcClampArgsSrc from "./mcClampArgs.cs.wgsl?raw";
 
+const prerenderPasses = [
+    "marching cubes mesh generation compute",
+    "marching cubes mesh render",
+    "marching cubes mesh shading compute",
+];
+
 export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
     private readonly device: GPUDevice;
     private readonly uniformsManager: GpuUniformsBufferManager;
@@ -656,8 +662,8 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         renderPassEncoder.draw(4);
     }
 
-    nPrerenderPasses(): number {
-        return 3;
+    prerenderPasses(): string[] {
+        return prerenderPasses;
     }
     
     addPrerenderPasses(commandEncoder: GPUCommandEncoder, depthTextureView: GPUTextureView): void {

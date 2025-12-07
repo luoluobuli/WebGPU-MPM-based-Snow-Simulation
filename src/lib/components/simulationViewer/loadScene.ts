@@ -12,7 +12,8 @@
 // };
 
 import {GLTFLoader, type GLTF} from "three/addons/loaders/GLTFLoader.js";
-import { Matrix4, Matrix3, Mesh, MeshPhysicalMaterial, Object3D, Vector3 } from "three";
+import * as THREE from "three";
+import { Matrix4, Matrix3, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, Vector3 } from "three";
 
 
 const traverseChildren = (scene: Object3D, fn: (child: Object3D) => void) => {
@@ -120,7 +121,13 @@ export const loadGltfScene = async (url: string) => {
     const vertices: number[][] = [];
     const positions: number[] = [];
     const normals: number[] = [];
+    const uvs: number[] = [];
+    const materialIndices: number[] = [];
     const indices: number[] = [];
+    
+    // Collect unique textures from materials
+    const textureMap = new Map<THREE.Texture, number>();
+    const textures: THREE.Texture[] = [];
     
     // Track objects for broadphase collision
     const objects: {
@@ -137,7 +144,21 @@ export const loadGltfScene = async (url: string) => {
         
         const pos_in = child.geometry.attributes.position.array;
         const nor_in = child.geometry.attributes.normal?.array;
+        const uv_in = child.geometry.attributes.uv?.array;
         const idx_in = child.geometry.index.array;
+        
+        // Get texture from material
+        const material = child.material as MeshStandardMaterial;
+        const texture = material?.map;
+        
+        let materialIndex = 0;
+        if (texture) {
+            if (!textureMap.has(texture)) {
+                textureMap.set(texture, textures.length);
+                textures.push(texture);
+            }
+            materialIndex = textureMap.get(texture)!;
+        }
         
         const startIndex = indices.length;
         const objectMin: [number, number, number] = [Infinity, Infinity, Infinity];
@@ -174,6 +195,17 @@ export const loadGltfScene = async (url: string) => {
                 const n = new Vector3(nor_in[i], nor_in[i+1], nor_in[i+2]).applyMatrix3(invTransMat).normalize();
                 normals.push(n.x, n.y, n.z);
             }
+
+            // UVs
+            const vertIdx = i / 3;
+            if (uv_in) {
+                uvs.push(uv_in[vertIdx * 2], uv_in[vertIdx * 2 + 1]);
+            } else {
+                uvs.push(0, 0);
+            }
+            
+            // Material index for texture array
+            materialIndices.push(materialIndex);
         }
         vertexOffset += pos_in.length / 3;
 
@@ -184,6 +216,41 @@ export const loadGltfScene = async (url: string) => {
             countIndices: indices.length - startIndex,
         });
     });
+    
+    console.log(`Loaded ${textures.length} unique textures`);
+    
+    // Convert THREE.Textures to ImageBitmaps
+    const textureBitmaps: ImageBitmap[] = [];
+    for (const texture of textures) {
+        if (texture.image) {
+            try {
+                // texture.image is usually an HTMLImageElement, ImageBitmap, or HTMLCanvasElement
+                const bitmap = await createImageBitmap(texture.image);
+                textureBitmaps.push(bitmap);
+            } catch (e) {
+                console.warn("Failed to convert texture to ImageBitmap:", e);
+                // Create a fallback 1x1 white bitmap
+                const canvas = document.createElement("canvas");
+                canvas.width = 1;
+                canvas.height = 1;
+                const ctx = canvas.getContext("2d")!;
+                ctx.fillStyle = "white";
+                ctx.fillRect(0, 0, 1, 1);
+                const bitmap = await createImageBitmap(canvas);
+                textureBitmaps.push(bitmap);
+            }
+        } else {
+            // Create a fallback 1x1 white bitmap
+            const canvas = document.createElement("canvas");
+            canvas.width = 1;
+            canvas.height = 1;
+            const ctx = canvas.getContext("2d")!;
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, 1, 1);
+            const bitmap = await createImageBitmap(canvas);
+            textureBitmaps.push(bitmap);
+        }
+    }
 
     return {
         // boundingBoxes, // Removed unused
@@ -192,6 +259,9 @@ export const loadGltfScene = async (url: string) => {
         vertices,
         positions,
         normals,
+        uvs,
+        materialIndices,
+        textures: textureBitmaps,
         indices,
         objects,
     };
