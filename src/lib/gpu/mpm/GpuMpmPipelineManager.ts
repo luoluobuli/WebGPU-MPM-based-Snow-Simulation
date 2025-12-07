@@ -502,14 +502,6 @@ export class GpuMpmPipelineManager {
                 useParticles: true,
             });
 
-            // grid update (needs global synchronization)
-            this.addDispatch({
-                computePassEncoder,
-                pipeline: this.gridComputePipeline,
-                dispatchX: gridCellDispatchX,
-                dispatchY: gridCellDispatchY,
-            });
-
             // grid-to-particle (needs global synchronization)
             this.addDispatch({
                 computePassEncoder,
