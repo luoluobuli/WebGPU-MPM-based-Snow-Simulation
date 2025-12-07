@@ -11,6 +11,8 @@
 struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
+    densityGridRes: vec3u,
+    _padding: u32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -29,7 +31,7 @@ const SPECULAR_ROUGHNESS = 0.8;
 
 const SSS_COLOR = vec3f(0.8, 0.85, 0.9);
 const SSS_RADIUS = vec3f(0.36, 0.46, 0.60);
-const SSS_STRENGTH = 0.5;
+const SSS_STRENGTH = 0.85;
 
 const COAT_COLOR = vec3f(1.0, 1.0, 1.0);
 const COAT_ROUGHNESS = 0.1;
@@ -151,7 +153,7 @@ fn glintMask(worldPos: vec3f, N: vec3f, L: vec3f, V: vec3f) -> f32 {
     
     let specularFactor = pow((HdotN + 1) * 0.5, 16);
     
-    let glint_threshold = 0.4 - specularFactor * 0.2;
+    let glint_threshold = 0.6 - specularFactor * 0.4;
     return smoothstep(glint_threshold, glint_threshold + 0.1, noiseVal);
 }
 
@@ -181,20 +183,21 @@ fn sampleDensity(worldPos: vec3f) -> f32 {
         return 0;
     }
     
+    // Use densityGridRes for sampling the density grid (decoupled from MC grid)
     let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
-    let gridRes = vec3f(mcParams.mcGridRes);
+    let gridRes = vec3f(mcParams.densityGridRes);
     let cellSize = gridRange / gridRes;
     
     let posFromMin = worldPos - uniforms.gridMinCoords;
     let cellCoord = posFromMin / cellSize;
     let cellIndex = vec3i(floor(cellCoord));
     
-    if any(cellIndex < vec3i(0)) || any(cellIndex >= vec3i(mcParams.mcGridRes)) {
+    if any(cellIndex < vec3i(0)) || any(cellIndex >= vec3i(mcParams.densityGridRes)) {
         return 0;
     }
     
-    let idx = cellIndex.x + cellIndex.y * i32(mcParams.mcGridRes.x) + 
-              cellIndex.z * i32(mcParams.mcGridRes.x * mcParams.mcGridRes.y);
+    let idx = cellIndex.x + cellIndex.y * i32(mcParams.densityGridRes.x) + 
+              cellIndex.z * i32(mcParams.densityGridRes.x * mcParams.densityGridRes.y);
     
     return f32(densityGrid[idx]) / uniforms.fixedPointScale;
 }

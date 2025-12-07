@@ -1,6 +1,8 @@
 struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
+    densityGridRes: vec3u,
+    _padding: u32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -24,9 +26,9 @@ fn calculateDensity(@builtin(global_invocation_id) global_id: vec3u) {
         return;
     }
 
-    // Use MC grid resolution (downsampled from simulation grid)
+    // Use DENSITY grid resolution for particle splatting (decoupled from MC grid)
     let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
-    let gridRes = vec3f(mcParams.mcGridRes);
+    let gridRes = vec3f(mcParams.densityGridRes);
     let cellSize = gridRange / gridRes;
     
     let posFromGridMin = pos - uniforms.gridMinCoords;
@@ -46,7 +48,7 @@ fn calculateDensity(@builtin(global_invocation_id) global_id: vec3u) {
             for (var x = 0; x < 2; x++) {
                 let cellNumber = startCellNumber + vec3i(x, y, z);
 
-                if any(cellNumber < vec3i(0)) || any(cellNumber >= vec3i(mcParams.mcGridRes)) {
+                if any(cellNumber < vec3i(0)) || any(cellNumber >= vec3i(mcParams.densityGridRes)) {
                     continue;
                 }
                 
@@ -56,8 +58,8 @@ fn calculateDensity(@builtin(global_invocation_id) global_id: vec3u) {
                 let weight = wx * wy * wz;
 
                 let cellIndex = cellNumber.x 
-                    + cellNumber.y * i32(mcParams.mcGridRes.x)
-                    + cellNumber.z * i32(mcParams.mcGridRes.x * mcParams.mcGridRes.y);
+                    + cellNumber.y * i32(mcParams.densityGridRes.x)
+                    + cellNumber.z * i32(mcParams.densityGridRes.x * mcParams.densityGridRes.y);
 
                 // Use particle mass as density contribution
                 let densityContribution = u32(particle.mass * weight * uniforms.fixedPointScale);

@@ -68,6 +68,9 @@ export class GpuSnowPipelineRunner {
         gridResolutionX,
         gridResolutionY,
         gridResolutionZ,
+        mcGridResolutionX,
+        mcGridResolutionY,
+        mcGridResolutionZ,
         explicitMpmSimulationTimestepS,
         pbmpmSimulationTimestepS,
         camera,
@@ -88,6 +91,9 @@ export class GpuSnowPipelineRunner {
         gridResolutionX: number,
         gridResolutionY: number,
         gridResolutionZ: number,
+        mcGridResolutionX?: number,
+        mcGridResolutionY?: number,
+        mcGridResolutionZ?: number,
         explicitMpmSimulationTimestepS: () => number,
         pbmpmSimulationTimestepS: () => number,
         camera: Camera,
@@ -119,8 +125,8 @@ export class GpuSnowPipelineRunner {
         const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
 
-        const gridMinCoords: [number, number, number] = [-5, -5, 0];
-        const gridMaxCoords: [number, number, number] = [5, 5, 4];
+        const gridMinCoords: [number, number, number] = [-5, -5, -5];
+        const gridMaxCoords: [number, number, number] = [5, 5, 5];
 
         uniformsManager.writeGridResolution([gridResolutionX, gridResolutionY, gridResolutionZ]);
         uniformsManager.writeGridCellDims([
@@ -305,6 +311,9 @@ export class GpuSnowPipelineRunner {
                             gridResolutionX,
                             gridResolutionY,
                             gridResolutionZ,
+                            mcGridResolutionX,
+                            mcGridResolutionY,
+                            mcGridResolutionZ,
                             performanceMeasurementManager: this.performanceMeasurementManager,
                         });
                         break;

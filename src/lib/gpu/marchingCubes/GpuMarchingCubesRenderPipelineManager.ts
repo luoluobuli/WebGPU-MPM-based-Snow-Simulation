@@ -85,6 +85,9 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         gridResolutionX,
         gridResolutionY,
         gridResolutionZ,
+        mcGridResolutionX,
+        mcGridResolutionY,
+        mcGridResolutionZ,
         performanceMeasurementManager = null,
     }: {
         device: GPUDevice,
@@ -95,6 +98,9 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         gridResolutionX: number,
         gridResolutionY: number,
         gridResolutionZ: number,
+        mcGridResolutionX?: number,
+        mcGridResolutionY?: number,
+        mcGridResolutionZ?: number,
         performanceMeasurementManager?: GpuPerformanceMeasurementBufferManager | null,
     }) {
         this.device = device;
@@ -107,12 +113,16 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
             gridResolutionX,
             gridResolutionY,
             gridResolutionZ,
+            mcGridResolutionX,
+            mcGridResolutionY,
+            mcGridResolutionZ,
         });
         
         // Create MC params uniform buffer
+        // Contains: mcGridRes (vec3u) + downsampleFactor (u32) + densityGridRes (vec3u) + padding (u32)
         const mcParamsBuffer = device.createBuffer({
             label: "MC params buffer",
-            size: 16, // vec3u + u32 = 16 bytes
+            size: 32, // vec3u + u32 + vec3u + u32 = 32 bytes
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
         this.mcParamsBuffer = mcParamsBuffer;
@@ -127,9 +137,13 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         });
         device.queue.writeBuffer(this.maxVertsBuffer, 0, new Uint32Array([MAX_TOTAL_VERTICES]));
         
-        // Write MC params
-        const [mcX, mcY, mcZ] = this.bufferManager.gridResolution;
-        device.queue.writeBuffer(mcParamsBuffer, 0, new Uint32Array([mcX, mcY, mcZ, 1]));
+        // Write MC params - now includes both MC grid res and density grid res
+        const [mcX, mcY, mcZ] = this.bufferManager.mcGridResolution;
+        const [densX, densY, densZ] = this.bufferManager.densityGridResolution;
+        device.queue.writeBuffer(mcParamsBuffer, 0, new Uint32Array([
+            mcX, mcY, mcZ, 1,           // mcGridRes + downsampleFactor
+            densX, densY, densZ, 0,     // densityGridRes + padding
+        ]));
         
         const mcPrelude = `${preludeSrc}\n${triTableSrc}`;
         
@@ -592,7 +606,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         computePass.setPipeline(this.listBlocksPipeline);
         computePass.setBindGroup(0, this.listBlocksBindGroup);
         // Total blocks / 64 threads per group
-        const [gx, gy, gz] = this.bufferManager.gridResolution;
+        const [gx, gy, gz] = this.bufferManager.mcGridResolution;
         const totalBlocks = Math.ceil(gx/8) * Math.ceil(gy/8) * Math.ceil(gz/8);
         computePass.dispatchWorkgroups(totalBlocks); // One workgroup per block now
 
