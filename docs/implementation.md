@@ -3,6 +3,10 @@ Welcome to the zone of technical details! Here we'll walk through the implementa
 > [!tip]
 > Think something can be explained better? Open a pull request! :)
 
+> [!important]
+> **Prerequisites**
+> Vector calculus, transformation matrices
+
 ### Particles and external forces
 We'll start with a simple particle simulation. We'll spawn a certain number of particles making up our material. They each have their own position $\mathbf x$ in meters $\text m$, velocity $\mathbf v$ in meters per second $\dfrac {\text m}{\text s}$, and mass $m$ in kilograms $\text{kg}$.
 ```wgsl
@@ -154,7 +158,7 @@ for (var offset_z = -1i; offset_z <= 1i; offset_z++) {
 ```
 
 #### Grid update
-In this step, we'll apply forces to the grid cells based on their stored momentum and mass. If we already know what those forces $\mathbf f$ are, this step is easy: we just need to add the force to the momentum, since it turns out that $\dfrac{\mathrm d\mathbf p}{\mathrm dt} = \mathbf f$, which means we can Euler-integrate using:
+In this step, we'll apply forces to the grid cells based on their stored momentum and mass. If we already know what those forces $\mathbf f$ are, this step is easy: we just need to add the force to the momentum, since it turns out that $\dfrac{\partial \mathbf p}{\partial t} = \mathbf f$, which means we can Euler-integrate using:
 
 $$\mathbf p_\text{next} := \mathbf p + \mathbf f \cdot \Delta t$$
 
@@ -260,13 +264,29 @@ struct ParticleData {
 
 When initializing our particles, we'll want to set this to the identity matrix $\mathbf I$, representing no deformation. Over time, deformation will accumulate in this matrix as the material deforms at that point.
 
-The first thing we'll do is *modify the particle-to-grid step* to calculate the current change in deformation $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$ with respect to time at each particle. One way to think about this change in deformation is to consider how much the material's velocity $\mathbf v_\text{material}$ varies on opposite sides of the particle.
+Suppose we have an initial state of a continuous material at rest. Let's start out by "baking" or saving, into each point of the material, the current world position of that point as a reference. We'll call this saved reference position $\mathbf x_\text{material}$.
+
+This way, we can keep track of how much any given point in the material has moved at some time later in our simulation. With a continuous field of points, we can even tell at any point in space how much a material has separated, sheared, or squished by looking at nearby points!
+
+Our tool of choice for this is the derivative. In particular, we'll want to differentiate the saved positions $\mathbf x_\text{material}$ by the current world position $\mathbf x$.
+
+$$\mathbf F = \frac{\partial \mathbf x_\text{material}}{\partial \mathbf x}$$
+
+Now, our simulated material isn't exactly continuous (so we can't differentiate it), and it'd be nice to be able to access the deformation without having to do a bunch of expensive sampling (you'd have to loop through a lot of particles to find the closest ones!). So, similar to position, we'll track deformation progressively by accumulating changes in deformation over time, $\dfrac{\partial\mathbf F}{\partial t}$.
+
+Looks like this is a second-order partial derivative:
+
+$$\frac{\partial\mathbf F}{\partial t} = \frac{\partial^2\mathbf x_\text{material}}{\partial\mathbf x\partial t}$$
+
+Now, that looks an awfully lot like we can just say $\dfrac{\partial\mathbf F}{\partial t} = \dfrac{\partial\mathbf v_\text{material}}{\partial\mathbf x}$, where $\mathbf v_\text{material}$ tells us how a given point in the material is moving over time (and $\mathbf v_\text{material}$ is a good choice for us, because we can interpolate that value from our grid). That's most of the way there, actually! We'll just have to be careful since the material has already been transformed a certain way, so we'll need to locally transform something we get by $\mathbf F$ later down the line to compensate for it.
+
+The first thing we'll do is *modify the grid-to-particle step* to calculate the current change in deformation $\dfrac{\partial \mathbf F}{\partial t}$ with respect to time at each particle. One way to think about this change in deformation is to consider how much the material's velocity $\mathbf v_\text{material}$ varies on opposite sides of the particle.
 
 ![velocity field of antiparallel vectors that results in a shear](./deformation-velocity-field.png)
 
 We can tell that the velocity field above results in a shearing effect, where the area above the particle is moving rightward and the area below is moving leftward. To get our desired change in deformation, we can write the particle's basis vectors for the diagram on the right side, and then take their difference with the basis vectors on the left side:
 
-$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}
+$$\frac{\partial \mathbf F}{\partial t} = \begin{bmatrix}
     1 & 1 \\
     0 & 1
 \end{bmatrix} - \begin{bmatrix}
@@ -282,7 +302,7 @@ Also note that $\mathbf F$ is not a homogeneous transformation matrix, so it doe
 
 ![velocity field of non-antiparallel vectors that results in a shear](./deformation-velocity-field-nonantiparallel.png)
 
-$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}
+$$\frac{\partial \mathbf F}{\partial t} = \begin{bmatrix}
     1 & 0 \\
     0.25 & 1
 \end{bmatrix} - \begin{bmatrix}
@@ -297,7 +317,7 @@ And one more example, this time with compression instead of shearing:
 
 ![velocity field of parallel vectors that results in compression](./deformation-velocity-field-compression.png)
 
-$$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}
+$$\frac{\partial \mathbf F}{\partial t} = \begin{bmatrix}
     1 & 0 \\
     0 & 0.6
 \end{bmatrix} - \begin{bmatrix}
@@ -308,21 +328,21 @@ $$\frac{\mathrm d\mathbf F}{\mathrm dt} = \begin{bmatrix}
     0 & -0.4
 \end{bmatrix}$$
 
-We can probably intuit now that this change in deformation is somehow dependent on how the material's velocity vector varies with respect to position along each axis. In calculus terms, we might say we want to take the derivative of the material's velocity field $\mathbf v_\text{material}$ with respect to the position $\mathbf x$. We'll call the result of this the **velocity gradient** $\dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x}$. It turns out that the tool for differentiating a vector with respect to another vector is the **Jacobian matrix** $\mathbf J$, which is simply a matrix such that $\mathbf J_{i,j} = \dfrac{\partial\mathbf v_{\text{material},i}}{\partial\mathbf x_j}$ represents the derivative of the $i\text{th}$ component of $\mathbf v_\text{material}$ with respect to the $j\text{th}$ component of $\mathbf x$. For our 2D case:
+We can probably intuit now that this change in deformation is somehow dependent on how the material's velocity vector varies with respect to position along each axis. In calculus terms, we might say we want to take the derivative of the material's velocity field $\mathbf v_\text{material}$ with respect to the position $\mathbf x$. We'll call the result of this the **velocity gradient** $\dfrac{\partial \mathbf v_\text{material}}{\partial \mathbf x}$. It turns out that the tool for differentiating a vector with respect to another vector is the **Jacobian matrix** $\mathbf J$, which is simply a matrix such that $\mathbf J_{i,j} = \dfrac{\partial\mathbf v_{\text{material},i}}{\partial\mathbf x_j}$ represents the derivative of the $i\text{th}$ component of $\mathbf v_\text{material}$ with respect to the $j\text{th}$ component of $\mathbf x$. For our 2D case:
 
-$$\frac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x} = \begin{bmatrix}
+$$\frac{\partial \mathbf v_\text{material}}{\partial \mathbf x} = \begin{bmatrix}
     \dfrac{\partial\mathbf v_{\text{material},x}}{\partial\mathbf x_x} & \dfrac{\partial\mathbf v_{\text{material},x}}{\partial\mathbf x_y}\\
     \dfrac{\partial\mathbf v_{\text{material},y}}{\partial\mathbf x_x} & \dfrac{\partial\mathbf v_{\text{material},y}}{\partial\mathbf x_y}
 \end{bmatrix}$$
 
-...which, for both of the examples above, gives us exactly the values we had written for $\dfrac{\mathrm d\mathbf F}{\mathrm dt}$! So now we have a way to calculate the change in deformation given a velocity field, $\dfrac{\mathrm d\mathbf F}{\mathrm dt} = \dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x}$.
+...which, for both of the examples above, gives us exactly the values we had written for $\dfrac{\partial \mathbf F}{\partial t}$! So now we have a way to calculate the change in deformation given a velocity field, $\dfrac{\partial \mathbf F}{\partial t} = \dfrac{\partial \mathbf v_\text{material}}{\partial \mathbf x}$.
 
-One major assumption we made above, though, is that we're starting from the identity matrix as our deformation. In general, we'll want to locally transform the change in deformation above by our particle's existing deformation:
+One major assumption we made above is that we're starting from the identity matrix as our deformation. We'll get different results with a different starting matrix. In general, we'll want to locally transform the change in deformation above by our particle's existing deformation:
 
 $$\begin{align*}
-    \dfrac{\mathrm d\mathbf F}{\mathrm dt} = \dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x} \cdot \mathbf F
-    & \implies \mathbf F_\text{next} = \mathbf F + \dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x} \cdot \mathbf F \\
-    & \implies \mathbf F_\text{next} = \left(\mathbf I + \dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x}\right) \cdot \mathbf F
+    \dfrac{\partial \mathbf F}{\partial t} = \dfrac{\partial \mathbf v_\text{material}}{\partial \mathbf x} \cdot \mathbf F
+    & \implies \mathbf F_\text{next} = \mathbf F + \dfrac{\partial \mathbf v_\text{material}}{\partial \mathbf x} \cdot \mathbf F \\
+    & \implies \mathbf F_\text{next} = \left(\mathbf I + \dfrac{\partial \mathbf v_\text{material}}{\partial \mathbf x}\right) \cdot \mathbf F
 \end{align*}$$
 
 One problem, though: we don't exactly have a continuous velocity field to differentiate, but a set of discrete velocities at the center of each grid cell. We need some way to interpolate those grid cell velocities into a continuous field.
@@ -344,16 +364,16 @@ Think about what's going on here: given a specific configuration of grid momentu
 $$\begin{align*}
     \mathbf v_\text{material}
     &= \sum_{\Delta x = -1}^1 \sum_{\Delta y = -1}^1 \sum_{\Delta z = -1}^1 w \cdot \mathbf v_{\text{cell}}\text{ (of the cell at $(\Delta x, \Delta y, \Delta z)$)} \\
-    \dfrac{\mathrm d\mathbf F}{\mathrm dt}
-    = \dfrac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x}
-    &= \sum_{\Delta x = -1}^1 \sum_{\Delta y = -1}^1 \sum_{\Delta z = -1}^1 \dfrac{\mathrm d[w \cdot \mathbf v_{\text{cell}}]}{\mathrm d\mathbf x} \text{ (of the cell at $(\Delta x, \Delta y, \Delta z)$)}
+    \dfrac{\partial \mathbf F}{\partial t}
+    = \dfrac{\partial \mathbf v_\text{material}}{\partial \mathbf x}
+    &= \sum_{\Delta x = -1}^1 \sum_{\Delta y = -1}^1 \sum_{\Delta z = -1}^1 \dfrac{\partial [w \cdot \mathbf v_{\text{cell}}]}{\partial \mathbf x} \text{ (of the cell at $(\Delta x, \Delta y, \Delta z)$)}
 \end{align*}$$
 
 The B-spline functions we used to compute the weights, it turns out, additionally has the purpose of interpolating our velocities here in a smooth way. This makes our function easy to differentiate with respect to position, and we can even get cheap, exact values for the derivatives since the functions are all simple quadratics.
 
 Our B-spline functions were piecewise, so their derivatives are also piecewise. Let's differentiate the 3 pieces analytically with respect to the fractional position in each axis $\mathbf x_a$:
 
-$$\frac{\mathrm d}{\mathrm d\mathbf x_a}\begin{bmatrix}
+$$\frac{\partial }{\partial \mathbf x_a}\begin{bmatrix}
     0.5 \cdot (1 - \mathbf x_a)^2 \\
     0.75 - (\mathbf x_a - 0.5)^2 \\
     0.5 \cdot (\mathbf x_a)^2
@@ -365,16 +385,16 @@ $$\frac{\mathrm d}{\mathrm d\mathbf x_a}\begin{bmatrix}
 
 Just as we selected which weight $w_x, w_y, w_z$ to use for each plane of cells based on the position of that plane from a particle, we'll select which weight derivative in the same manner.
 
-Now back to the overall weight for a cell. After we multiplied the three weights $w = w_x \cdot w_y \cdot w_z$, we were able to calculate its final velocity contribution $w \cdot \mathbf v_\text{cell}$ to each particle. $\mathbf v_\text{cell}$ for a given cell is constant during the entire grid-to-particle step, so we'll mainly need to worry about differentiating $w$ with respect to position, giving us what we'll call the **weight gradient** $\dfrac{\mathrm dw}{\mathrm d\mathbf x}$. We'll need some more Jacobians for this:
+Now back to the overall weight for a cell. After we multiplied the three weights $w = w_x \cdot w_y \cdot w_z$, we were able to calculate its final velocity contribution $w \cdot \mathbf v_\text{cell}$ to each particle. $\mathbf v_\text{cell}$ for a given cell is constant during the entire grid-to-particle step, so we'll mainly need to worry about differentiating $w$ with respect to position, giving us what we'll call the **weight gradient** $\dfrac{\partial w}{\partial \mathbf x}$. We'll need some more Jacobians for this:
 
 $$\begin{align*}
-    \frac{\mathrm dw}{\mathrm d\mathbf x} &= \begin{bmatrix}
+    \frac{\partial w}{\partial \mathbf x} &= \begin{bmatrix}
         \dfrac{\partial w}{\partial \mathbf x_x} &
         \dfrac{\partial w}{\partial \mathbf x_y} &
         \dfrac{\partial w}{\partial \mathbf x_z}
     \end{bmatrix}
     \\
-    \frac{\mathrm d[w \cdot \mathbf v_\text{cell}]}{\mathrm d\mathbf x} &= \begin{bmatrix}
+    \frac{\partial [w \cdot \mathbf v_\text{cell}]}{\partial \mathbf x} &= \begin{bmatrix}
         \dfrac{\partial w}{\partial \mathbf x_x}\cdot \mathbf v_{\text{cell},x} &
         \dfrac{\partial w}{\partial \mathbf x_y}\cdot \mathbf v_{\text{cell},x} &
         \dfrac{\partial w}{\partial \mathbf x_z}\cdot \mathbf v_{\text{cell},x} \\
@@ -395,13 +415,13 @@ $$\begin{align*}
 It'll help us here to consider the overall weight in terms of the 3 individual weight factors in each axis $w_x, w_y, w_z$. Note that only $w_x$ will vary with $\mathbf x_x$, only $w_y$ will vary with $\mathbf x_y$, and only $w_z$ will vary with $\mathbf x_z$. So we can further rewrite our Jacobian as:
 
 $$\begin{align*}
-    \frac{\mathrm dw}{\mathrm d\mathbf x} &= \begin{bmatrix}
+    \frac{\partial w}{\partial \mathbf x} &= \begin{bmatrix}
         \dfrac{\partial w_x}{\partial \mathbf x_x} \cdot w_y \cdot w_z &
         w_x \cdot \dfrac{\partial w_y}{\partial \mathbf x_y} \cdot w_z &
         w_x \cdot w_y \cdot \dfrac{\partial w_z}{\partial \mathbf x_z}
     \end{bmatrix}
     \\
-    \frac{\mathrm d[w \cdot \mathbf v_\text{cell}]}{\mathrm d\mathbf x} &= \begin{bmatrix}
+    \frac{\partial [w \cdot \mathbf v_\text{cell}]}{\partial \mathbf x} &= \begin{bmatrix}
         \dfrac{\partial w_x}{\partial \mathbf x_x} \cdot w_y \cdot w_z \cdot \mathbf v_\text{cell}&
         w_x \cdot \dfrac{\partial w_y}{\partial \mathbf x_y} \cdot w_z \cdot \mathbf v_\text{cell}&
         w_x \cdot w_y \cdot \dfrac{\partial w_z}{\partial \mathbf x_z} \cdot \mathbf v_\text{cell}
@@ -412,7 +432,7 @@ $$\begin{align*}
 
 At last, we now have all the pieces we need to calculate the new deformation gradient, again doing some more Euler-integration:
 
-$$\mathbf F_\text{next} := \left(\mathbf I + \frac{\mathrm d\mathbf v_\text{material}}{\mathrm d\mathbf x} \cdot \Delta t\right) \cdot \mathbf F$$
+$$\mathbf F_\text{next} := \left(\mathbf I + \frac{\partial \mathbf v_\text{material}}{\partial \mathbf x} \cdot \Delta t\right) \cdot \mathbf F$$
 
 ```wgsl
 let weights = calculateQuadraticBSplineCellWeights(fractional_pos); // see above
