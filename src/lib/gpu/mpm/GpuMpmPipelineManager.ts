@@ -2,238 +2,183 @@ import type { GpuUniformsBufferManager } from "../uniforms/GpuUniformsBufferMana
 import p2gModuleSrc from "./particleToGrid.cs.wgsl?raw";
 import gridUpdateModuleSrc from "./gridUpdate.cs.wgsl?raw";
 import g2pModuleSrc from "./gridToParticle.cs.wgsl?raw";
-import bukkitPreludeSrc from "./bukkitPrelude.wgsl?raw";
+import sparseGridPreludeSrc from "./sparseGridPrelude.wgsl?raw";
+import mapAffectedBlocksSrc from "./mapAffectedBlocks.wgsl?raw";
+import clearHashMapSrc from "./clearHashMap.wgsl?raw";
+import clearMappedBlocksSrc from "./clearMappedBlocks.wgsl?raw";
 import pbmpmSrc from "./pbmpm.wgsl?raw";
 import integrateParticlesSrc from "./integrateParticles.wgsl?raw";
-import bukkitCountSrc from "./bukkitCount.wgsl?raw";
-import bukkitAllocateSrc from "./bukkitAllocate.wgsl?raw";
-import bukkitInsertSrc from "./bukkitInsert.wgsl?raw";
-import clearGridSrc from "./clearGrid.wgsl?raw";
+import countParticlesPerBlockSrc from "./countParticlesPerBlock.wgsl?raw";
+import computeBlockOffsetsSrc from "./computeBlockOffsets.wgsl?raw";
+import binParticlesSrc from "./binParticles.wgsl?raw";
+import clearBlockParticleCountsSrc from "./clearBlockParticleCounts.wgsl?raw";
 import { attachPrelude } from "../shaderPrelude";
 import type { GpuMpmBufferManager } from "./GpuMpmBufferManager";
 import type { GpuColliderBufferManager } from "../collider/GpuColliderBufferManager";
 import colliderPreludeModuleSrc from "./colliderPrelude.wgsl?raw";
 
 export class GpuMpmPipelineManager {
-    // Bind group layouts
-    readonly uniformsBindGroupLayout: GPUBindGroupLayout;
-    readonly uniformsAndParamsBindGroupLayout: GPUBindGroupLayout;
-    readonly gridBindGroupLayout: GPUBindGroupLayout;
-    readonly gridBindGroup: GPUBindGroup;
     readonly particleBindGroupLayout: GPUBindGroupLayout;
-    readonly particleBindGroup: GPUBindGroup;
-    readonly bukkitBindGroupLayout: GPUBindGroupLayout;
-    readonly bukkitBindGroup: GPUBindGroup;
+    readonly particleDataBindGroup: GPUBindGroup;
+    readonly sparseGridBindGroupLayout: GPUBindGroupLayout;
+    readonly sparseGridBindGroup: GPUBindGroup;
 
-    // Pipelines
-    readonly clearGridPipeline: GPUComputePipeline;
-    readonly bukkitCountPipeline: GPUComputePipeline;
-    readonly bukkitAllocatePipeline: GPUComputePipeline;
-    readonly bukkitInsertPipeline: GPUComputePipeline;
+    readonly clearHashMapPipeline: GPUComputePipeline;
+    readonly mapAffectedBlocksPipeline: GPUComputePipeline;
+    readonly clearMappedBlocksPipeline: GPUComputePipeline;
     readonly p2gComputePipeline: GPUComputePipeline;
     readonly gridComputePipeline: GPUComputePipeline;
     readonly g2pComputePipeline: GPUComputePipeline;
     readonly integrateParticlesPipeline: GPUComputePipeline;
+    readonly countParticlesPerBlockPipeline: GPUComputePipeline;
+    readonly computeBlockOffsetsPipeline: GPUComputePipeline;
+    readonly binParticlesPipeline: GPUComputePipeline;
+    readonly clearBlockParticleCountsPipeline: GPUComputePipeline;
     readonly pbmpmPipeline: GPUComputePipeline;
 
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly mpmManager: GpuMpmBufferManager;
-    private readonly device: GPUDevice;
 
     constructor({
         device,
+        particleDataBuffer,
+        sparseGridBuffer,
+        gridMassBuffer,
+        gridMomentumXBuffer,
+        gridMomentumYBuffer,
+        gridMomentumZBuffer,
+        sortedParticleIndicesBuffer,
         uniformsManager,
         mpmManager,
         colliderManager,
     }: {
         device: GPUDevice,
+        particleDataBuffer: GPUBuffer,
+        sparseGridBuffer: GPUBuffer,
+        gridMassBuffer: GPUBuffer,
+        gridMomentumXBuffer: GPUBuffer,
+        gridMomentumYBuffer: GPUBuffer,
+        gridMomentumZBuffer: GPUBuffer,
+        sortedParticleIndicesBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
         mpmManager: GpuMpmBufferManager,
         colliderManager: GpuColliderBufferManager,
     }) {
-        this.device = device;
-        this.uniformsManager = uniformsManager;
-        this.mpmManager = mpmManager;
+        const sparseGridBindGroupLayout = device.createBindGroupLayout({
+            label: "MPM sparse grid bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+            ],
+        });
 
         uniformsManager.writeColliderNumIndices(colliderManager.numIndices);
 
-        // Uniforms bind group layout (includes bukkit params)
-        this.uniformsBindGroupLayout = device.createBindGroupLayout({
-            label: "MPM uniforms bind group layout",
-            entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
-            ],
-        });
 
-        // 1. Uniforms + Bukkit Params Bind Group Layout
-        this.uniformsAndParamsBindGroupLayout = device.createBindGroupLayout({
-            label: "MPM uniforms and params bind group layout",
+        const sparseGridBindGroup = device.createBindGroup({
+            label: "MPM sparse grid bind group",
+            layout: sparseGridBindGroupLayout,
             entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
-            ],
-        });
-
-        // Grid bind group layout (dense grid + collider)
-        this.gridBindGroupLayout = device.createBindGroupLayout({
-            label: "MPM grid bind group layout",
-            entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // bukkitCounts / insertCounters
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // bukkitDispatch
-                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // bukkitThreadData
-                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // grid_mass
-                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // grid_momentum_x
-                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // grid_momentum_y
-                { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // grid_momentum_z
-                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // bukkitParticleAllocator
-                { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // bukkitIndexStart
-                { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // collider
-            ],
-        });
-
-        this.gridBindGroup = device.createBindGroup({
-            label: "MPM grid bind group",
-            layout: this.gridBindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: mpmManager.bukkitCountBuffer } },
-                { binding: 1, resource: { buffer: mpmManager.bukkitDispatchBuffer } },
-                { binding: 2, resource: { buffer: mpmManager.bukkitThreadDataBuffer } },
-                { binding: 3, resource: { buffer: mpmManager.gridMassBuffer } },
-                { binding: 4, resource: { buffer: mpmManager.gridMomentumXBuffer } },
-                { binding: 5, resource: { buffer: mpmManager.gridMomentumYBuffer } },
-                { binding: 6, resource: { buffer: mpmManager.gridMomentumZBuffer } },
-                { binding: 7, resource: { buffer: mpmManager.bukkitParticleAllocatorBuffer } },
-                { binding: 8, resource: { buffer: mpmManager.bukkitIndexStartBuffer } },
+                { binding: 0, resource: { buffer: sparseGridBuffer } },
+                { binding: 3, resource: { buffer: gridMassBuffer } },
+                { binding: 4, resource: { buffer: gridMomentumXBuffer } },
+                { binding: 5, resource: { buffer: gridMomentumYBuffer } },
+                { binding: 6, resource: { buffer: gridMomentumZBuffer } },
                 { binding: 9, resource: { buffer: colliderManager.colliderDataBuffer } },
             ],
         });
 
-        // Bukkit-specific bind group for insert counters
-        this.bukkitBindGroupLayout = device.createBindGroupLayout({
-            label: "MPM bukkit bind group layout",
+
+
+        const particleBindGroupLayout = device.createBindGroupLayout({
+            label: "simulation step storage bind group layout",
             entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // insertCounters
-                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // indexStart
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage",
+                    },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage",
+                    },
+                },
+            ],
+        });
+        
+        const particleBindGroup = device.createBindGroup({
+            label: "simulation step storage bind group",
+            layout: particleBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: {
+                        buffer: particleDataBuffer,
+                    },
+                },
+                {
+                    binding: 1,
+                    resource: {
+                        buffer: sortedParticleIndicesBuffer,
+                    },
+                },
             ],
         });
 
-        this.bukkitBindGroup = device.createBindGroup({
-            label: "MPM bukkit bind group",
-            layout: this.bukkitBindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: mpmManager.bukkitInsertCountersBuffer } },
-                { binding: 4, resource: { buffer: mpmManager.bukkitIndexStartBuffer } },
-            ],
-        });
 
-        // Particle bind group layout
-        this.particleBindGroupLayout = device.createBindGroupLayout({
-            label: "MPM particle bind group layout",
-            entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-            ],
-        });
-
-        this.particleBindGroup = device.createBindGroup({
-            label: "MPM particle bind group",
-            layout: this.particleBindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: mpmManager.particleDataBuffer } },
-                { binding: 1, resource: { buffer: mpmManager.sortedParticleIndicesBuffer } },
-            ],
-        });
-
-        // Create pipeline layouts
-        const gridOnlyPipelineLayout = device.createPipelineLayout({
-            label: "grid only pipeline layout",
-            bindGroupLayouts: [uniformsManager.bindGroupLayout, this.gridBindGroupLayout],
+        const sparseGridPipelineLayout = device.createPipelineLayout({
+            label: "sparse grid pipeline layout",
+            bindGroupLayouts: [uniformsManager.bindGroupLayout, sparseGridBindGroupLayout],
         });
 
         const particlePipelineLayout = device.createPipelineLayout({
             label: "particle pipeline layout",
-            bindGroupLayouts: [uniformsManager.bindGroupLayout, this.gridBindGroupLayout, this.particleBindGroupLayout],
+            bindGroupLayouts: [uniformsManager.bindGroupLayout, sparseGridBindGroupLayout, particleBindGroupLayout],
         });
 
-        const bukkitCountLayout = device.createPipelineLayout({
-            label: "bukkit count pipeline layout",
-            bindGroupLayouts: [
-                this.uniformsAndParamsBindGroupLayout, // Group 0
-                device.createBindGroupLayout({         // Group 1 (only needs bukkitCountBuffer)
-                    entries: [
-                        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-                    ],
-                }),
-                this.particleBindGroupLayout,          // Group 2
-            ],
-        });
 
-        const bukkitAllocateLayout = device.createPipelineLayout({
-             label: "bukkit allocate pipeline layout",
-             bindGroupLayouts: [
-                 this.uniformsAndParamsBindGroupLayout, // Group 0
-                 this.gridBindGroupLayout,             // Group 1
-             ]
-        });
 
-        const bukkitInsertLayout = device.createPipelineLayout({
-            label: "bukkit insert pipeline layout",
-            bindGroupLayouts: [
-                this.uniformsAndParamsBindGroupLayout, // Group 0
-                this.bukkitBindGroupLayout,            // Group 1
-                this.particleBindGroupLayout,          // Group 2
-            ],
-        });
-
-        // Create shaders
-        const fullPrelude = attachPrelude(bukkitPreludeSrc);
-
-        this.clearGridPipeline = device.createComputePipeline({
-            label: "clear grid pipeline",
-            layout: gridOnlyPipelineLayout,
+        this.clearHashMapPipeline = device.createComputePipeline({
+            label: "clear hash map pipeline",
+            layout: sparseGridPipelineLayout,
             compute: {
                 module: device.createShaderModule({
-                    label: "clear grid module",
-                    code: fullPrelude + clearGridSrc,
+                    label: "clear hash map module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${clearHashMapSrc}`),
                 }),
-                entryPoint: "clearGrid",
+                entryPoint: "clearHashMap",
             },
         });
 
-        this.bukkitCountPipeline = device.createComputePipeline({
-            label: "bukkit count pipeline",
-            layout: bukkitCountLayout,
+        this.mapAffectedBlocksPipeline = device.createComputePipeline({
+            label: "map affected blocks pipeline",
+            layout: particlePipelineLayout,
             compute: {
                 module: device.createShaderModule({
-                    label: "bukkit count module",
-                    code: fullPrelude + bukkitCountSrc,
+                    label: "map affected blocks module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${mapAffectedBlocksSrc}`),
                 }),
-                entryPoint: "bukkitCount",
+                entryPoint: "mapAffectedBlocks",
             },
         });
 
-        this.bukkitAllocatePipeline = device.createComputePipeline({
-            label: "bukkit allocate pipeline",
-            layout: bukkitAllocateLayout,
+        this.clearMappedBlocksPipeline = device.createComputePipeline({
+            label: "clear mapped blocks pipeline",
+            layout: sparseGridPipelineLayout,
             compute: {
                 module: device.createShaderModule({
-                    label: "bukkit allocate module",
-                    code: fullPrelude + bukkitAllocateSrc,
+                    label: "clear mapped blocks module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${clearMappedBlocksSrc}`),
                 }),
-                entryPoint: "bukkitAllocate",
-            },
-        });
-
-        this.bukkitInsertPipeline = device.createComputePipeline({
-            label: "bukkit insert pipeline",
-            layout: bukkitInsertLayout,
-            compute: {
-                module: device.createShaderModule({
-                    label: "bukkit insert module",
-                    code: fullPrelude + bukkitInsertSrc,
-                }),
-                entryPoint: "bukkitInsert",
+                entryPoint: "clearMappedBlocks",
             },
         });
 
@@ -243,7 +188,7 @@ export class GpuMpmPipelineManager {
             compute: {
                 module: device.createShaderModule({
                     label: "particle to grid module",
-                    code: fullPrelude + p2gModuleSrc,
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${p2gModuleSrc}`),
                 }),
                 entryPoint: "doParticleToGrid",
             },
@@ -251,11 +196,11 @@ export class GpuMpmPipelineManager {
 
         this.gridComputePipeline = device.createComputePipeline({
             label: "grid update pipeline",
-            layout: gridOnlyPipelineLayout,
+            layout: sparseGridPipelineLayout,
             compute: {
                 module: device.createShaderModule({
                     label: "grid update module",
-                    code: fullPrelude + gridUpdateModuleSrc,
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${gridUpdateModuleSrc}`),
                 }),
                 entryPoint: "doGridUpdate",
             },
@@ -267,7 +212,7 @@ export class GpuMpmPipelineManager {
             compute: {
                 module: device.createShaderModule({
                     label: "grid to particle module",
-                    code: fullPrelude + g2pModuleSrc,
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${g2pModuleSrc}`),
                 }),
                 entryPoint: "doGridToParticle",
             },
@@ -279,9 +224,57 @@ export class GpuMpmPipelineManager {
             compute: {
                 module: device.createShaderModule({
                     label: "integrate particles module",
-                    code: attachPrelude(`${colliderPreludeModuleSrc}\n${bukkitPreludeSrc}\n${integrateParticlesSrc}`),
+                    code: attachPrelude(`${colliderPreludeModuleSrc}\n${sparseGridPreludeSrc}\n${integrateParticlesSrc}`),
                 }),
                 entryPoint: "integrateParticles",
+            },
+        });
+
+        this.countParticlesPerBlockPipeline = device.createComputePipeline({
+            label: "count particles per block pipeline",
+            layout: particlePipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "count particles per block module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${countParticlesPerBlockSrc}`),
+                }),
+                entryPoint: "countParticlesPerBlock",
+            },
+        });
+
+        this.computeBlockOffsetsPipeline = device.createComputePipeline({
+            label: "compute block offsets pipeline",
+            layout: sparseGridPipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "compute block offsets module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${computeBlockOffsetsSrc}`),
+                }),
+                entryPoint: "computeBlockOffsets",
+            },
+        });
+
+        this.binParticlesPipeline = device.createComputePipeline({
+            label: "bin particles pipeline",
+            layout: particlePipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "bin particles module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${binParticlesSrc}`),
+                }),
+                entryPoint: "binParticles",
+            },
+        });
+
+        this.clearBlockParticleCountsPipeline = device.createComputePipeline({
+            label: "clear block particle counts pipeline",
+            layout: sparseGridPipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "clear block particle counts module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${clearBlockParticleCountsSrc}`),
+                }),
+                entryPoint: "clearBlockParticleCounts",
             },
         });
 
@@ -291,20 +284,26 @@ export class GpuMpmPipelineManager {
             compute: {
                 module: device.createShaderModule({
                     label: "pbmpm fused module",
-                    code: fullPrelude + pbmpmSrc,
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${pbmpmSrc}`),
                 }),
                 entryPoint: "pbmpm",
             },
         });
+
+        this.particleBindGroupLayout = particleBindGroupLayout;
+        this.particleDataBindGroup = particleBindGroup;
+        this.sparseGridBindGroupLayout = sparseGridBindGroupLayout;
+        this.sparseGridBindGroup = sparseGridBindGroup;
+        this.uniformsManager = uniformsManager;
+        this.mpmManager = mpmManager;
     }
 
-    // Helper to add a dispatch with standard bind groups
     addDispatch({
         computePassEncoder,
         pipeline,
         dispatchX,
-        dispatchY = 1,
-        dispatchZ = 1,
+        dispatchY,
+        dispatchZ,
         useParticles = false,
     }: {
         computePassEncoder: GPUComputePassEncoder,
@@ -316,89 +315,185 @@ export class GpuMpmPipelineManager {
     }) {
         computePassEncoder.setPipeline(pipeline);
         computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
-        computePassEncoder.setBindGroup(1, this.gridBindGroup);
+        computePassEncoder.setBindGroup(1, this.sparseGridBindGroup);
         if (useParticles) {
-            computePassEncoder.setBindGroup(2, this.particleBindGroup);
+            computePassEncoder.setBindGroup(2, this.particleDataBindGroup);
         }
         computePassEncoder.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ);
     }
 
-    // PBMPM simulation step with bukkit-based spatial partitioning
-    addPbmpmDispatches({
+    addExplicitMpmDispatches({
         computePassEncoder,
+        hashMapSize,
+        nBlocksInHashMap,
         nParticles,
     }: {
         computePassEncoder: GPUComputePassEncoder,
+        hashMapSize: number,
+        nBlocksInHashMap: number,
         nParticles: number,
     }) {
-        const bukkitCountX = this.mpmManager.bukkitCountX;
-        const bukkitCountY = this.mpmManager.bukkitCountY;
-        const bukkitCountZ = this.mpmManager.bukkitCountZ;
-        const totalGridCells = this.mpmManager.totalGridCells;
+        const gridCellDispatchX = 256;
+        const gridCellDispatchY = Math.ceil(nBlocksInHashMap / gridCellDispatchX);
+
+        // clear grid
+
+        // clear mapping table
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.clearHashMapPipeline,
+            dispatchX: Math.ceil(hashMapSize / 256),
+        });
+
+        // determine which blocks in a grid are populated
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.mapAffectedBlocksPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        // sort particles
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.clearBlockParticleCountsPipeline,
+            dispatchX: Math.ceil(this.mpmManager.nMaxBlocksInHashMap / 256),
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.countParticlesPerBlockPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.computeBlockOffsetsPipeline,
+            dispatchX: 1,
+        });
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.binParticlesPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        // clear cells
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.clearMappedBlocksPipeline,
+            dispatchX: gridCellDispatchX,
+            dispatchY: gridCellDispatchY,
+        });
+
+        
+        // particle-to-grid
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.p2gComputePipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        // grid update
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.gridComputePipeline,
+            dispatchX: gridCellDispatchX,
+            dispatchY: gridCellDispatchY,
+        });
+
+        // grid-to-particle
+
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.g2pComputePipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
+        // Integrate Particles (Update Pos + Deformation + Handle Collision)
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.integrateParticlesPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+    }
+
+
+    addPbmpmDispatches({
+        computePassEncoder,
+        nParticles,
+        nBlocksInHashMap,
+        hashMapSize,
+    }: {
+        computePassEncoder: GPUComputePassEncoder,
+        nParticles: number,
+        nBlocksInHashMap: number,
+        hashMapSize: number,
+    }) {
+        const gridCellDispatchX = 256;
+        const gridCellDispatchY = Math.ceil(nBlocksInHashMap / gridCellDispatchX);
 
         const nSolveConstraintIterations = 3;
 
-        // Create shared bind group for uniforms + bukkitParams
-        const uniformsAndParamsBindGroup = this.device.createBindGroup({
-            label: "uniforms and params bind group",
-            layout: this.uniformsAndParamsBindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: this.uniformsManager.buffer } },
-                { binding: 1, resource: { buffer: this.mpmManager.bukkitParamsBuffer } },
-            ],
-        });
+        // determine which blocks in a grid are populated
 
-        // 1. Clear grid
+        // clear mapping table
         this.addDispatch({
             computePassEncoder,
-            pipeline: this.clearGridPipeline,
-            dispatchX: Math.ceil(totalGridCells / 256),
+            pipeline: this.clearHashMapPipeline,
+            dispatchX: Math.ceil(hashMapSize / 256),
         });
 
-        // Note: Clear bukkit buffers is done via encoder.clearBuffer() in the calling code
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.mapAffectedBlocksPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
 
-        // 2. Count particles per bukkit
-        computePassEncoder.setPipeline(this.bukkitCountPipeline);
-        computePassEncoder.setBindGroup(0, uniformsAndParamsBindGroup);
-        computePassEncoder.setBindGroup(1, this.device.createBindGroup({
-            layout: this.bukkitCountPipeline.getBindGroupLayout(1),
-            entries: [
-                { binding: 0, resource: { buffer: this.mpmManager.bukkitCountBuffer } },
-            ],
-        }));
-        computePassEncoder.setBindGroup(2, this.particleBindGroup);
-        computePassEncoder.dispatchWorkgroups(Math.ceil(nParticles / 256));
+        // Sort particles
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.clearBlockParticleCountsPipeline,
+            dispatchX: Math.ceil(100000 / 256), // nMaxBlocksInHashMap
+        });
 
-        // 3. Allocate thread data
-        // Uses bukkitAllocatePipeline which needs:
-        // Group 0: uniformsAndParamsBindGroup
-        // Group 1: gridBindGroup (includes all bukkit/grid buffers needed by allocate)
-        computePassEncoder.setPipeline(this.bukkitAllocatePipeline);
-        computePassEncoder.setBindGroup(0, uniformsAndParamsBindGroup);
-        computePassEncoder.setBindGroup(1, this.gridBindGroup);
-        computePassEncoder.dispatchWorkgroups(
-            Math.ceil(bukkitCountX / 8),
-            Math.ceil(bukkitCountY / 8),
-            Math.ceil(bukkitCountZ / 4)
-        );
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.countParticlesPerBlockPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
 
-        // 4. Insert particles into sorted order
-        computePassEncoder.setPipeline(this.bukkitInsertPipeline);
-        computePassEncoder.setBindGroup(0, uniformsAndParamsBindGroup);
-        computePassEncoder.setBindGroup(1, this.bukkitBindGroup);
-        computePassEncoder.setBindGroup(2, this.particleBindGroup);
-        computePassEncoder.dispatchWorkgroups(Math.ceil(nParticles / 256));
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.computeBlockOffsetsPipeline,
+            dispatchX: 1,
+        });
 
-        // 5. PBMPM iterations
+        this.addDispatch({
+            computePassEncoder,
+            pipeline: this.binParticlesPipeline,
+            dispatchX: Math.ceil(nParticles / 256),
+            useParticles: true,
+        });
+
         for (let i = 0; i < nSolveConstraintIterations; i++) {
             // Clear grid each iteration
             this.addDispatch({
                 computePassEncoder,
-                pipeline: this.clearGridPipeline,
-                dispatchX: Math.ceil(totalGridCells / 256),
+                pipeline: this.clearMappedBlocksPipeline,
+                dispatchX: gridCellDispatchX,
+                dispatchY: gridCellDispatchY,
             });
 
-            // Fused solve constraints + P2G
             this.addDispatch({
                 computePassEncoder,
                 pipeline: this.pbmpmPipeline,
@@ -406,7 +501,7 @@ export class GpuMpmPipelineManager {
                 useParticles: true,
             });
 
-            // G2P
+            // grid-to-particle (needs global synchronization)
             this.addDispatch({
                 computePassEncoder,
                 pipeline: this.g2pComputePipeline,
@@ -415,7 +510,6 @@ export class GpuMpmPipelineManager {
             });
         }
 
-        // 6. Integrate particles
         this.addDispatch({
             computePassEncoder,
             pipeline: this.integrateParticlesPipeline,
@@ -423,53 +517,24 @@ export class GpuMpmPipelineManager {
             useParticles: true,
         });
     }
-
-    // Explicit MPM (non-PBMPM) dispatches
-    addExplicitMpmDispatches({
-        computePassEncoder,
-        nParticles,
-    }: {
-        computePassEncoder: GPUComputePassEncoder,
-        nParticles: number,
-    }) {
-        const totalGridCells = this.mpmManager.totalGridCells;
-
-        // Clear grid
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.clearGridPipeline,
-            dispatchX: Math.ceil(totalGridCells / 256),
-        });
-
-        // P2G
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.p2gComputePipeline,
-            dispatchX: Math.ceil(nParticles / 256),
-            useParticles: true,
-        });
-
-        // Grid update
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.gridComputePipeline,
-            dispatchX: Math.ceil(totalGridCells / 256),
-        });
-
-        // G2P
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.g2pComputePipeline,
-            dispatchX: Math.ceil(nParticles / 256),
-            useParticles: true,
-        });
-
-        // Integrate particles
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.integrateParticlesPipeline,
-            dispatchX: Math.ceil(nParticles / 256),
-            useParticles: true,
-        });
-    }
+    
+    // addIndirectDispatch({
+    //     computePassEncoder,
+    //     pipeline,
+    //     indirectBuffer,
+    //     useParticles = false,
+    // }: {
+    //     computePassEncoder: GPUComputePassEncoder,
+    //     pipeline: GPUComputePipeline,
+    //     indirectBuffer: GPUBuffer,
+    //     useParticles?: boolean,
+    // }) {
+    //     computePassEncoder.setPipeline(pipeline);
+    //     computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+    //     computePassEncoder.setBindGroup(1, this.sparseGridBindGroup);
+    //     if (useParticles) {
+    //         computePassEncoder.setBindGroup(2, this.particleDataBindGroup);
+    //     }
+    //     computePassEncoder.dispatchWorkgroupsIndirect(indirectBuffer, 0);
+    // }
 }

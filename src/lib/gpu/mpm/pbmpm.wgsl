@@ -1,11 +1,10 @@
-// pbmpm.wgsl - Fused SolveConstraints + P2G shader with dense grid
-// Uses O(1) direct grid indexing instead of hash map lookups
+// pbmpmFused.wgsl - Fused SolveConstraints + P2G shader
+// Only fuses solveConstraints and P2G since grid operations require global synchronization
+// gridUpdate and G2P remain separate passes
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
-@group(1) @binding(0) var<storage, read_write> bukkitCounts: array<u32>;
-@group(1) @binding(1) var<storage, read_write> bukkitDispatch: array<u32>;
-@group(1) @binding(2) var<storage, read_write> bukkitThreadData: array<BukkitThreadData>;
+@group(1) @binding(0) var<storage, read_write> sparse_grid: SparseGridStorage;
 @group(1) @binding(3) var<storage, read_write> grid_mass: array<atomic<i32>>;
 @group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<atomic<i32>>;
 @group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<atomic<i32>>;
@@ -52,9 +51,8 @@ fn transferParticlesToGrid(particle: ptr<function, ParticleData>) {
                 let cell_number = start_cell_number + vec3i(offsetX, offsetY, offsetZ);
                 if !cellNumberInGridRange(cell_number) { continue; }
 
-                // O(1) lookup - no hash map!
-                let cell_index = cellToGridIndex(cell_number);
-                if cell_index == 0xFFFFFFFFu { continue; }
+                let cell_index = calculateCellIndexFromCellNumber(cell_number);
+                if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                 
                 // w
                 let cell_weight = cell_weights[u32(offsetX + 1)].x
@@ -68,10 +66,10 @@ fn transferParticlesToGrid(particle: ptr<function, ParticleData>) {
 
                 let momentum = weighted_mass * ((*particle).pos_displacement + affine_displacement) / uniforms.simulationTimestep;
 
-                atomicAdd(&grid_momentum_x[cell_index], encodeFixedPoint(momentum.x, uniforms.fixedPointScale));
-                atomicAdd(&grid_momentum_y[cell_index], encodeFixedPoint(momentum.y, uniforms.fixedPointScale));
-                atomicAdd(&grid_momentum_z[cell_index], encodeFixedPoint(momentum.z, uniforms.fixedPointScale));
-                atomicAdd(&grid_mass[cell_index], encodeFixedPoint(weighted_mass, uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_x[cell_index], i32(momentum.x * uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_y[cell_index], i32(momentum.y * uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_z[cell_index], i32(momentum.z * uniforms.fixedPointScale));
+                atomicAdd(&grid_mass[cell_index], i32(weighted_mass * uniforms.fixedPointScale));
             }
         }
     }
@@ -90,9 +88,8 @@ fn updateGrid(particle: ptr<function, ParticleData>) {
                 let cell_number = start_cell_number + vec3i(offsetX, offsetY, offsetZ);
                 if !cellNumberInGridRange(cell_number) { continue; }
 
-                // O(1) lookup - no hash map!
-                let cell_index = cellToGridIndex(cell_number);
-                if cell_index == 0xFFFFFFFFu { continue; }
+                let cell_index = calculateCellIndexFromCellNumber(cell_number);
+                if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                 
                 let cell_weight = cell_weights[u32(offsetX + 1)].x
                     * cell_weights[u32(offsetY + 1)].y
@@ -141,9 +138,9 @@ fn updateGrid(particle: ptr<function, ParticleData>) {
 
                 let momentum_change = forces * weighted_mass * uniforms.simulationTimestep;
 
-                atomicAdd(&grid_momentum_x[cell_index], encodeFixedPoint(momentum_change.x, uniforms.fixedPointScale));
-                atomicAdd(&grid_momentum_y[cell_index], encodeFixedPoint(momentum_change.y, uniforms.fixedPointScale));
-                atomicAdd(&grid_momentum_z[cell_index], encodeFixedPoint(momentum_change.z, uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_x[cell_index], i32(momentum_change.x * uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_y[cell_index], i32(momentum_change.y * uniforms.fixedPointScale));
+                atomicAdd(&grid_momentum_z[cell_index], i32(momentum_change.z * uniforms.fixedPointScale));
             }
         }
     }
@@ -163,9 +160,19 @@ fn pbmpm(
     let particle_index = sortedParticleIndices[thread_index];
     var particle = particle_data[particle_index];
 
-    solveParticleConstraints(&particle);
-    transferParticlesToGrid(&particle);
-    updateGrid(&particle);
+    // for (var i = 0u; i < 4; i++) {
+        // clearGrid();
+        solveParticleConstraints(&particle);
+        //workgroupBarrier();
+    
+        transferParticlesToGrid(&particle);
+        //workgroupBarrier();
+
+        updateGrid(&particle);
+        //workgroupBarrier();
+        // transferGridToParticles(&particle);
+    // }
+    // updateParticle(&particle);
 
     particle_data[particle_index] = particle;
 }

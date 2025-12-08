@@ -1,6 +1,6 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
-// Dense grid bind group (no sparse_grid buffer needed)
+@group(1) @binding(0) var<storage, read_write> sparse_grid: SparseGridStorage;
 @group(1) @binding(3) var<storage, read_write> grid_mass: array<i32>;
 @group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<i32>;
 @group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<i32>;
@@ -37,9 +37,8 @@ fn doGridToParticle(
                     let cell_number = start_cell_number + vec3i(offsetX, offsetY, offsetZ);
                     if !cellNumberInGridRange(cell_number) { continue; }
 
-                    // O(1) direct indexing - no hash map!
-                    let cell_index = cellToGridIndex(cell_number);
-                    if cell_index == 0xFFFFFFFFu { continue; }
+                    let cell_index = calculateCellIndexFromCellNumber(cell_number);
+                    if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                     
                     let cell_mass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
                     if cell_mass <= 0 { continue; }
@@ -97,9 +96,8 @@ fn doGridToParticle(
                     let cell_number = start_cell_number + vec3i(offsetX, offsetY, offsetZ);
                     if !cellNumberInGridRange(cell_number) { continue; }
 
-                    // O(1) direct indexing - no hash map!
-                    let cell_index = cellToGridIndex(cell_number);
-                    if cell_index == 0xFFFFFFFFu { continue; }
+                    let cell_index = calculateCellIndexFromCellNumber(cell_number);
+                    if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
                     
                     let cell_mass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
                     if cell_mass <= 0 { continue; }
