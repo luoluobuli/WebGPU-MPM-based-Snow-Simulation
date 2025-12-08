@@ -15,18 +15,13 @@ struct MCParams {
 @workgroup_size(256)
 fn calculateDensity(@builtin(global_invocation_id) global_id: vec3u) {
     let particleIndex = global_id.x;
-    if particleIndex >= arrayLength(&particleData) {
-        return;
-    }
+    if particleIndex >= arrayLength(&particleData) { return; }
 
     let particle = particleData[particleIndex];
     let pos = particle.pos;
 
-    if any(pos < uniforms.gridMinCoords) || any(pos >= uniforms.gridMaxCoords) {
-        return;
-    }
+    if any(pos < uniforms.gridMinCoords) || any(pos >= uniforms.gridMaxCoords) { return; }
 
-    // Use DENSITY grid resolution for particle splatting (decoupled from MC grid)
     let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
     let gridRes = vec3f(mcParams.densityGridRes);
     let cellSize = gridRange / gridRes;
@@ -34,23 +29,21 @@ fn calculateDensity(@builtin(global_invocation_id) global_id: vec3u) {
     let posFromGridMin = pos - uniforms.gridMinCoords;
     let posCell = posFromGridMin / cellSize;
     
-    // Splat density to surrounding cells using trilinear weights
     let posCellCenter = posCell - 0.5;
     let startCellNumber = vec3i(floor(posCellCenter));
     let fractionalPos = posCellCenter - vec3f(startCellNumber);
     
-    // Compute weights for trilinear interpolation
-    let w0 = 1.0 - fractionalPos;
+    let w0 = 1 - fractionalPos;
     let w1 = fractionalPos;
 
     for (var z = 0; z < 2; z++) {
         for (var y = 0; y < 2; y++) {
             for (var x = 0; x < 2; x++) {
+                workgroupBarrier();
+                
                 let cellNumber = startCellNumber + vec3i(x, y, z);
 
-                if any(cellNumber < vec3i(0)) || any(cellNumber >= vec3i(mcParams.densityGridRes)) {
-                    continue;
-                }
+                if any(cellNumber < vec3i(0)) || any(cellNumber >= vec3i(mcParams.densityGridRes)) { continue; }
                 
                 let wx = select(w0.x, w1.x, x == 1);
                 let wy = select(w0.y, w1.y, y == 1);

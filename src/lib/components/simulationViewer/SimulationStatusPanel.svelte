@@ -54,6 +54,13 @@ const nPrerenderPasses = $derived(simulationState.prerenderElapsedTimes?.length)
         />
     </perf-item>
 
+    <perf-item>
+        <perf-label>GPU postprocess render pass (sample)</perf-label>
+        <ElapsedTimeDisplay
+            ns={simulationState.elapsedTime.gpuPostprocessRenderTimeNs}
+        />
+    </perf-item>
+
     <h4>Overall</h4>
     <perf-item>
         <perf-label>Total animation frame time</perf-label>

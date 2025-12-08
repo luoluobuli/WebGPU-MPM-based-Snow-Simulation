@@ -38,18 +38,16 @@ fn listBlocks(
     let blockIdx = group_id.x;
     
     let gridRes = mcParams.mcGridRes;
-    let blocksPerAxis = (gridRes + vec3u(BLOCK_SIZE - 1u)) / BLOCK_SIZE;
-    let totalBlocks = blocksPerAxis.x * blocksPerAxis.y * blocksPerAxis.z;
+    let n_blocks_per_axis = (gridRes + vec3u(BLOCK_SIZE - 1)) / BLOCK_SIZE;
+    let totalBlocks = n_blocks_per_axis.x * n_blocks_per_axis.y * n_blocks_per_axis.z;
     
-    if (blockIdx >= totalBlocks) {
-        return;
-    }
+    if blockIdx >= totalBlocks { return; }
     
     // Calculate block coordinate
-    let bz = blockIdx / (blocksPerAxis.x * blocksPerAxis.y);
-    let rem = blockIdx % (blocksPerAxis.x * blocksPerAxis.y);
-    let by = rem / blocksPerAxis.x;
-    let bx = rem % blocksPerAxis.x;
+    let bz = blockIdx / (n_blocks_per_axis.x * n_blocks_per_axis.y);
+    let rem = blockIdx % (n_blocks_per_axis.x * n_blocks_per_axis.y);
+    let by = rem / n_blocks_per_axis.x;
+    let bx = rem % n_blocks_per_axis.x;
     let blockCoord = vec3i(i32(bx), i32(by), i32(bz));
     
     let startCell = blockCoord * 8;
@@ -62,10 +60,8 @@ fn listBlocks(
     
     for (var i = 0u; i < 16u; i++) {
         let itemIdx = local_idx + i * 64u;
-        if (itemIdx < numItems) {
-            // Early exit if already active? (Optional optimization, but barrier overhead)
-            // Just check.
-            
+
+        if itemIdx < numItems {
             // Map linear 0..999 to 3D -1..8
             let iz = i32(itemIdx / 100u);
             let rem2 = i32(itemIdx % 100u);
@@ -81,7 +77,7 @@ fn listBlocks(
             let densityCellF = vec3f(cellI) * vec3f(densityRes) / vec3f(gridRes);
             let densityCellI = vec3i(floor(densityCellF));
             
-            if (all(densityCellI >= vec3i(0)) && all(densityCellI < vec3i(densityRes))) {
+            if all(densityCellI >= vec3i(0)) && all(densityCellI < vec3i(densityRes)) {
                 let cellU = vec3u(densityCellI);
                 let idx = cellU.x + cellU.y * densityRes.x + cellU.z * densityRes.x * densityRes.y;
                 if (densityGrid[idx] > 0u) {
@@ -89,14 +85,12 @@ fn listBlocks(
                 }
             }
         }
+
+        workgroupBarrier();
     }
     
-    workgroupBarrier();
-    
-    if (local_idx == 0u) {
-        if (atomicLoad(&s_blockActive) > 0u) {
-            let index = atomicAdd(&indirectDispatch.x, 1u);
-            activeBlocks[index] = blockIdx;
-        }
+    if local_idx == 0u && atomicLoad(&s_blockActive) > 0 {
+        let index = atomicAdd(&indirectDispatch.x, 1u);
+        activeBlocks[index] = blockIdx;
     }
 }

@@ -15,5 +15,8 @@ fn frag(in: VertexOut) -> @location(0) vec4f {
     let ray = calculateViewRay(in.uv, vec2u(dims));
     let spherical_uv = normalizedSphericalFromRayDir(ray.dir);
 
-    return textureLoad(environment_texture, vec2u(spherical_uv * vec2f(dims)), 0);
+    return vec4f(
+        textureLoad(environment_texture, vec2u(spherical_uv * vec2f(dims)), 0).rgb * 1.2,
+        1,
+    );
 }

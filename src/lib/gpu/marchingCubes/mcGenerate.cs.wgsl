@@ -83,12 +83,12 @@ fn generateMesh(
     let blockCoord = vec3i(i32(bx), i32(by), i32(bz));
     
     let baseCell = blockCoord * 8;
-    let num_loads = 729u;
+    const N_LOADS = 9u * 9u * 9u;
     
     // Cooperative load
     for (var i = 0u; i < 3u; i++) {
         let idx = local_idx + i * 256u;
-        if (idx < num_loads) {
+        if idx < N_LOADS {
             let lz = i32(idx / 81u);
             let rem2 = i32(idx % 81u);
             let ly = rem2 / 9;
@@ -98,9 +98,10 @@ fn generateMesh(
             s_vertexDensity[idx] = getGlobalVertexDensity(vPos);
             s_vertexGradient[idx] = getGlobalVertexGradient(vPos);
         }
+
+        workgroupBarrier();
     }
     
-    workgroupBarrier();
 
     // Loop
     let num_cells = 512u; // 8^3
@@ -122,7 +123,7 @@ fn generateMesh(
             let lx = cx; let ly = cy; let lz = cz;
             let cellGlobal = baseCell + vec3i(cx, cy, cz);
             
-            if (all(cellGlobal < vec3i(gridRes))) {
+            if all(cellGlobal < vec3i(gridRes)) {
                 var densities: array<f32, 8>;
                 densities[0] = s_vertexDensity[sharedIndex(lx, ly, lz)];
                 densities[1] = s_vertexDensity[sharedIndex(lx+1, ly, lz)];
@@ -143,9 +144,10 @@ fn generateMesh(
                 }
             }
         }
+
+        workgroupBarrier();
     }
     
-    workgroupBarrier();
     
     if (local_idx == 0u) {
         let totalWgCount = atomicLoad(&wgVertexCount);
@@ -157,7 +159,7 @@ fn generateMesh(
     workgroupBarrier();
     
     let baseIdx = wgBaseVertexIdx;
-    let MAX_VERTICES = 10500000u; // Matches buffer (~3.5M tris * 3)
+    let MAX_VERTICES = 10500000u; // TODO don't hardcode
     
     // Output pass
     for (var i = 0u; i < 2u; i++) {
@@ -226,6 +228,7 @@ fn generateMesh(
                     if (nLen > 0.0001) {
                         normal = -normalVec / nLen;
                     }
+
                     
                     let globalVertIdx = baseIdx + myOffset + t * 3u + v;
                     if (globalVertIdx < MAX_VERTICES) {
@@ -238,8 +241,11 @@ fn generateMesh(
                         outputVertices[floatIdx + 4u] = normal.y;
                         outputVertices[floatIdx + 5u] = normal.z;
                     }
+                    
+                    workgroupBarrier();
                 }
             }
         }
+        workgroupBarrier();
     }
 }

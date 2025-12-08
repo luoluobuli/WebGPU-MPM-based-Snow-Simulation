@@ -93,6 +93,7 @@ export class SimulationState {
             onGpuTimeUpdate: (times) => {
                 this.elapsedTime.gpuComputeSimulationStepTimeNs = times.computeSimulationStepNs;
                 this.elapsedTime.gpuRenderTimeNs = times.renderNs;
+                this.elapsedTime.gpuPostprocessRenderTimeNs = times.postprocessRenderNs;
             },
             onUserControlUpdate: () => {
                 const speed = 0.02;

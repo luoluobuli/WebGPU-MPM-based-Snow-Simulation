@@ -19,7 +19,6 @@ struct MCParams {
 @group(1) @binding(3) var<uniform> mcParams: MCParams;
 @group(1) @binding(4) var<storage, read> activeBlocks: array<u32>;
 
-const DENSITY_SCALE = 65536.0;
 const BLOCK_SIZE = 8u;
 
 // Get density from a cell in the DENSITY grid (at densityGridRes)
@@ -29,7 +28,7 @@ fn getDensityGridValue(cellCoord: vec3i) -> f32 {
         return 0.0;
     }
     let idx = cellCoord.x + cellCoord.y * res.x + cellCoord.z * res.x * res.y;
-    return f32(densityGrid[idx]) / DENSITY_SCALE;
+    return f32(densityGrid[idx]) / uniforms.fixedPointScale;
 }
 
 // Sample density at a world position using trilinear interpolation from density grid
@@ -99,11 +98,11 @@ fn computeVertexDensity(
     
     // No need for shared memory loading anymore - we sample directly
     
-    let num_vertices = 729u; // 9^3
+    const N_VERTICES = 9u * 9u * 9u;
     
     for (var i = 0u; i < 3u; i++) {
         let v_idx = local_idx + i * 256u;
-        if (v_idx < num_vertices) {
+        if v_idx < N_VERTICES {
             let lz = i32(v_idx / 81u);
             let rem2 = i32(v_idx % 81u);
             let ly = rem2 / 9;
@@ -137,23 +136,14 @@ fn computeVertexDensity(
                 let dz = sampleDensityAtWorldPos(worldPos + vec3f(0.0, 0.0, eps.z)) - 
                          sampleDensityAtWorldPos(worldPos - vec3f(0.0, 0.0, eps.z));
                          
-                // Normalize gradient? Original code divided by count/divisor which was sort of normalizing
-                // Here we just store the gradient vector. It doesn't need to be normalized yet, mesh gen will normalize.
-                // But we should scale it to be somewhat consistent with original scale
-                // Original used simple sum differences. Here we use actual differences.
-                // Let's just store the vector.
                 
-                // Normalize and pack gradient
                 let grad = vec4f(dx, dy, dz, 0.0);
-                var packedGrad = 0u;
-                if (length(grad.xyz) > 1e-6) {
-                    packedGrad = pack4x8snorm(normalize(grad));
-                } else {
-                    packedGrad = 0u;
-                }
+                var packedGrad = select(0u, pack4x8snorm(normalize(grad)), dot(grad.xyz, grad.xyz) > 0);
                 
                 vertexGradient[globalIdx] = packedGrad;
             }
         }
+
+        workgroupBarrier();
     }
 }

@@ -21,6 +21,7 @@ import { GpuEnvironmentRenderPipelineManager } from "./environmentMap/GpuEnviron
 import { GpuEnvironmentTextureManager } from "./environmentMap/GpuEnvironmentTextureManager";
 import { untrack } from "svelte";
 import { PrerenderPassElapsedTime } from "$lib/components/simulationViewer/PrerenderPassElapsedTime.svelte";
+import { GpuSsaoPipelineManager } from "./ssao/GpuSsaoPipelineManager";
 
 const MAX_SIMULATION_DRIFT_MS = 250;
 const FP_SCALE = 65536;
@@ -41,6 +42,7 @@ export class GpuSnowPipelineRunner {
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
     private readonly environmentRenderPipelineManager: GpuEnvironmentRenderPipelineManager;
+    private readonly ssaoPipelineManager: GpuSsaoPipelineManager;
 
     private depthTexture: GPUTexture | null = null;
 
@@ -157,7 +159,7 @@ export class GpuSnowPipelineRunner {
         const colliderManager = new GpuColliderBufferManager({
             device, 
             vertices: collider.positions, 
-            normals: collider.normals,
+            normals: collider.normals, 
             uvs: collider.uvs,
             materialIndices: collider.materialIndices,
             textures: collider.textures,
@@ -230,6 +232,11 @@ export class GpuSnowPipelineRunner {
         });
         this.environmentRenderPipelineManager = environmentRenderPipelineManager;
 
+        this.ssaoPipelineManager = new GpuSsaoPipelineManager({
+            device,
+            format,
+            uniformsManager,
+        });
 
         this.getSimulationMethodType = getSimulationMethodType;
         this.oneSimulationStepPerFrame = oneSimulationStepPerFrame;
@@ -331,6 +338,7 @@ export class GpuSnowPipelineRunner {
                 this.depthTextureView = this.depthTexture.createView();
 
                 this.renderMethod?.resize(this.device, width(), height(), this.depthTextureView);
+                this.ssaoPipelineManager.resize(this.depthTextureView);
             });
 
             $effect(() => {
@@ -437,6 +445,8 @@ export class GpuSnowPipelineRunner {
             this.renderMethod.addPrerenderPasses(commandEncoder, this.depthTextureView);
         }
 
+        const screenView = this.context.getCurrentTexture().createView();
+
         const renderPassEncoder = commandEncoder.beginRenderPass({
             label: "particles render pass",
             colorAttachments: [
@@ -444,7 +454,7 @@ export class GpuSnowPipelineRunner {
                     clearValue: { r: 0, g: 0, b: 0, a: 0 },
                     loadOp: "clear",
                     storeOp: "store",
-                    view: this.context.getCurrentTexture().createView(),
+                    view: screenView,
                 },
             ],
             depthStencilAttachment: {
@@ -469,6 +479,27 @@ export class GpuSnowPipelineRunner {
         this.renderMethod.addCompositeDraw(renderPassEncoder);
 
         renderPassEncoder.end();
+
+        const ssaoPassEncoder = commandEncoder.beginRenderPass({
+            label: "ssao render pass",
+            colorAttachments: [
+                {
+                    view: screenView,
+                    loadOp: "load",
+                    storeOp: "store",
+                },
+            ],
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 4,
+                    endOfPassWriteIndex: 5,
+                }
+                : undefined,
+        });
+
+        this.ssaoPipelineManager.addDraw(ssaoPassEncoder);
+        ssaoPassEncoder.end();
     }
 
     loop({
@@ -479,6 +510,7 @@ export class GpuSnowPipelineRunner {
         onGpuTimeUpdate?: (times: {
             computeSimulationStepNs: bigint,
             renderNs: bigint,
+            postprocessRenderNs: bigint,
         }) => void,
         onAnimationFrameTimeUpdate?: (ms: number) => void,
         onUserControlUpdate?: () => void,
@@ -547,10 +579,11 @@ export class GpuSnowPipelineRunner {
                 this.performanceMeasurementManager.mapTime(timestamps => {
                     const computeSimulationStepNs = timestamps[1] - timestamps[0];
                     const renderNs = timestamps[3] - timestamps[2];
+                    const postprocessRenderNs = timestamps[5] - timestamps[4];
                     
                     if (this.#prerenderElapsedTimes !== null) {
                         for (let i = 0; i < this.#prerenderElapsedTimes.length; i++) {
-                            const index = 2 * (i + 2);
+                            const index = 2 * (i + 3);
                             this.#prerenderElapsedTimes[i].elapsedTimeNs = timestamps[index + 1] - timestamps[index];
                         }
                     }
@@ -558,6 +591,7 @@ export class GpuSnowPipelineRunner {
                     onGpuTimeUpdate?.({
                         computeSimulationStepNs,
                         renderNs,
+                        postprocessRenderNs,
                     });
                 })
                     .catch(error => {
