@@ -6,6 +6,7 @@ struct FSIn {
     @location(0) normal: vec3<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) @interpolate(flat) materialIndex: u32,
+    @location(3) pos: vec3f,
 };
 
 @fragment
@@ -17,7 +18,9 @@ fn frag(in: FSIn) -> @location(0) vec4<f32> {
     let lightDir = normalize(vec3f(1.0, -1.0, -1.0));
     let lightColor = vec3f(0.97, 0.99, 1);
 
-    let normal = normalize(in.normal);
+    var normal = normalize(in.normal);
+    normal = normalize(normal - fbmNoise(in.pos * 16, 8) * 0.2);
+
     let diffuse = max(-dot(normal, lightDir), 0) * texture_color_linear;
     
     const AMBIENT_COLOR = vec3f(0.1, 0.12, 0.15);

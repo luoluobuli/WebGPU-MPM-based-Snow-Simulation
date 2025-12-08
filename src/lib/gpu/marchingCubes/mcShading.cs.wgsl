@@ -47,52 +47,6 @@ const NOISE_STRENGTH_DETAIL = 0.3;
 const N_SHADOW_STEPS = 32u;
 const EXTINCTION_COEFFICIENT = 8.;
 
-fn hash31(p: vec3f) -> f32 {
-    var p3 = fract(p * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-}
-
-fn hash33(p: vec3f) -> vec3f {
-    var p3 = fract(p * vec3f(0.1031, 0.1030, 0.0973));
-    p3 += dot(p3, p3.yxz + 33.33);
-    return fract((p3.xxy + p3.yxx) * p3.zyx);
-}
-
-fn gradientNoise(p: vec3f) -> f32 {
-    let i = floor(p);
-    let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f);
-    
-    return mix(
-        mix(
-            mix(hash31(i + vec3f(0,0,0)), hash31(i + vec3f(1,0,0)), u.x),
-            mix(hash31(i + vec3f(0,1,0)), hash31(i + vec3f(1,1,0)), u.x),
-            u.y
-        ),
-        mix(
-            mix(hash31(i + vec3f(0,0,1)), hash31(i + vec3f(1,0,1)), u.x),
-            mix(hash31(i + vec3f(0,1,1)), hash31(i + vec3f(1,1,1)), u.x),
-            u.y
-        ),
-        u.z
-    ) * 2 - 1;
-}
-
-fn fbmNoise(p: vec3f, octaves: i32) -> f32 {
-    var value = 0.0;
-    var amplitude = 0.5;
-    var frequency = 1.0;
-    var pos = p;
-    
-    for (var i = 0; i < octaves; i++) {
-        value += amplitude * gradientNoise(pos * frequency);
-        frequency *= 2;
-        amplitude *= 0.5;
-    }
-    return value;
-}
-
 // for normal preturbation
 fn noiseGradient(p: vec3f, scale: f32, octaves: i32) -> vec3f {
     const EPSILON = 1e-6;
