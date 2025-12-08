@@ -37,7 +37,7 @@ fn frag(input: FragmentInput) -> @location(0) vec4f {
     
     const SSAO_RADIUS = 0.5;
     const SSAO_BIAS = 0.15;
-    const N_SSAO_SAMPLES = 48u;
+    const N_SSAO_SAMPLES = 16u;
 
 
     var occlusion = 0.;
@@ -73,9 +73,7 @@ fn frag(input: FragmentInput) -> @location(0) vec4f {
             let distToOrigin = distance(position, occluderPos);
             let rangeCheck = smoothstep(0, 1, SSAO_RADIUS / (distToOrigin + 0.001));
             
-            if distOccluderToCam < distSampleToCam - SSAO_BIAS {
-                occlusion += rangeCheck;
-            }
+            occlusion += select(0, rangeCheck, distOccluderToCam < distSampleToCam - SSAO_BIAS);
         }
     }
     
