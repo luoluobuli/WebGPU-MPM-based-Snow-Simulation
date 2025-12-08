@@ -153,13 +153,13 @@ fn pbmpm(
     // for (var i = 0u; i < 4; i++) {
         // clearGrid();
         solveParticleConstraints(&particle);
-        workgroupBarrier();
+        //workgroupBarrier();
     
         transferParticlesToGrid(&particle);
-        workgroupBarrier();
+        //workgroupBarrier();
 
         updateGrid(&particle);
-        workgroupBarrier();
+        //workgroupBarrier();
         // transferGridToParticles(&particle);
     // }
     // updateParticle(&particle);
