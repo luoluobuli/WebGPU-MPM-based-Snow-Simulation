@@ -583,7 +583,7 @@ export class GpuSnowPipelineRunner {
                     
                     if (this.#prerenderElapsedTimes !== null) {
                         for (let i = 0; i < this.#prerenderElapsedTimes.length; i++) {
-                            const index = 2 * (i + 2);
+                            const index = 2 * (i + 3);
                             this.#prerenderElapsedTimes[i].elapsedTimeNs = timestamps[index + 1] - timestamps[index];
                         }
                     }
