@@ -21,6 +21,7 @@ import { GpuEnvironmentRenderPipelineManager } from "./environmentMap/GpuEnviron
 import { GpuEnvironmentTextureManager } from "./environmentMap/GpuEnvironmentTextureManager";
 import { untrack } from "svelte";
 import { PrerenderPassElapsedTime } from "$lib/components/simulationViewer/PrerenderPassElapsedTime.svelte";
+import { GpuSsaoPipelineManager } from "./ssao/GpuSsaoPipelineManager";
 
 const MAX_SIMULATION_DRIFT_MS = 250;
 const FP_SCALE = 65536;
@@ -34,13 +35,14 @@ export class GpuSnowPipelineRunner {
     private readonly camera: Camera;
     private depthTextureView: GPUTextureView;
 
-    private readonly uniformsManager: GpuUniformsBufferManager;
+    readonly uniformsManager: GpuUniformsBufferManager;
     private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
     private readonly mpmPipelineManager: GpuMpmPipelineManager;
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
     private readonly environmentRenderPipelineManager: GpuEnvironmentRenderPipelineManager;
+    private readonly ssaoPipelineManager: GpuSsaoPipelineManager;
 
     private depthTexture: GPUTexture | null = null;
 
@@ -157,7 +159,7 @@ export class GpuSnowPipelineRunner {
         const colliderManager = new GpuColliderBufferManager({
             device, 
             vertices: collider.positions, 
-            normals: collider.normals,
+            normals: collider.normals, 
             uvs: collider.uvs,
             materialIndices: collider.materialIndices,
             textures: collider.textures,
@@ -230,6 +232,11 @@ export class GpuSnowPipelineRunner {
         });
         this.environmentRenderPipelineManager = environmentRenderPipelineManager;
 
+        this.ssaoPipelineManager = new GpuSsaoPipelineManager({
+            device,
+            format,
+            uniformsManager,
+        });
 
         this.getSimulationMethodType = getSimulationMethodType;
         this.oneSimulationStepPerFrame = oneSimulationStepPerFrame;
@@ -331,6 +338,7 @@ export class GpuSnowPipelineRunner {
                 this.depthTextureView = this.depthTexture.createView();
 
                 this.renderMethod?.resize(this.device, width(), height(), this.depthTextureView);
+                this.ssaoPipelineManager.resize(this.depthTextureView);
             });
 
             $effect(() => {
@@ -437,6 +445,8 @@ export class GpuSnowPipelineRunner {
             this.renderMethod.addPrerenderPasses(commandEncoder, this.depthTextureView);
         }
 
+        const screenView = this.context.getCurrentTexture().createView();
+
         const renderPassEncoder = commandEncoder.beginRenderPass({
             label: "particles render pass",
             colorAttachments: [
@@ -444,7 +454,7 @@ export class GpuSnowPipelineRunner {
                     clearValue: { r: 0, g: 0, b: 0, a: 0 },
                     loadOp: "clear",
                     storeOp: "store",
-                    view: this.context.getCurrentTexture().createView(),
+                    view: screenView,
                 },
             ],
             depthStencilAttachment: {
@@ -469,6 +479,20 @@ export class GpuSnowPipelineRunner {
         this.renderMethod.addCompositeDraw(renderPassEncoder);
 
         renderPassEncoder.end();
+
+        const ssaoPassEncoder = commandEncoder.beginRenderPass({
+            label: "ssao render pass",
+            colorAttachments: [
+                {
+                    view: screenView,
+                    loadOp: "load",
+                    storeOp: "store",
+                },
+            ],
+        });
+
+        this.ssaoPipelineManager.addDraw(ssaoPassEncoder);
+        ssaoPassEncoder.end();
     }
 
     loop({
