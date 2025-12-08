@@ -126,7 +126,7 @@ fn updateGrid(particle: ptr<function, ParticleData>) {
                         // 1: Attract
                         else {
                             let falloff = 1 - falloff_linear * falloff_linear;
-                            applied_force = -push_dir * uniforms.interactionStrength * falloff;
+                            applied_force = -push_dir * uniforms.interactionStrength * falloff * (1 - falloff);
                         }
 
                         forces += applied_force;

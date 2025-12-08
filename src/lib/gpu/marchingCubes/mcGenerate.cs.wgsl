@@ -21,7 +21,7 @@ struct IndirectDrawArgs {
 @group(1) @binding(4) var<uniform> mcParams: MCParams;
 @group(1) @binding(5) var<storage, read> activeBlocks: array<u32>;
 
-const ISOVALUE = 0.08; 
+const ISOVALUE = 0.15;
 const BLOCK_SIZE = 8u;
 
 fn vertexIndex(coord: vec3i) -> u32 {

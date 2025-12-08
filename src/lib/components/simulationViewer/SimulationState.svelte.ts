@@ -3,7 +3,7 @@ import { onDestroy, onMount } from "svelte";
 import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner.svelte";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
-import modelUrl from "$lib/assets/models/snow.glb?url";
+import modelUrl from "$lib/assets/models/snow2.glb?url";
 import colliderUrl from "$lib/assets/models/forest_scaled.glb?url";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
@@ -19,9 +19,9 @@ export class SimulationState {
     height = $state(150);
 
     nParticles = $state(30_000);
-    gridResolutionX = $state(128);
-    gridResolutionY = $state(128);
-    gridResolutionZ = $state(128);
+    gridResolutionX = $state(256);
+    gridResolutionY = $state(256);
+    gridResolutionZ = $state(256);
     explicitMpmSimulationTimestepS = $state(1 / 192);
     pbmpmSimulationTimestepS = $state(1 / 384);
     transformMat = $state(mat4.identity());

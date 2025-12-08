@@ -100,17 +100,19 @@ fn doGridUpdate(
                     dir = normalize(offset);
                 }
                 
-                let falloff = 1.0 - (dist / uniforms.interactionRadius);
+                let falloff_linear = dist / uniforms.interactionRadius;
                 var accel = vec3f(0.0);
 
                 
                 // 1. Attract
                 if (uniforms.interactionMode == 1u) {
-                     accel = -dir * uniforms.interactionStrength * falloff / 3.0;
+                    let falloff = 1 - falloff_linear * falloff_linear;
+                     accel = -dir * uniforms.interactionStrength * falloff * (1 - falloff);
                 }
                 // 0. Repel (Default)
                 else {
-                    accel = dir * uniforms.interactionStrength * falloff / 3.0; 
+                    let falloff = 1 - falloff_linear * falloff_linear;
+                    accel = dir * uniforms.interactionStrength * falloff; 
                 }
 
                 cell_velocity += accel * uniforms.simulationTimestep;

@@ -42,11 +42,11 @@ fn scatterParticles(
     @builtin(global_invocation_id) globalId: vec3u,
 ) {
     let threadIndex = globalId.x;
-    if threadIndex >= arrayLength(&particles) { return; }
+    // if threadIndex >= arrayLength(&particles) { return; }
 
 
 
-    const REJECTION_SAMPLING_N_MAX_ATTEMPTS = 128u;
+    const REJECTION_SAMPLING_N_MAX_ATTEMPTS = 512u;
 
     let nTriangles = arrayLength(&meshVertices) / 3;
     var seed = hash4(vec4u(threadIndex, 100, 200, 300));
@@ -57,7 +57,7 @@ fn scatterParticles(
         if pointInsideMesh(candidatePos, nTriangles) { break; }
     }
 
-    //workgroupBarrier();
+    workgroupBarrier();
 
     let noiseScale = 0.1;
     let NOISE_FREQ = 4.;

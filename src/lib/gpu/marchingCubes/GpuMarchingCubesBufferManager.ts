@@ -19,7 +19,6 @@ export class GpuMarchingCubesBufferManager {
     readonly blockIndirectDispatchBuffer: GPUBuffer;
     readonly mcGridResolution: [number, number, number];
     readonly densityGridResolution: [number, number, number];
-    readonly simulationGridDims: [number, number, number];
     
     constructor({
         device,
@@ -39,16 +38,19 @@ export class GpuMarchingCubesBufferManager {
         mcGridResolutionZ?: number,
     }) {
          this.device = device;
-        this.simulationGridDims = [gridResolutionX, gridResolutionY, gridResolutionZ];
         
         // Density grid uses SIMULATION resolution for consistent particle splatting
         // This is decoupled from MC grid resolution
-        this.densityGridResolution = [gridResolutionX, gridResolutionY, gridResolutionZ];
+        this.densityGridResolution = [
+            Math.floor(gridResolutionX * 0.5),
+            Math.floor(gridResolutionY * 0.5),
+            Math.floor(gridResolutionZ * 0.5),
+        ];
         
         // MC mesh resolution (can be different from density grid)
-        const mcResX = mcGridResolutionX ?? Math.floor(gridResolutionX * 1.45);
-        const mcResY = mcGridResolutionY ?? Math.floor(gridResolutionY * 1.45);
-        const mcResZ = mcGridResolutionZ ?? Math.floor(gridResolutionZ * 1.45);
+        const mcResX = mcGridResolutionX ?? Math.floor(gridResolutionX * 0.5);
+        const mcResY = mcGridResolutionY ?? Math.floor(gridResolutionY * 0.5);
+        const mcResZ = mcGridResolutionZ ?? Math.floor(gridResolutionZ * 0.5);
         this.mcGridResolution = [mcResX, mcResY, mcResZ];
         
         this.vertexBuffer = device.createBuffer({

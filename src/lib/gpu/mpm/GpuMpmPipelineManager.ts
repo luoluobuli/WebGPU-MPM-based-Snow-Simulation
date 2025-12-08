@@ -73,6 +73,7 @@ export class GpuMpmPipelineManager {
                 { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+                { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
             ],
         });
 
@@ -89,6 +90,7 @@ export class GpuMpmPipelineManager {
                 { binding: 5, resource: { buffer: gridMomentumYBuffer } },
                 { binding: 6, resource: { buffer: gridMomentumZBuffer } },
                 { binding: 9, resource: { buffer: colliderManager.colliderDataBuffer } },
+                { binding: 10, resource: { buffer: colliderManager.colliderBvhBuffer } },
             ],
         });
 
