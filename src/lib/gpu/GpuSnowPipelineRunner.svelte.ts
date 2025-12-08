@@ -152,6 +152,9 @@ export class GpuSnowPipelineRunner {
         const mpmManager = new GpuMpmBufferManager({
             device,
             nParticles,
+            gridResolutionX,
+            gridResolutionY,
+            gridResolutionZ,
         });
         this.mpmManager = mpmManager;
 
@@ -188,13 +191,6 @@ export class GpuSnowPipelineRunner {
 
         const mpmPipelineManager = new GpuMpmPipelineManager({
             device,
-            particleDataBuffer: mpmManager.particleDataBuffer,
-            sparseGridBuffer: mpmManager.sparseGridBuffer,
-            gridMassBuffer: mpmManager.gridMassBuffer,
-            gridMomentumXBuffer: mpmManager.gridMomentumXBuffer,
-            gridMomentumYBuffer: mpmManager.gridMomentumYBuffer,
-            gridMomentumZBuffer: mpmManager.gridMomentumZBuffer,
-            sortedParticleIndicesBuffer: mpmManager.sortedParticleIndicesBuffer,
             uniformsManager,
             mpmManager,
             colliderManager,
@@ -424,8 +420,6 @@ export class GpuSnowPipelineRunner {
                 case GpuSimulationMethodType.ExplicitMpm:
                     this.mpmPipelineManager.addExplicitMpmDispatches({
                         computePassEncoder,
-                        hashMapSize: this.mpmManager.hashMapSize,
-                        nBlocksInHashMap: this.mpmManager.nMaxBlocksInHashMap,
                         nParticles: this.mpmManager.nParticles,
                     });
                     break;
@@ -434,8 +428,6 @@ export class GpuSnowPipelineRunner {
                     this.mpmPipelineManager.addPbmpmDispatches({
                         computePassEncoder,
                         nParticles: this.mpmManager.nParticles,
-                        nBlocksInHashMap: this.mpmManager.nMaxBlocksInHashMap,
-                        hashMapSize: this.mpmManager.hashMapSize,
                     });
                     break;
             }

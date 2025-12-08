@@ -2,9 +2,8 @@
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
-@group(1) @binding(0) var<storage, read_write> sparse_grid: SparseGridStorage;
+// Grid bind group - we only need the collider, not sparse_grid
 @group(1) @binding(9) var<storage, read> colliderData: array<u32>;
-
 
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
 
