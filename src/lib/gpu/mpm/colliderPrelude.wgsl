@@ -155,7 +155,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
     let min_b = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMinCoords, 1.0)).xyz; 
     let max_b = (uniforms.colliderTransformMat * vec4f(uniforms.colliderMaxCoords, 1.0)).xyz;
     
-    let margin = 0.05;
+    let margin = 0.02;
     let safety_min = min(min_b, max_b) - vec3f(margin);
     let safety_max = max(min_b, max_b) + vec3f(margin);
     
@@ -294,7 +294,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
     let velocity_scale_fac = 0.2 / uniforms.simulationTimestep;
 
     if has_hit {
-        let surface_margin = 0.05;
+        let surface_margin = 0.02;
         let snap_pos = hit_pos + hit_normal * surface_margin;
             
         (*particle).pos = snap_pos;
@@ -305,7 +305,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
         
         let v_n = vn * hit_normal;
         let v_t = v_rel - v_n;
-        let friction = 0.1;
+        let friction = uniforms.colliderFriction;
         
         var new_vel: vec3f;
         if vn < 0.0 {
@@ -336,7 +336,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
 
         let v_n = vn * push_dir;
         let v_t = v_rel - v_n;
-        let friction = 0.0;
+        let friction = uniforms.colliderFriction;
         
         var new_vel: vec3f;
         if vn < 0.0 {
@@ -348,7 +348,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
         (*particle).vel = new_vel;
         (*particle).pos_displacement = new_vel * uniforms.simulationTimestep;
         
-        let surface_margin = 0.05;
+        let surface_margin = 0.02;
         if dist < surface_margin {
             (*particle).pos = closest_pos + push_dir * surface_margin;
         }

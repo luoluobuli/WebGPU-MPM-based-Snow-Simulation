@@ -47,7 +47,7 @@ struct Uniforms {
     isInteracting: u32, // 516
     
     interactionMode: u32, // 520
-    _pad_interaction2: f32, // 524 -> 528
+    colliderFriction: f32, // 524 -> 528
     
     interactionDir: vec3f, // 528
     _pad_interaction3: f32, // 540 -> 544

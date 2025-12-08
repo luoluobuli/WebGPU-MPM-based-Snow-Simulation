@@ -120,9 +120,11 @@ export class SimulationState {
     isInteracting = $state(false);
     interactionPos = $state<[number, number, number]>([0, 0, 0]);
     interactionDistance = $state(15);
-    interactionRadiusFactor = $state(2);
-    interactionStrength = $state(1_000);
+    interactionRadiusFactor = $state(3);
+    interactionStrength = $state(1_500);
     interactionRadiusVal = $derived(this.interactionDistance * this.interactionRadiusFactor);
+
+    colliderFriction = $state(0.25);
 
     onInteractionStart(x: number, y: number, el: HTMLElement) {
         this.isInteracting = true;
@@ -298,6 +300,7 @@ export class SimulationState {
                 measurePerf: supportsTimestamp,
                 width: () => state.width,
                 height: () => state.height,
+                colliderFriction: () => state.colliderFriction,
             });
 
             state.restart();

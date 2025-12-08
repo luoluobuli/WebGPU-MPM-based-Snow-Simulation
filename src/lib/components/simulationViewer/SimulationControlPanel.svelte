@@ -140,7 +140,7 @@ const updateTimestep = (progress: number) => {
             type="range"
             bind:value={simulationState.interactionRadiusFactor}
             min={0}
-            max={10}
+            max={15}
             step={Number.EPSILON}
         />
 
@@ -154,7 +154,7 @@ const updateTimestep = (progress: number) => {
             type="range"
             bind:value={simulationState.interactionStrength}
             min={0}
-            max={3_000}
+            max={5_000}
             step={Number.EPSILON}
         />
 

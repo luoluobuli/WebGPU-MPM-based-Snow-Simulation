@@ -34,6 +34,7 @@ export class GpuSnowPipelineRunner {
     private readonly explicitMpmSimulationTimestepS: () => number;
     private readonly pbmpmSimulationTimestepS: () => number;
     private readonly camera: Camera;
+    private readonly colliderFriction: () => number;
     private depthTextureView: GPUTextureView;
 
     readonly uniformsManager: GpuUniformsBufferManager;
@@ -88,6 +89,7 @@ export class GpuSnowPipelineRunner {
         measurePerf,
         width,
         height,
+        colliderFriction,
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
@@ -111,12 +113,14 @@ export class GpuSnowPipelineRunner {
         measurePerf: boolean,
         width: () => number,
         height: () => number,
+        colliderFriction: () => number,
     }) {
         this.device = device;
         this.context = context;
         this.nParticles = nParticles;
         this.explicitMpmSimulationTimestepS = explicitMpmSimulationTimestepS;
         this.pbmpmSimulationTimestepS = pbmpmSimulationTimestepS;
+        this.colliderFriction = colliderFriction;
 
         this.camera = camera;
 
@@ -256,6 +260,7 @@ export class GpuSnowPipelineRunner {
                 this.uniformsManager.writeCameraPos([viewInv[12], viewInv[13], viewInv[14]]);
             });
             $effect(() => this.uniformsManager.writeSimulationTimestepS(this.selectedSimulationTimestepS));
+            $effect(() => this.uniformsManager.writeColliderFriction(this.colliderFriction()));
 
 
             let lastRenderMethodType: GpuRenderMethodType | null = null;

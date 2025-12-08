@@ -180,4 +180,8 @@ export class GpuUniformsBufferManager {
         }
         this.device.queue.writeBuffer(this.buffer, 544, buffer);
     }
+    
+    writeColliderFriction(friction: number) {
+        this.device.queue.writeBuffer(this.buffer, 524, new Float32Array([friction]));
+    }
 }

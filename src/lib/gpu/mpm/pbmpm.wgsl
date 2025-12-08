@@ -33,7 +33,7 @@ fn solveParticleConstraints(particle: ptr<function, ParticleData>) {
     let deformation_displacement_diff = corrected_deformation_displacement - (*particle).deformation_displacement;
 
     const HARDENING_COEFFICIENT = 20.;
-    let elasticity_relaxation = 0.5 + 0.5 * (1 - exp(-HARDENING_COEFFICIENT / volumeScaleFac));
+    let elasticity_relaxation = 1 - 0.5 * (1 - exp(-HARDENING_COEFFICIENT / volumeScaleFac));
     
     (*particle).deformation_displacement += elasticity_relaxation * deformation_displacement_diff;
 }
