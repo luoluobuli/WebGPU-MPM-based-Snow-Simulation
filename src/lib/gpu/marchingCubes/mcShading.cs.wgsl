@@ -269,7 +269,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
         normal /= normal_length;
     }
 
-    workgroupBarrier();
+    //workgroupBarrier();
     
     // normal *= sign(dot(normal, viewDir));
     
