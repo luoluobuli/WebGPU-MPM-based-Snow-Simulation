@@ -22,6 +22,7 @@ import { GpuEnvironmentTextureManager } from "./environmentMap/GpuEnvironmentTex
 import { untrack } from "svelte";
 import { PrerenderPassElapsedTime } from "$lib/components/simulationViewer/PrerenderPassElapsedTime.svelte";
 import { GpuSsaoPipelineManager } from "./ssao/GpuSsaoPipelineManager";
+import { GpuDepthPicker } from "./GpuDepthPicker";
 
 const MAX_SIMULATION_DRIFT_MS = 250;
 const FP_SCALE = 65536;
@@ -43,6 +44,7 @@ export class GpuSnowPipelineRunner {
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
     private readonly environmentRenderPipelineManager: GpuEnvironmentRenderPipelineManager;
     private readonly ssaoPipelineManager: GpuSsaoPipelineManager;
+    private readonly depthPicker: GpuDepthPicker;
 
     private depthTexture: GPUTexture | null = null;
 
@@ -120,7 +122,7 @@ export class GpuSnowPipelineRunner {
 
         const depthTexture = device.createTexture({
             size: [camera.screenDims.width(), camera.screenDims.height()],
-            format: "depth24plus",
+            format: "depth32float",
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.depthTextureView = depthTexture.createView();
@@ -204,7 +206,7 @@ export class GpuSnowPipelineRunner {
         const rasterizeRenderPipeline = new GpuRasterizeRenderPipelineManager({
             device, 
             format,
-            depthFormat: "depth24plus",
+            depthFormat: "depth32float",
             uniformsManager: uniformsManager,
             colliderManager: colliderManager
         });
@@ -213,7 +215,7 @@ export class GpuSnowPipelineRunner {
         const mpmGridRenderPipelineManager = new GpuMpmGridRenderPipelineManager({
             device,
             format,
-            depthFormat: "depth24plus",
+            depthFormat: "depth32float",
             uniformsManager,
             mpmManager,
         });
@@ -230,6 +232,7 @@ export class GpuSnowPipelineRunner {
             uniformsManager,
             textureManager: environmentTextureManager,
             format,
+            depthFormat: "depth32float",
         });
         this.environmentRenderPipelineManager = environmentRenderPipelineManager;
 
@@ -238,6 +241,8 @@ export class GpuSnowPipelineRunner {
             format,
             uniformsManager,
         });
+
+        this.depthPicker = new GpuDepthPicker({ device });
 
         this.getSimulationMethodType = getSimulationMethodType;
         this.getRenderMethodType = getRenderMethodType;
@@ -269,7 +274,7 @@ export class GpuSnowPipelineRunner {
                         this.renderMethod = new GpuPointsRenderPipelineManager({
                             device,
                             format,
-                            depthFormat: "depth24plus",
+                            depthFormat: "depth32float",
                             uniformsManager,
                             mpmManager,
                         });
@@ -290,6 +295,7 @@ export class GpuSnowPipelineRunner {
                         this.renderMethod = new GpuVolumetricRenderPipelineManager({
                             device,
                             format,
+                            depthFormat: "depth32float",
                             uniformsManager,
                             volumetricBufferManager,
                             mpmBufferManager: mpmManager,
@@ -303,7 +309,7 @@ export class GpuSnowPipelineRunner {
                         this.renderMethod = new GpuSsfrRenderPipelineManager({
                             device,
                             format,
-                            depthFormat: "depth24plus",
+                            depthFormat: "depth32float",
                             uniformsManager,
                             mpmManager,
                             performanceMeasurementManager: this.performanceMeasurementManager,
@@ -314,7 +320,7 @@ export class GpuSnowPipelineRunner {
                         this.renderMethod = new GpuMarchingCubesRenderPipelineManager({
                             device,
                             format,
-                            depthFormat: "depth24plus",
+                            depthFormat: "depth32float",
                             uniformsManager,
                             mpmManager,
                             gridResolutionX,
@@ -334,7 +340,7 @@ export class GpuSnowPipelineRunner {
 
                 this.depthTexture = this.device.createTexture({
                     size: [width(), height()],
-                    format: "depth24plus",
+                    format: "depth32float",
                     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
                 });
                 this.depthTextureView = this.depthTexture.createView();
@@ -627,4 +633,9 @@ export class GpuSnowPipelineRunner {
                 return this.pbmpmSimulationTimestepS();
         }
     });
+
+    async pickDepth(x: number, y: number): Promise<number | null> {
+        if (!this.depthTextureView) return null;
+        return this.depthPicker.pick(this.depthTextureView, x, y);
+    }
 }

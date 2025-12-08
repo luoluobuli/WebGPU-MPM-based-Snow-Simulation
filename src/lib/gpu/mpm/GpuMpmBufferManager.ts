@@ -9,8 +9,8 @@ export class GpuMpmBufferManager {
     readonly sortedParticleIndicesBuffer: GPUBuffer;
 
     readonly nParticles: number;
-    readonly nMaxBlocksInHashMap = 300_000;
-    readonly hashMapSize = 900_001;
+    readonly nMaxBlocksInHashMap = 500_000;
+    readonly hashMapSize = 2_000_003;
 
     constructor({
         device,

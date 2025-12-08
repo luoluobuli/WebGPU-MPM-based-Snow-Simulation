@@ -17,11 +17,13 @@ export class GpuEnvironmentRenderPipelineManager {
         textureManager,
         uniformsManager,
         format,
+        depthFormat,
     }: {
         device: GPUDevice,
         textureManager: GpuEnvironmentTextureManager,
         uniformsManager: GpuUniformsBufferManager,
         format: GPUTextureFormat,
+        depthFormat: GPUTextureFormat,
     }) {
         const textureBindGroupLayout = device.createBindGroupLayout({
             label: "environment texture bind group layout",
@@ -104,7 +106,7 @@ export class GpuEnvironmentRenderPipelineManager {
             depthStencil: {
                 depthWriteEnabled: true,
                 depthCompare: "less",
-                format: "depth24plus",
+                format: depthFormat,
             },
         });
 

@@ -31,6 +31,8 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
     private readonly mpmManager: GpuMpmBufferManager;
     private readonly bufferManager: GpuMarchingCubesBufferManager;
     private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
+
+    private readonly depthFormat: GPUTextureFormat;
     
     // Compute pipelines
     private readonly densityPipeline: GPUComputePipeline;
@@ -107,6 +109,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         this.uniformsManager = uniformsManager;
         this.mpmManager = mpmManager;
         this.performanceMeasurementManager = performanceMeasurementManager;
+        this.depthFormat = depthFormat;
         
         this.bufferManager = new GpuMarchingCubesBufferManager({
             device,
@@ -572,7 +575,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         this.mcDepthTexture = this.device.createTexture({
             label: "MC depth texture",
             size: [width, height],
-            format: "depth24plus",
+            format: this.depthFormat,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
         this.mcDepthTextureView = this.mcDepthTexture.createView();

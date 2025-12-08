@@ -37,6 +37,7 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
     constructor({
         device,
         format,
+        depthFormat,
         uniformsManager,
         volumetricBufferManager,
         mpmBufferManager,
@@ -45,6 +46,7 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
     }: {
         device: GPUDevice,
         format: GPUTextureFormat,
+        depthFormat: GPUTextureFormat,
         uniformsManager: GpuUniformsBufferManager,
         volumetricBufferManager: GpuVolumetricBufferManager,
         mpmBufferManager: GpuMpmBufferManager,
@@ -304,7 +306,7 @@ export class GpuVolumetricRenderPipelineManager implements GpuRenderMethod {
             depthStencil: {
                 depthWriteEnabled: false,
                 depthCompare: "less",
-                format: "depth24plus",
+                format: depthFormat,
             },
         });
 

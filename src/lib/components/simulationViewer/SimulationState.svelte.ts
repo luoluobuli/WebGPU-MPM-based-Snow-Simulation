@@ -139,7 +139,9 @@ export class SimulationState {
         this.runner?.uniformsManager.writeIsInteracting(false);
     }
 
-    updateInteractionRay(x: number, y: number, el: HTMLElement, isPointerDown: boolean) {
+ 
+
+    async updateInteractionRay(x: number, y: number, el: HTMLElement, isPointerDown: boolean) {
         if (!this.runner) return;
 
         const rect = el.getBoundingClientRect();
@@ -164,8 +166,35 @@ export class SimulationState {
         const res = this.gridResolutionX; 
         
         if (isPointerDown) {
-             let t = -near[2] / dirNorm[2];
-             if (t < 0 || !isFinite(t)) t = 20;
+             let t = 20; 
+
+             // Depth Picking (Current Surface)
+             const px = (x - rect.left) * (this.width / rect.width);
+             const py = (y - rect.top) * (this.height / rect.height);
+             
+             const depth = await this.runner.pickDepth(px, py);
+
+             if (depth !== null && depth < 1.0) {
+                 // DEPTH UNPROJECT
+                 // We have NDC Z = depth.
+                 // We have NDC X, Y.
+                 // Unproject gives World Pos directly.
+                 const worldHit = this.unproject(ndcX, ndcY, depth, invViewProj);
+                 
+                 // Distance from Near Plane to World Hit?
+                 // Or just use worldHit directly?
+                 // My logic uses interactionDistance along dirNorm from near.
+                 // t = distance(near, worldHit).
+                 const distVec = [worldHit[0] - near[0], worldHit[1] - near[1], worldHit[2] - near[2]];
+                 t = Math.sqrt(distVec[0]*distVec[0] + distVec[1]*distVec[1] + distVec[2]*distVec[2]);
+                 
+                 // If t is weird, fallback?
+             } else {
+                 // Fallback to Plane Z=0 if miss
+                 let tPlane = -near[2] / dirNorm[2];
+                 if (tPlane > 0 && isFinite(tPlane)) t = tPlane;
+             }
+
              this.interactionDistance = t;
         }
         
@@ -187,6 +216,8 @@ export class SimulationState {
         this.runner.uniformsManager.writeInteractionMode(this.particleControlMode); 
         this.runner.uniformsManager.writeIsInteracting(true);
     }
+
+
 
     private unproject(x: number, y: number, z: number, invMat: Float32Array): [number, number, number] {
         const v = [x, y, z, 1.0];
@@ -227,6 +258,7 @@ export class SimulationState {
 
             onStatusChange?.("loading geometry...");
             const { vertices } = await loadGltfScene(modelUrl);
+
             const { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(colliderUrl);
 
             const collider: ColliderGeometry = {
