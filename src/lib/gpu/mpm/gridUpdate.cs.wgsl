@@ -91,17 +91,28 @@ fn doGridUpdate(
         let grid_node_pos = vec3f(block_number * 4) + cell_offset;
 
         if (uniforms.isInteracting != 0u) {
-            let dist = distance(grid_node_pos, uniforms.interactionPos);
-            if (dist < uniforms.interactionRadius) {
-                let offset = grid_node_pos - uniforms.interactionPos;
+                // Sphere Distance
+                let dist = distance(grid_node_pos, uniforms.interactionPos);
+                if (dist < uniforms.interactionRadius) {
+                    let offset = grid_node_pos - uniforms.interactionPos;
                 var dir = vec3f(0.0, 0.0, 1.0);
                 if (length(offset) > 0.001) {
                     dir = normalize(offset);
                 }
                 
                 let falloff = 1.0 - (dist / uniforms.interactionRadius);
-                let accel = dir * uniforms.interactionStrength * falloff / 3.0; // Divide by 3 for iterations
+                var accel = vec3f(0.0);
+
                 
+                // 1. Attract
+                if (uniforms.interactionMode == 1u) {
+                     accel = -dir * uniforms.interactionStrength * falloff / 3.0;
+                }
+                // 0. Repel (Default)
+                else {
+                    accel = dir * uniforms.interactionStrength * falloff / 3.0; 
+                }
+
                 cell_velocity += accel * uniforms.simulationTimestep;
             }
         }

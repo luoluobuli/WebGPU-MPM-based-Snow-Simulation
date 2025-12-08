@@ -19,7 +19,7 @@ let {
         onDown={({ pointerEvent }) => {
             if (pointerEvent.button === 2) {
                 // Right click: Interact
-                simulationState.onInteractionStart(pointerEvent);
+                simulationState.onInteractionStart(pointerEvent.clientX, pointerEvent.clientY, canvas!);
             } else {
                 // Left/Middle: Camera
                 canvas?.requestPointerLock();
@@ -37,7 +37,7 @@ let {
                     break;
                 
                 case 2:
-                    simulationState.onInteractionDrag(pointerEvent);
+                    simulationState.onInteractionDrag(pointerEvent.clientX, pointerEvent.clientY, canvas!);
                     break;
             }
 

@@ -12,6 +12,7 @@ import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import type { ColliderGeometry } from "../../gpu/collider/GpuColliderBufferManager";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 import { loadEnvironmentMap } from "$lib/gpu/environmentMap/loadEnvironmentMap";
+import { ParticleControlMode } from "./ParticleControlMode";
 
 export class SimulationState {
     width = $state(300);
@@ -36,6 +37,7 @@ export class SimulationState {
 
     simulationMethodType = $state(GpuSimulationMethodType.Pbmpm);
     renderMethodType = $state(GpuRenderMethodType.MarchingCubes);
+    particleControlMode = $state(ParticleControlMode.Repel);
 
 
     readonly orbit = new CameraOrbit();
@@ -117,17 +119,19 @@ export class SimulationState {
 
     isInteracting = $state(false);
     interactionPos = $state<[number, number, number]>([0, 0, 0]);
-    readonly interactionRadiusVal = 20;
-    readonly interactionStrength = 2000; // positive is repulsive
+    interactionDistance = $state(15);
+    interactionRadiusFactor = $state(2);
+    interactionStrength = $state(1_000);
+    interactionRadiusVal = $derived(this.interactionDistance * this.interactionRadiusFactor);
 
-    onInteractionStart(event: PointerEvent) {
+    onInteractionStart(x: number, y: number, el: HTMLElement) {
         this.isInteracting = true;
-        this.updateInteractionRay(event);
+        this.updateInteractionRay(x, y, el, true);
     }
 
-    onInteractionDrag(event: PointerEvent) {
+    onInteractionDrag(x: number, y: number, el: HTMLElement) {
         if (!this.isInteracting) return;
-        this.updateInteractionRay(event);
+        this.updateInteractionRay(x, y, el, false);
     }
 
     onInteractionEnd() {
@@ -135,16 +139,14 @@ export class SimulationState {
         this.runner?.uniformsManager.writeIsInteracting(false);
     }
 
-    updateInteractionRay(event: PointerEvent) {
+    updateInteractionRay(x: number, y: number, el: HTMLElement, isPointerDown: boolean) {
         if (!this.runner) return;
 
-        const x = event.clientX;
-        const y = event.clientY;
-        const rect = (event.target as HTMLElement).getBoundingClientRect();
+        const rect = el.getBoundingClientRect();
         
         // NDC
         const ndcX = ((x - rect.left) / rect.width) * 2 - 1;
-        const ndcY = 1 - ((y - rect.top) / rect.height) * 2; // WebGPU Y is up in NDC? No, -1 to 1. HTML Y is down.
+        const ndcY = 1 - ((y - rect.top) / rect.height) * 2; 
         
         // Ray generation
         const invViewProj = this.camera.viewProjInvMat;
@@ -156,23 +158,33 @@ export class SimulationState {
         const len = Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
         const dirNorm = [dir[0]/len, dir[1]/len, dir[2]/len];
         
-
-        // grid space conversion
         const minC = -5;
         const maxC = 5;
         const range = maxC - minC;
         const res = this.gridResolutionX; 
-
-
-        // near plane
-        const gridOriginX = ((near[0] - minC) / range) * res;
-        const gridOriginY = ((near[1] - minC) / range) * res;
-        const gridOriginZ = ((near[2] - minC) / range) * res;
         
-        this.runner.uniformsManager.writeInteractionPos([gridOriginX, gridOriginY, gridOriginZ]);
+        if (isPointerDown) {
+             let t = -near[2] / dirNorm[2];
+             if (t < 0 || !isFinite(t)) t = 20;
+             this.interactionDistance = t;
+        }
+        
+        const worldPos = [
+            near[0] + dirNorm[0] * this.interactionDistance,
+            near[1] + dirNorm[1] * this.interactionDistance,
+            near[2] + dirNorm[2] * this.interactionDistance
+        ];
+
+        // Convert World Pos to Grid Pos
+        const gridX = ((worldPos[0] - minC) / range) * res;
+        const gridY = ((worldPos[1] - minC) / range) * res;
+        const gridZ = ((worldPos[2] - minC) / range) * res;
+        
+        this.runner.uniformsManager.writeInteractionPos([gridX, gridY, gridZ]);
         this.runner.uniformsManager.writeInteractionDir(dirNorm as [number, number, number]);
         this.runner.uniformsManager.writeInteractionStrength(this.interactionStrength);
         this.runner.uniformsManager.writeInteractionRadius(this.interactionRadiusVal);
+        this.runner.uniformsManager.writeInteractionMode(this.particleControlMode); 
         this.runner.uniformsManager.writeIsInteracting(true);
     }
 

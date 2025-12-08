@@ -155,6 +155,10 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 528, new Float32Array(dir));
     }
 
+    writeInteractionMode(mode: number) {
+        this.device.queue.writeBuffer(this.buffer, 520, new Uint32Array([mode]));
+    }
+
     writeColliderObjects(objects: { min: [number, number, number], max: [number, number, number], startIndex: number, countIndices: number }[]) {
         const MAX_OBJECTS = 1024;
         const count = Math.min(objects.length, MAX_OBJECTS);

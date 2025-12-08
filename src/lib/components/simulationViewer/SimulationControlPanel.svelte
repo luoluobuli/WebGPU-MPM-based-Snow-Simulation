@@ -6,6 +6,7 @@ import Hotkey from "$lib/components/headless/Hotkey.svelte";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 import OverlayPanel from "./OverlayPanel.svelte";
+    import { ParticleControlMode } from "./ParticleControlMode";
 
 let {
     simulationState,
@@ -108,6 +109,58 @@ const updateTimestep = (progress: number) => {
         </Hotkey>
     </div>
 
+    <h4>Control</h4>
+
+    <div>Right-click the snow to:</div>
+
+    <label>
+        <input
+            type="radio"
+            name="particle-control-mode"
+            bind:group={simulationState.particleControlMode}
+            value={ParticleControlMode.Repel}
+        />
+        Repel
+    </label>
+
+    <label>
+        <input
+            type="radio"
+            name="particle-control-mode"
+            bind:group={simulationState.particleControlMode}
+            value={ParticleControlMode.Attract}
+        />
+        Attract
+    </label>
+
+    <div>Interaction radius</div>
+
+    <labeled-range>
+        <input
+            type="range"
+            bind:value={simulationState.interactionRadiusFactor}
+            min={0}
+            max={10}
+            step={Number.EPSILON}
+        />
+
+        <span>{simulationState.interactionRadiusFactor.toFixed(3)}</span>
+    </labeled-range>
+
+    <div>Interaction strength</div>
+
+    <labeled-range>
+        <input
+            type="range"
+            bind:value={simulationState.interactionStrength}
+            min={0}
+            max={3_000}
+            step={Number.EPSILON}
+        />
+
+        <span>{simulationState.interactionStrength.toFixed(3)}</span>
+    </labeled-range>
+
     <h4>Method</h4>
 
     <label>
@@ -140,7 +193,6 @@ const updateTimestep = (progress: number) => {
             min={0}
             max={1}
             step={Number.EPSILON}
-            id="simulation-timestep"
         />
 
         <span>

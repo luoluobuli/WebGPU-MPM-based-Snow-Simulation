@@ -31,7 +31,9 @@ fn solveParticleConstraints(particle: ptr<function, ParticleData>) {
     let volumeScaleFac = determinant((*particle).deformationPlastic); // J
     
     let deformation_displacement_diff = corrected_deformation_displacement - (*particle).deformation_displacement;
-    let elasticity_relaxation = 0.7;
+
+    const HARDENING_COEFFICIENT = 20.;
+    let elasticity_relaxation = 0.5 + 0.5 * (1 - exp(-HARDENING_COEFFICIENT / volumeScaleFac));
     
     (*particle).deformation_displacement += elasticity_relaxation * deformation_displacement_diff;
 }
@@ -102,26 +104,32 @@ fn updateGrid(particle: ptr<function, ParticleData>) {
                 if (uniforms.isInteracting != 0u) {
                     let grid_node_pos = vec3f(cell_number);
                     
-                    // Ray-Point Distance
-                    let ray_origin = uniforms.interactionPos;
-                    let ray_dir = uniforms.interactionDir;
-                    
-                    let p_minus_o = grid_node_pos - ray_origin;
-                    let t = dot(p_minus_o, ray_dir);
-                    let closest_point_on_ray = ray_origin + ray_dir * t;
-                    
-                    let dist = distance(grid_node_pos, closest_point_on_ray);
+                    // Sphere Distance
+                    let dist = distance(grid_node_pos, uniforms.interactionPos);
 
                     if (dist < uniforms.interactionRadius) {
-                        let offset = grid_node_pos - closest_point_on_ray;
+                        let offset = grid_node_pos - uniforms.interactionPos;
                         var push_dir = vec3f(0.0, 0.0, 1.0);
                         if (length(offset) > 0.001) {
                             push_dir = normalize(offset);
                         }
                         
-                        let falloff = 1.0 - (dist / uniforms.interactionRadius);
-                        let accel = push_dir * uniforms.interactionStrength * falloff;
-                        forces += accel;
+                        var applied_force = vec3f(0.0);
+
+                        let falloff_linear = dist / uniforms.interactionRadius;
+
+                        // 0: Repel
+                        if (uniforms.interactionMode == 0u) {
+                            let falloff = 1 - falloff_linear * falloff_linear;
+                            applied_force = push_dir * uniforms.interactionStrength * falloff;
+                        } 
+                        // 1: Attract
+                        else {
+                            let falloff = 1 - falloff_linear * falloff_linear;
+                            applied_force = -push_dir * uniforms.interactionStrength * falloff;
+                        }
+
+                        forces += applied_force;
                     }
                 }
 
@@ -139,6 +147,8 @@ fn updateGrid(particle: ptr<function, ParticleData>) {
 }
 
 
+
+
 @compute
 @workgroup_size(256)
 fn pbmpm(
@@ -153,6 +163,7 @@ fn pbmpm(
     // for (var i = 0u; i < 4; i++) {
         // clearGrid();
         solveParticleConstraints(&particle);
+
         workgroupBarrier();
     
         transferParticlesToGrid(&particle);

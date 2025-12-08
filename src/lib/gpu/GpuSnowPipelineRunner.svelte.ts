@@ -60,6 +60,7 @@ export class GpuSnowPipelineRunner {
     // v : [number, number, number] = [0.0, 0.0, 0.0];
 
     private readonly getSimulationMethodType: () => GpuSimulationMethodType;
+    private readonly getRenderMethodType: () => GpuRenderMethodType;
     private readonly oneSimulationStepPerFrame: () => boolean;
 
     constructor({
@@ -239,6 +240,7 @@ export class GpuSnowPipelineRunner {
         });
 
         this.getSimulationMethodType = getSimulationMethodType;
+        this.getRenderMethodType = getRenderMethodType;
         this.oneSimulationStepPerFrame = oneSimulationStepPerFrame;
 
         $effect.root(() => {
@@ -498,7 +500,9 @@ export class GpuSnowPipelineRunner {
                 : undefined,
         });
 
-        this.ssaoPipelineManager.addDraw(ssaoPassEncoder);
+        if ([GpuRenderMethodType.MarchingCubes, GpuRenderMethodType.Points].includes(this.getRenderMethodType())) {
+            this.ssaoPipelineManager.addDraw(ssaoPassEncoder);
+        }
         ssaoPassEncoder.end();
     }
 
