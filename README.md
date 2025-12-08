@@ -51,7 +51,11 @@ An additional point of interest is animated characters. Even in industry tooling
 1. ***[Principles towards Real-Time Simulation of Material Point Method on Modern GPUs](https://arxiv.org/pdf/2111.00699)*.** A 2021 paper covering GPU optimizations of MPM.
 1. ***[The Material Point Method for Simulating Continuum Materials](https://alexey.stomakhin.com/research/siggraph2016_mpm.pdf)*.** A 2016 paper introducing MPM.
 
-[Project presentation slides](https://docs.google.com/presentation/d/1KzaJZwBxE9-vjqXS8KjHvptEbJPF9yljNl7gesTuuB4/edit?usp=sharing)
+[Project pitch document](https://docs.google.com/document/d/1GqyHIWWRgWUTM5zWGbZYP2N02_l9rdCXxwBLmyFH8Aw/edit?usp=sharing)
+
+[Project intermediate presentations](https://docs.google.com/presentation/d/1KzaJZwBxE9-vjqXS8KjHvptEbJPF9yljNl7gesTuuB4/edit?usp=sharing)
+
+[Project presentation](https://docs.google.com/presentation/d/1qSLPsCHANb4dqirA1QrpM8kEplKsXUH_/edit?usp=sharing&ouid=113191297642626170911&rtpof=true&sd=true)
 
 ## Acknowledgments
 
