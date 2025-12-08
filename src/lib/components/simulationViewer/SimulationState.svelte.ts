@@ -3,8 +3,8 @@ import { onDestroy, onMount } from "svelte";
 import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner.svelte";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
-import modelUrl from "$lib/assets/models/horse_statue_01_1k.glb?url";
-import colliderUrl from "$lib/assets/models/forest.glb?url";
+import modelUrl from "$lib/assets/models/snow.glb?url";
+import colliderUrl from "$lib/assets/models/forest_scaled.glb?url";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
@@ -18,7 +18,7 @@ export class SimulationState {
     width = $state(300);
     height = $state(150);
 
-    nParticles = $state(15_000);
+    nParticles = $state(30_000);
     gridResolutionX = $state(128);
     gridResolutionY = $state(128);
     gridResolutionZ = $state(128);

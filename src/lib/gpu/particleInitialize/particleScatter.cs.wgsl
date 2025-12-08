@@ -57,7 +57,7 @@ fn scatterParticles(
         if pointInsideMesh(candidatePos, nTriangles) { break; }
     }
 
-    workgroupBarrier();
+    //workgroupBarrier();
 
     let noiseScale = 0.1;
     let NOISE_FREQ = 4.;

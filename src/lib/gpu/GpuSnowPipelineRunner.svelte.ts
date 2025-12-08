@@ -482,7 +482,7 @@ export class GpuSnowPipelineRunner {
 
 
         this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
-        this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
+        //this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
         this.environmentRenderPipelineManager.addDraw(renderPassEncoder);
         this.renderMethod.addCompositeDraw(renderPassEncoder);
 
