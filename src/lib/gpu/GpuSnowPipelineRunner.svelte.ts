@@ -34,7 +34,7 @@ export class GpuSnowPipelineRunner {
     private readonly camera: Camera;
     private depthTextureView: GPUTextureView;
 
-    private readonly uniformsManager: GpuUniformsBufferManager;
+    readonly uniformsManager: GpuUniformsBufferManager;
     private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
     private readonly mpmPipelineManager: GpuMpmPipelineManager;
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
@@ -464,7 +464,7 @@ export class GpuSnowPipelineRunner {
 
 
         this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
-        this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
+        //this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
         this.environmentRenderPipelineManager.addDraw(renderPassEncoder);
         this.renderMethod.addCompositeDraw(renderPassEncoder);
 
