@@ -276,6 +276,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let worldPos = reconstructWorldPos(coords, depth, screenSize);
     
     let shadow = raymarchShadow(worldPos, lightDir);
+    workgroupBarrier();
     let shadowFactor = shadow;
     
     let basicGrad = noiseGradient(worldPos, NOISE_SCALE_BASIC, 4);
