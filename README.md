@@ -3,25 +3,42 @@ This project contains a snow simulation engine using the **material point method
 
 You can [view this demo online](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/) so long as your browser supports WebGPU!
 
-[![suzanne being hit with snow](./docs/cover.png)](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/)
+[![snowy low poly terrain](./docs/cover-snow.png)](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/)
 <!-- [![suzanne made of snow being thrown against a wall and a box collider](./docs/mpm-high-grid-size.gif)](https://luoluobuli.github.io/WebGPU-MPM-based-Snow-Simulation/) -->
 
 ## Features
-1. **Position-based MPM (PBMPM)** for numerical stability
-1. **Explicit MPM** for cohesion, alongside:
-    1. **Elastic deformation and stress forces** to simulate soft materials
-        |![elastic deformation with a high grid size](./docs/elastic-high-grid.gif)|
-        |-|
-    1. **Plastic deformation** to simulate fracture and tearing
-        |![plastic deformation with a high grid size](./docs/plastic-high-grid.gif)|
-        |-|
-    1. **Hardening** to simulate snow better
-2. **Rigid colliders** for particles to interact with a more interesting scene
-    |![snow suzanne with collider rendered](./docs/collider-wire.gif)|![suzanne deforming plastically against the collider](./docs/collider-low-grid.gif)|
-    |-|-|
-3. **Volumetric raymarching** for fluffy material rendering
-    |![raymarched snow clumps with collider](./docs/volume-raymarch-1.png)|![raymarched torus knot](./docs/volume-raymarch-2.png)|
-    |-|-|
+
+### Physics
+This project features a **material point method** (**MPM**) particle engine for dynamic cohesion and fracture, with...
+1. a **position-based material point method** (**PBMPM**) variant for stability.
+1. an **explicit MPM** variant for speed.
+
+MPM enables:
+||||
+|-|-|-|
+|**Elastic deformation and stress forces** to simulate soft materials|**Plastic deformation** to simulate fracture and tearing|**Hardening** to simulate the "packing" behavior of snow|
+|![elastic deformation with a high grid size](./docs/elastic-high-grid.gif)|![plastic deformation with a high grid size](./docs/plastic-high-grid.gif)| |
+
+Additionally, the particles are also affected by:
+1. A **rigid collider** mesh, with triangle-based intersection.
+1. **Repulsion** and **attraction** forces spawned at your pointer (<kbd>RMB</kbd>).
+
+|||
+|-|-|
+|Grabbing with attraction|Exploding with repulsion|
+|![grabbing with attraction](./docs/interaction-attract.png)|![exploding with repulsion](./docs/interaction-repel.png)|
+
+### Rendering
+Data from the simulation can be rendered out using the following methods:
+|||||
+|-|-|-|-|
+|**Marching cubes**, which applies a procedural snow material to a dynamic mesh that is created based on the density of particles<br />(shadows are volumetrically raymarched)|**Screen-space fluid rendering** (**SSFR**) for a fast (but blobby) appearance|**Volumetric raymarching** inspired by offline rendering for snow|**Points** for a fast way to visualize particles, colored by their deformation (red channel = elastic deformation, green channel = plastic deformation) 
+|![marching cubes demo render](./docs/marching-cubes-render.png)![snow material closeup](./docs/marching-cubes-closeup.png)|![ssfr demo render](./docs/ssfr-render.png)|![volumetric demo render](./docs/volumetric-render.png)![volumetric demo render from behind](./docs/volumetric-render-back.png)|![points demo render](./docs/points-render-back.png)![points demo render with deformation coloring](./docs/points-render-top.png)|
+
+Additionally, when Points or Marching Cubes are selected, the scene is rendered with screen-space ambient occlusion.
+
+![snowy horse](./docs/horse-in-env.png)
+
 
 ## Code
 This is a SvelteKit project with a simulation powered by WebGPU.
@@ -42,6 +59,22 @@ An additional point of interest is animated characters. Even in industry tooling
 [Hey kid, want some implementation details...?](./docs/implementation.md)
 
 ![mpm grid-to-particle](./docs/mpm-grid-to-particle.png)
+
+### Bloopers and progress shots
+|||
+|-|-|
+|Volumetric raymarching|Surface raymarching
+|![volume raymarch with piles of material](./docs/volume-raymarch-1.png)![backlit volume raymarch](./docs/volume-raymarch-2.png)|![raymarched blobs](./docs/raymarch-sample-1.png)![raymarched suzanne](./docs/raymarch-sample-2.png)![raymarch after collision](./docs/raymarch-sample-3.png)|
+
+|||
+|-|-|
+|Small grid cell size, large timestep with elastic deformation|Ditto, with plastic deformation|
+|![elastic high grid resolution demo](./docs/elastic-high-grid.gif)|![plastic high grid size demo](./docs/plastic-high-grid.gif)|
+
+Collision tests
+||||
+|-|-|-|
+|![collider with low grid resolution](./docs/collider-low-grid.gif)|![collider with wire](./docs/collider-wire.gif)|![collision at high grid resolution](./docs/mpm-high-grid-size.gif)|
 
 ## Resources
 1. ***[A Material Point Method For Snow Simulation](https://disneyanimation.com/publications/a-material-point-method-for-snow-simulation/)*.** The 2013 Disney paper proposing MPM for simulating snow.
