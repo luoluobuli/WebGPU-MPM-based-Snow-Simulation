@@ -56,8 +56,8 @@ export class GpuPerformanceMeasurementBufferManager {
     buildPrerenderTimestampWritesDescriptor(prerenderPassIndex: number) {
         return {
             querySet: this.querySet,
-            beginningOfPassWriteIndex: 2 * (prerenderPassIndex + 2),
-            endOfPassWriteIndex: 2 * (prerenderPassIndex + 2) + 1,
+            beginningOfPassWriteIndex: 2 * (prerenderPassIndex + 3),
+            endOfPassWriteIndex: 2 * (prerenderPassIndex + 3) + 1,
         };
     }
 }

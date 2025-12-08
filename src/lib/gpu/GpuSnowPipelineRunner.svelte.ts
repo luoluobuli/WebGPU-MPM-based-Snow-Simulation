@@ -489,6 +489,13 @@ export class GpuSnowPipelineRunner {
                     storeOp: "store",
                 },
             ],
+            timestampWrites: this.performanceMeasurementManager !== null
+                ? {
+                    querySet: this.performanceMeasurementManager.querySet,
+                    beginningOfPassWriteIndex: 4,
+                    endOfPassWriteIndex: 5,
+                }
+                : undefined,
         });
 
         this.ssaoPipelineManager.addDraw(ssaoPassEncoder);
@@ -503,6 +510,7 @@ export class GpuSnowPipelineRunner {
         onGpuTimeUpdate?: (times: {
             computeSimulationStepNs: bigint,
             renderNs: bigint,
+            postprocessRenderNs: bigint,
         }) => void,
         onAnimationFrameTimeUpdate?: (ms: number) => void,
         onUserControlUpdate?: () => void,
@@ -571,6 +579,7 @@ export class GpuSnowPipelineRunner {
                 this.performanceMeasurementManager.mapTime(timestamps => {
                     const computeSimulationStepNs = timestamps[1] - timestamps[0];
                     const renderNs = timestamps[3] - timestamps[2];
+                    const postprocessRenderNs = timestamps[5] - timestamps[4];
                     
                     if (this.#prerenderElapsedTimes !== null) {
                         for (let i = 0; i < this.#prerenderElapsedTimes.length; i++) {
@@ -582,6 +591,7 @@ export class GpuSnowPipelineRunner {
                     onGpuTimeUpdate?.({
                         computeSimulationStepNs,
                         renderNs,
+                        postprocessRenderNs,
                     });
                 })
                     .catch(error => {
