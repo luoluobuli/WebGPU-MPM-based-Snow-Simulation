@@ -20,7 +20,7 @@ fn randVec3(seed: ptr<function, u32>, minCoords: vec3f, maxCoords: vec3f) -> vec
 fn pointInsideMesh(point: vec3f, numTriangles: u32) -> bool {
     // even-odd check in +x direction
 
-    let rayDir = vec3f(1, 0, 0);
+    let rayDir = normalize(vec3f(1, 1, 1));
     var inside = false;
     
     for (var i = 0u; i < numTriangles; i++) {
