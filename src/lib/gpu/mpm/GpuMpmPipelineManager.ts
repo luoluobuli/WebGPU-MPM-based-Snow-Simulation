@@ -464,7 +464,7 @@ export class GpuMpmPipelineManager {
         this.addDispatch({
             computePassEncoder,
             pipeline: this.clearBlockParticleCountsPipeline,
-            dispatchX: Math.ceil(100000 / 256), // nMaxBlocksInHashMap
+            dispatchX: Math.ceil(this.mpmManager.nMaxBlocksInHashMap / 256),
         });
 
         this.addDispatch({

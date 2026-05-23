@@ -14,6 +14,11 @@ fn clearMappedBlocks(
     @builtin(workgroup_id) wid: vec3u,
 ) {
     let block_index = wid.y * 256u + wid.x; // TODO this calculation comes from magic numbers set in the runner
+    if block_index >= N_MAX_BLOCKS_IN_HASH_MAP { return; }
+
+    let count = atomicLoad(&sparse_grid.n_allocated_blocks);
+    if block_index >= count { return; }
+
     let cell_index_in_block = lid.x;
     
     let cell_index = block_index * 64u + cell_index_in_block;

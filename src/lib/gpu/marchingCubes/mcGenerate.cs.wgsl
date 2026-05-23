@@ -2,7 +2,7 @@ struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
     densityGridRes: vec3u,
-    _padding: u32,
+    maxVertices: u32,
 }
 
 struct IndirectDrawArgs {
@@ -69,7 +69,9 @@ fn generateMesh(
 ) {
     if (local_idx == 0u) {
         atomicStore(&wgVertexCount, 0u);
+        wgBaseVertexIdx = 0u;
     }
+    workgroupBarrier();
     
     // Identify block
     let blockIdx = activeBlocks[group_id.x];
@@ -98,9 +100,8 @@ fn generateMesh(
             s_vertexDensity[idx] = getGlobalVertexDensity(vPos);
             s_vertexGradient[idx] = getGlobalVertexGradient(vPos);
         }
-
-        workgroupBarrier();
     }
+    workgroupBarrier();
     
 
     // Loop
@@ -144,9 +145,8 @@ fn generateMesh(
                 }
             }
         }
-
-        workgroupBarrier();
     }
+    workgroupBarrier();
     
     
     if (local_idx == 0u) {
@@ -159,7 +159,6 @@ fn generateMesh(
     workgroupBarrier();
     
     let baseIdx = wgBaseVertexIdx;
-    let MAX_VERTICES = 10500000u; // TODO don't hardcode
     
     // Output pass
     for (var i = 0u; i < 2u; i++) {
@@ -231,7 +230,7 @@ fn generateMesh(
 
                     
                     let globalVertIdx = baseIdx + myOffset + t * 3u + v;
-                    if (globalVertIdx < MAX_VERTICES) {
+                    if (globalVertIdx < mcParams.maxVertices) {
                         // Packed write: 6 floats per vertex
                         let floatIdx = globalVertIdx * 6u;
                         outputVertices[floatIdx + 0u] = worldPos.x;
@@ -241,11 +240,8 @@ fn generateMesh(
                         outputVertices[floatIdx + 4u] = normal.y;
                         outputVertices[floatIdx + 5u] = normal.z;
                     }
-                    
-                    workgroupBarrier();
                 }
             }
         }
-        workgroupBarrier();
     }
 }

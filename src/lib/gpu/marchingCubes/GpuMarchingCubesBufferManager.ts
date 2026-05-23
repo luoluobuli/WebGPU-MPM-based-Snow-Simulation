@@ -1,5 +1,7 @@
-const N_MAX_TRIANGLES = 3_500_000;
-const N_MAX_VERTICES = N_MAX_TRIANGLES * 3;
+const ABSOLUTE_MAX_TRIANGLES = 3_500_000;
+const ABSOLUTE_MAX_VERTICES = ABSOLUTE_MAX_TRIANGLES * 3;
+const ESTIMATED_MAX_VERTICES_PER_CELL = 3;
+const DEFAULT_MC_GRID_SCALE = 1 / 3;
 
 // const MAX_MC_GRID_RES = 1_024;
 
@@ -19,6 +21,7 @@ export class GpuMarchingCubesBufferManager {
     readonly blockIndirectDispatchBuffer: GPUBuffer;
     readonly mcGridResolution: [number, number, number];
     readonly densityGridResolution: [number, number, number];
+    readonly maxVertices: number;
     
     constructor({
         device,
@@ -40,19 +43,25 @@ export class GpuMarchingCubesBufferManager {
         this.device = device;
         
         this.densityGridResolution = [
-            Math.floor(gridResolutionX * 0.45),
-            Math.floor(gridResolutionY * 0.45),
-            Math.floor(gridResolutionZ * 0.45),
+            Math.floor(gridResolutionX * DEFAULT_MC_GRID_SCALE),
+            Math.floor(gridResolutionY * DEFAULT_MC_GRID_SCALE),
+            Math.floor(gridResolutionZ * DEFAULT_MC_GRID_SCALE),
         ];
         
-        const mcResX = mcGridResolutionX ?? Math.floor(gridResolutionX * 0.45);
-        const mcResY = mcGridResolutionY ?? Math.floor(gridResolutionY * 0.45);
-        const mcResZ = mcGridResolutionZ ?? Math.floor(gridResolutionZ * 0.45);
+        const mcResX = mcGridResolutionX ?? Math.floor(gridResolutionX * DEFAULT_MC_GRID_SCALE);
+        const mcResY = mcGridResolutionY ?? Math.floor(gridResolutionY * DEFAULT_MC_GRID_SCALE);
+        const mcResZ = mcGridResolutionZ ?? Math.floor(gridResolutionZ * DEFAULT_MC_GRID_SCALE);
         this.mcGridResolution = [mcResX, mcResY, mcResZ];
+
+        const numMcCells = mcResX * mcResY * mcResZ;
+        this.maxVertices = Math.min(
+            ABSOLUTE_MAX_VERTICES,
+            Math.max(1_500_000, Math.ceil(numMcCells * ESTIMATED_MAX_VERTICES_PER_CELL)),
+        );
         
         this.vertexBuffer = device.createBuffer({
             label: "MC vertex buffer",
-            size: N_MAX_VERTICES * 24,
+            size: this.maxVertices * 24,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
         

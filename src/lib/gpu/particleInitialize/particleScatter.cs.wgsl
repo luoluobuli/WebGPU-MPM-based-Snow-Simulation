@@ -42,7 +42,7 @@ fn scatterParticles(
     @builtin(global_invocation_id) globalId: vec3u,
 ) {
     let threadIndex = globalId.x;
-    // if threadIndex >= arrayLength(&particles) { return; }
+    if threadIndex >= arrayLength(&particles) { return; }
 
 
 
@@ -56,8 +56,6 @@ fn scatterParticles(
         candidatePos = randVec3(&seed, uniforms.meshMinCoords, uniforms.meshMaxCoords);
         if pointInsideMesh(candidatePos, nTriangles) { break; }
     }
-
-    workgroupBarrier();
 
     let noiseScale = 0.1;
     let NOISE_FREQ = 4.;

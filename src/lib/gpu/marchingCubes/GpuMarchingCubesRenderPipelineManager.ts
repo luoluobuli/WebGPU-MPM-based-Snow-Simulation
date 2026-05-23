@@ -122,7 +122,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         });
         
         // Create MC params uniform buffer
-        // Contains: mcGridRes (vec3u) + downsampleFactor (u32) + densityGridRes (vec3u) + padding (u32)
+        // Contains: mcGridRes (vec3u) + downsampleFactor (u32) + densityGridRes (vec3u) + maxVertices (u32)
         const mcParamsBuffer = device.createBuffer({
             label: "MC params buffer",
             size: 32, // vec3u + u32 + vec3u + u32 = 32 bytes
@@ -131,21 +131,19 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         this.mcParamsBuffer = mcParamsBuffer;
 
         // Max verts uniform for clamping
-        // 3.5M * 3 = 10,500,000 vertices
-        const MAX_TOTAL_VERTICES = 10500000;
         this.maxVertsBuffer = device.createBuffer({
             label: "MC max verts buffer",
             size: 4,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
-        device.queue.writeBuffer(this.maxVertsBuffer, 0, new Uint32Array([MAX_TOTAL_VERTICES]));
+        device.queue.writeBuffer(this.maxVertsBuffer, 0, new Uint32Array([this.bufferManager.maxVertices]));
         
         // Write MC params - now includes both MC grid res and density grid res
         const [mcX, mcY, mcZ] = this.bufferManager.mcGridResolution;
         const [densX, densY, densZ] = this.bufferManager.densityGridResolution;
         device.queue.writeBuffer(mcParamsBuffer, 0, new Uint32Array([
             mcX, mcY, mcZ, 1,           // mcGridRes + downsampleFactor
-            densX, densY, densZ, 0,     // densityGridRes + padding
+            densX, densY, densZ, this.bufferManager.maxVertices,
         ]));
         
         const mcPrelude = `${preludeSrc}\n${triTableSrc}`;

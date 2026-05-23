@@ -36,7 +36,7 @@ export class SimulationState {
     moveDown     = $state(false); // E
 
     simulationMethodType = $state(GpuSimulationMethodType.Pbmpm);
-    renderMethodType = $state(GpuRenderMethodType.MarchingCubes);
+    renderMethodType = $state(GpuRenderMethodType.Points);
     particleControlMode = $state(ParticleControlMode.Repel);
 
 

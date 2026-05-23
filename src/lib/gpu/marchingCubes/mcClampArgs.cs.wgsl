@@ -12,8 +12,7 @@ struct MCParams {
     mcGridRes: vec3u,
     downsampleFactor: u32,
     densityGridRes: vec3u,
-    _padding: u32,
-    maxVertices: u32, // Passed via uniform
+    maxVertices: u32,
 }
 
 @group(0) @binding(0) var<storage, read_write> indirectDraw: IndirectDrawArgs;

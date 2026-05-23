@@ -39,8 +39,6 @@ fn calculateDensity(@builtin(global_invocation_id) global_id: vec3u) {
     for (var z = 0; z < 2; z++) {
         for (var y = 0; y < 2; y++) {
             for (var x = 0; x < 2; x++) {
-                workgroupBarrier();
-                
                 let cellNumber = startCellNumber + vec3i(x, y, z);
 
                 if any(cellNumber < vec3i(0)) || any(cellNumber >= vec3i(mcParams.densityGridRes)) { continue; }
@@ -56,7 +54,9 @@ fn calculateDensity(@builtin(global_invocation_id) global_id: vec3u) {
 
                 // Use particle mass as density contribution
                 let densityContribution = u32(particle.mass * weight * uniforms.fixedPointScale);
-                atomicAdd(&densityGrid[cellIndex], densityContribution);
+                if densityContribution > 0u {
+                    atomicAdd(&densityGrid[cellIndex], densityContribution);
+                }
             }
         }
     }

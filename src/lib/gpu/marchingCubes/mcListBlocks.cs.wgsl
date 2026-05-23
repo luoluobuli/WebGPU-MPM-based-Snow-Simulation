@@ -85,9 +85,9 @@ fn listBlocks(
                 }
             }
         }
-
-        workgroupBarrier();
     }
+
+    workgroupBarrier();
     
     if local_idx == 0u && atomicLoad(&s_blockActive) > 0 {
         let index = atomicAdd(&indirectDispatch.x, 1u);

@@ -70,16 +70,19 @@ fn mapAffectedBlocks(@builtin(global_invocation_id) gid: vec3u) {
     let particle = particleData[threadIndex];
     
     let start_cell_number = calculateCellNumber(particle.pos);
-    
-    // allocate every cell that this particle is going to affect in the p2g step
-    for (var offset_z = -1i; offset_z <= 1; offset_z++) {
-        for (var offset_y = -1i; offset_y <= 1; offset_y++) {
-            for (var offset_x = -1i; offset_x <= 1; offset_x++) {
-                let cell_number = start_cell_number + vec3i(offset_x, offset_y, offset_z);
-                if !cellNumberInGridRange(cell_number) { continue; }
-                
-                let block_number = calculateBlockNumberContainingCell(cell_number);
-                allocateBlock(block_number);
+
+    let last_grid_cell = vec3i(uniforms.gridResolution) - vec3i(1);
+    let min_cell = max(start_cell_number - vec3i(1), vec3i(0));
+    let max_cell = min(start_cell_number + vec3i(1), last_grid_cell);
+    if any(max_cell < min_cell) { return; }
+
+    let min_block = calculateBlockNumberContainingCell(min_cell);
+    let max_block = calculateBlockNumberContainingCell(max_cell);
+
+    for (var block_z = min_block.z; block_z <= max_block.z; block_z++) {
+        for (var block_y = min_block.y; block_y <= max_block.y; block_y++) {
+            for (var block_x = min_block.x; block_x <= max_block.x; block_x++) {
+                allocateBlock(vec3i(block_x, block_y, block_z));
             }
         }
     }

@@ -68,6 +68,45 @@ fn mcVertexToWorld(vertCoord: vec3i) -> vec3f {
     return uniforms.gridMinCoords + vec3f(vertCoord) * mcCellSize;
 }
 
+fn computeVertexDensityAndGradient(vertCoord: vec3i) -> vec4f {
+    if all(mcParams.mcGridRes == mcParams.densityGridRes) {
+        let c000 = getDensityGridValue(vertCoord + vec3i(-1, -1, -1));
+        let c100 = getDensityGridValue(vertCoord + vec3i( 0, -1, -1));
+        let c010 = getDensityGridValue(vertCoord + vec3i(-1,  0, -1));
+        let c110 = getDensityGridValue(vertCoord + vec3i( 0,  0, -1));
+        let c001 = getDensityGridValue(vertCoord + vec3i(-1, -1,  0));
+        let c101 = getDensityGridValue(vertCoord + vec3i( 0, -1,  0));
+        let c011 = getDensityGridValue(vertCoord + vec3i(-1,  0,  0));
+        let c111 = getDensityGridValue(vertCoord + vec3i( 0,  0,  0));
+
+        let density = (c000 + c100 + c010 + c110 + c001 + c101 + c011 + c111) * 0.125;
+        let grad = vec3f(
+            (c100 + c110 + c101 + c111 - c000 - c010 - c001 - c011) * 0.25,
+            (c010 + c110 + c011 + c111 - c000 - c100 - c001 - c101) * 0.25,
+            (c001 + c101 + c011 + c111 - c000 - c100 - c010 - c110) * 0.25,
+        );
+
+        return vec4f(grad, density);
+    }
+
+    let worldPos = mcVertexToWorld(vertCoord);
+    let density = sampleDensityAtWorldPos(worldPos);
+
+    let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
+    let densityRes = vec3f(mcParams.densityGridRes);
+    let densityCellSize = gridRange / densityRes;
+    let eps = densityCellSize * 0.5;
+
+    let dx = sampleDensityAtWorldPos(worldPos + vec3f(eps.x, 0.0, 0.0)) -
+             sampleDensityAtWorldPos(worldPos - vec3f(eps.x, 0.0, 0.0));
+    let dy = sampleDensityAtWorldPos(worldPos + vec3f(0.0, eps.y, 0.0)) -
+             sampleDensityAtWorldPos(worldPos - vec3f(0.0, eps.y, 0.0));
+    let dz = sampleDensityAtWorldPos(worldPos + vec3f(0.0, 0.0, eps.z)) -
+             sampleDensityAtWorldPos(worldPos - vec3f(0.0, 0.0, eps.z));
+
+    return vec4f(dx, dy, dz, density);
+}
+
 fn vertexIndex(coord: vec3i) -> u32 {
     let res = vec3i(mcParams.mcGridRes) + vec3i(1);
     return u32(coord.x + coord.y * res.x + coord.z * res.x * res.y);
@@ -113,37 +152,15 @@ fn computeVertexDensity(
             let vertRes = vec3i(mcParams.mcGridRes) + vec3i(1);
             
             if (all(vertCoord < vertRes) && all(vertCoord >= vec3i(0))) {
-                // Determine world position of this vertex
-                let worldPos = mcVertexToWorld(vertCoord);
-                
-                // Sample density at this vertex position
-                let density = sampleDensityAtWorldPos(worldPos);
-                
+                let densityAndGradient = computeVertexDensityAndGradient(vertCoord);
+                let grad = densityAndGradient.xyz;
+
                 let globalIdx = vertexIndex(vertCoord);
-                vertexDensity[globalIdx] = density;
-                
-                // Compute gradient using finite differences in world space
-                // Using a small epsilon related to density grid size
-                let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
-                let densityRes = vec3f(mcParams.densityGridRes);
-                let densityCellSize = gridRange / densityRes;
-                let eps = densityCellSize * 0.5;
-                
-                let dx = sampleDensityAtWorldPos(worldPos + vec3f(eps.x, 0.0, 0.0)) - 
-                         sampleDensityAtWorldPos(worldPos - vec3f(eps.x, 0.0, 0.0));
-                let dy = sampleDensityAtWorldPos(worldPos + vec3f(0.0, eps.y, 0.0)) - 
-                         sampleDensityAtWorldPos(worldPos - vec3f(0.0, eps.y, 0.0));
-                let dz = sampleDensityAtWorldPos(worldPos + vec3f(0.0, 0.0, eps.z)) - 
-                         sampleDensityAtWorldPos(worldPos - vec3f(0.0, 0.0, eps.z));
-                         
-                
-                let grad = vec4f(dx, dy, dz, 0.0);
-                var packedGrad = select(0u, pack4x8snorm(normalize(grad)), dot(grad.xyz, grad.xyz) > 0);
-                
+                vertexDensity[globalIdx] = densityAndGradient.w;
+
+                let packedGrad = select(0u, pack4x8snorm(vec4f(normalize(grad), 0.0)), dot(grad, grad) > 0.0);
                 vertexGradient[globalIdx] = packedGrad;
             }
         }
-
-        workgroupBarrier();
     }
 }

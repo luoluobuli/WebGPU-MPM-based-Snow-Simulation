@@ -3,6 +3,7 @@ export enum GpuRenderMethodType {
     Volumetric,
     Ssfr,
     MarchingCubes,
+    RaymarchingSurface,
 }
 
 export interface GpuRenderMethod {

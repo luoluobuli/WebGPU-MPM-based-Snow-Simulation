@@ -13,6 +13,7 @@ import { GpuRasterizeRenderPipelineManager } from "./collider/GpuRasterizeRender
 import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRenderPipelineMager";
 import { GpuVolumetricBufferManager } from "./volumetric/GpuVolumetricBufferManager";
 import { GpuVolumetricRenderPipelineManager } from "./volumetric/GpuVolumetricRenderPipelineManager";
+import { GpuRaymarchingSurfaceRenderPipelineManager } from "./raymarching/GpuRaymarchingSurfaceRenderPipelineManager";
 import { GpuSsfrRenderPipelineManager } from "./ssfr/GpuSsfrRenderPipelineManager";
 import { GpuMarchingCubesRenderPipelineManager } from "./marchingCubes/GpuMarchingCubesRenderPipelineManager";
 import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
@@ -337,6 +338,31 @@ export class GpuSnowPipelineRunner {
                             performanceMeasurementManager: this.performanceMeasurementManager,
                         });
                         break;
+
+                    case GpuRenderMethodType.RaymarchingSurface: {
+                        const volumetricBufferManager = new GpuVolumetricBufferManager({
+                            device,
+                            gridResolutionX,
+                            gridResolutionY,
+                            gridResolutionZ,
+                            screenDims: {
+                                width: width(),
+                                height: height(),
+                            },
+                        });
+
+                        this.renderMethod = new GpuRaymarchingSurfaceRenderPipelineManager({
+                            device,
+                            format,
+                            depthFormat: "depth32float",
+                            uniformsManager,
+                            volumetricBufferManager,
+                            mpmBufferManager: mpmManager,
+                            environmentTextureManager,
+                            performanceMeasurementManager: this.performanceMeasurementManager,
+                        });
+                        break;
+                    }
                 }
             });
 

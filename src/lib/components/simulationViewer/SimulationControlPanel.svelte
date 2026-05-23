@@ -91,6 +91,16 @@ const updateTimestep = (progress: number) => {
         Marching cubes
     </label>
 
+    <label>
+        <input
+            type="radio"
+            name="render-method-type"
+            bind:group={simulationState.renderMethodType}
+            value={GpuRenderMethodType.RaymarchingSurface}
+        />
+        Raymarching surface
+    </label>
+
     <Separator />
 
     <h3>Simulation</h3>

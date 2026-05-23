@@ -15,7 +15,7 @@ fn integrateParticles(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
     let particle_index = gid.x;
-    //if particle_index > arrayLength(&particle_data) { return; }
+    if particle_index >= arrayLength(&particle_data) { return; }
 
     var particle = particle_data[particle_index];
 
@@ -26,8 +26,6 @@ fn integrateParticles(
     particle.deformationElastic = (IDENTITY_MAT3 + particle.deformation_displacement) * particle.deformationElastic;
 
     applyPlasticity(&particle);
-
-    workgroupBarrier();
     
     // Boundary conditions
     if particle.pos.x < uniforms.gridMinCoords.x {
@@ -62,9 +60,7 @@ fn integrateParticles(
         particle.pos.z = uniforms.gridMaxCoords.z;
         particle.vel.z *= -0.5;
     }
-    
-    workgroupBarrier();
-    
+
     // Mesh Collision
     resolveParticleCollision(&particle);
 

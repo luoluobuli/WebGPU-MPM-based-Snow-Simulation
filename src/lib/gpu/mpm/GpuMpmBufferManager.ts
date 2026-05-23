@@ -1,4 +1,8 @@
 
+const HASH_MAP_SIZE = 200_003;
+const N_MAX_BLOCKS_IN_HASH_MAP = 100_000;
+const GRID_CELLS_PER_BLOCK = 64;
+
 export class GpuMpmBufferManager {
     readonly particleDataBuffer: GPUBuffer;
     readonly sparseGridBuffer: GPUBuffer;
@@ -9,8 +13,8 @@ export class GpuMpmBufferManager {
     readonly sortedParticleIndicesBuffer: GPUBuffer;
 
     readonly nParticles: number;
-    readonly nMaxBlocksInHashMap = 500_000;
-    readonly hashMapSize = 2_000_003;
+    readonly nMaxBlocksInHashMap = N_MAX_BLOCKS_IN_HASH_MAP;
+    readonly hashMapSize = HASH_MAP_SIZE;
 
     constructor({
         device,
@@ -38,27 +42,28 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
+        const gridStorageSize = this.nMaxBlocksInHashMap * GRID_CELLS_PER_BLOCK * 4;
         const gridMassBuffer = device.createBuffer({
             label: "MPM physical mass buffer",
-            size: this.hashMapSize * 4,
+            size: gridStorageSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
         const gridMomentumXBuffer = device.createBuffer({
             label: "MPM physical momentum X buffer",
-            size: this.hashMapSize * 4,
+            size: gridStorageSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
         const gridMomentumYBuffer = device.createBuffer({
             label: "MPM physical momentum Y buffer",
-            size: this.hashMapSize * 4,
+            size: gridStorageSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
         const gridMomentumZBuffer = device.createBuffer({
             label: "MPM physical momentum Z buffer",
-            size: this.hashMapSize * 4,
+            size: gridStorageSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 

@@ -8,7 +8,8 @@ fn clearBlockParticleCounts(
     @builtin(global_invocation_id) gid: vec3u,
 ) {
     let thread_index = gid.x;
-    if thread_index < N_MAX_BLOCKS_IN_HASH_MAP {
+    let count = atomicLoad(&sparse_grid.n_allocated_blocks);
+    if thread_index < count {
         atomicStore(&sparse_grid.block_particle_counts[thread_index], 0u);
     }
 }
