@@ -68,12 +68,10 @@ fn scatterParticles(
     let particle = &particles[threadIndex];
     
 
-    let mass1 = f32(hash1(threadIndex)) / f32(0xFFFFFFFF);
-
     (*particle).pos = candidatePos;
     (*particle)._hom = 1;
     (*particle).vel = vec3f();
-    (*particle).mass = mass1 * mass1;
+    (*particle).mass = 1.0 / 3.0;
     (*particle).deformationElastic = IDENTITY_MAT3;
     (*particle).deformationPlastic = IDENTITY_MAT3;
 

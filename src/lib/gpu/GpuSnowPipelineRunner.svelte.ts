@@ -34,6 +34,7 @@ export class GpuSnowPipelineRunner {
     private readonly nParticles: number;
     private readonly explicitMpmSimulationTimestepS: () => number;
     private readonly pbmpmSimulationTimestepS: () => number;
+    private readonly pbmpmSolveIterations: () => number;
     private readonly camera: Camera;
     private readonly colliderFriction: () => number;
     private depthTextureView: GPUTextureView;
@@ -80,6 +81,7 @@ export class GpuSnowPipelineRunner {
         mcGridResolutionZ,
         explicitMpmSimulationTimestepS,
         pbmpmSimulationTimestepS,
+        pbmpmSolveIterations,
         camera,
         meshVertices,
         collider,
@@ -104,6 +106,7 @@ export class GpuSnowPipelineRunner {
         mcGridResolutionZ?: number,
         explicitMpmSimulationTimestepS: () => number,
         pbmpmSimulationTimestepS: () => number,
+        pbmpmSolveIterations: () => number,
         camera: Camera,
         meshVertices: number[][],
         collider: ColliderGeometry,
@@ -121,6 +124,7 @@ export class GpuSnowPipelineRunner {
         this.nParticles = nParticles;
         this.explicitMpmSimulationTimestepS = explicitMpmSimulationTimestepS;
         this.pbmpmSimulationTimestepS = pbmpmSimulationTimestepS;
+        this.pbmpmSolveIterations = pbmpmSolveIterations;
         this.colliderFriction = colliderFriction;
 
         this.camera = camera;
@@ -262,6 +266,7 @@ export class GpuSnowPipelineRunner {
             });
             $effect(() => this.uniformsManager.writeSimulationTimestepS(this.selectedSimulationTimestepS));
             $effect(() => this.uniformsManager.writeColliderFriction(this.colliderFriction()));
+            $effect(() => this.uniformsManager.writePbmpmSolveIterations(this.pbmpmSolveIterations()));
 
 
             let lastRenderMethodType: GpuRenderMethodType | null = null;
@@ -467,6 +472,7 @@ export class GpuSnowPipelineRunner {
                         nParticles: this.mpmManager.nParticles,
                         nBlocksInHashMap: this.mpmManager.nMaxBlocksInHashMap,
                         hashMapSize: this.mpmManager.hashMapSize,
+                        nSolveConstraintIterations: this.pbmpmSolveIterations(),
                     });
                     break;
             }

@@ -63,7 +63,7 @@ fn doGridUpdate(
 
         var cell_velocity = cell_momentum / cell_mass;
 
-        let gravitational_acceleration = vec3f(0, 0, -9.81) / 3;
+        let gravitational_acceleration = vec3f(0, 0, -9.81) / f32(max(uniforms.pbmpmSolveIterations, 1u));
         cell_velocity += gravitational_acceleration * uniforms.simulationTimestep;
 
         // Interaction

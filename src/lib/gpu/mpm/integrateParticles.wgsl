@@ -25,6 +25,13 @@ fn integrateParticles(
     particle.pos += particle.pos_displacement;
     particle.deformationElastic = (IDENTITY_MAT3 + particle.deformation_displacement) * particle.deformationElastic;
 
+    let deformation_det = determinant(particle.deformationElastic);
+    if deformation_det != deformation_det || deformation_det < 0.05 || deformation_det > 20.0 {
+        particle.deformationElastic = IDENTITY_MAT3;
+        particle.deformationPlastic = IDENTITY_MAT3;
+        particle.deformation_displacement = mat3x3f();
+    }
+
     applyPlasticity(&particle);
     
     // Boundary conditions

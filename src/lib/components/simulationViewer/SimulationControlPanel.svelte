@@ -193,6 +193,22 @@ const updateTimestep = (progress: number) => {
         PBMPM
     </label>
 
+    {#if simulationState.simulationMethodType === GpuSimulationMethodType.Pbmpm}
+        <div>PBMPM solver iterations</div>
+
+        <labeled-range>
+            <input
+                type="range"
+                bind:value={simulationState.pbmpmSolveIterations}
+                min={1}
+                max={8}
+                step={1}
+            />
+
+            <span>{simulationState.pbmpmSolveIterations}</span>
+        </labeled-range>
+    {/if}
+
     <h4>Timestep</h4>
 
     <labeled-range>

@@ -184,4 +184,8 @@ export class GpuUniformsBufferManager {
     writeColliderFriction(friction: number) {
         this.device.queue.writeBuffer(this.buffer, 524, new Float32Array([friction]));
     }
+
+    writePbmpmSolveIterations(iterations: number) {
+        this.device.queue.writeBuffer(this.buffer, 540, new Uint32Array([Math.max(1, Math.floor(iterations))]));
+    }
 }

@@ -24,6 +24,7 @@ export class SimulationState {
     gridResolutionZ = $state(384);
     explicitMpmSimulationTimestepS = $state(1 / 192);
     pbmpmSimulationTimestepS = $state(1 / 384);
+    pbmpmSolveIterations = $state(3);
     transformMat = $state(mat4.identity());
 
     oneSimulationStepPerFrame = $state(true);
@@ -290,6 +291,7 @@ export class SimulationState {
                 gridResolutionZ: state.gridResolutionZ,
                 explicitMpmSimulationTimestepS: () => state.explicitMpmSimulationTimestepS,
                 pbmpmSimulationTimestepS: () => state.pbmpmSimulationTimestepS,
+                pbmpmSolveIterations: () => state.pbmpmSolveIterations,
                 camera: state.camera,
                 meshVertices: vertices,
                 collider: collider,

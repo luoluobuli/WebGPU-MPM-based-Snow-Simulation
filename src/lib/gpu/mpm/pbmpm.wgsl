@@ -133,8 +133,7 @@ fn updateGrid(particle: ptr<function, ParticleData>) {
                     }
                 }
 
-                // PBMPM Loop runs 3 times, so apply 1/3 of the force per iteration
-                forces = forces / 3.0;
+                forces = forces / f32(max(uniforms.pbmpmSolveIterations, 1u));
 
                 let momentum_change = forces * weighted_mass * uniforms.simulationTimestep;
 

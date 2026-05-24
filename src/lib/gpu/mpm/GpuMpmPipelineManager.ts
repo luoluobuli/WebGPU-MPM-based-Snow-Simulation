@@ -433,16 +433,16 @@ export class GpuMpmPipelineManager {
         nParticles,
         nBlocksInHashMap,
         hashMapSize,
+        nSolveConstraintIterations,
     }: {
         computePassEncoder: GPUComputePassEncoder,
         nParticles: number,
         nBlocksInHashMap: number,
         hashMapSize: number,
+        nSolveConstraintIterations: number,
     }) {
         const gridCellDispatchX = 256;
         const gridCellDispatchY = Math.ceil(nBlocksInHashMap / gridCellDispatchX);
-
-        const nSolveConstraintIterations = 3;
 
         // determine which blocks in a grid are populated
 

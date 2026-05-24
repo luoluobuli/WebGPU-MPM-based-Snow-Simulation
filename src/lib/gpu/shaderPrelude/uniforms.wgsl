@@ -50,7 +50,7 @@ struct Uniforms {
     colliderFriction: f32, // 524 -> 528
     
     interactionDir: vec3f, // 528
-    _pad_interaction3: f32, // 540 -> 544
+    pbmpmSolveIterations: u32, // 540 -> 544
     
     objects: array<ColliderObject, 1024>, // 544
 }
