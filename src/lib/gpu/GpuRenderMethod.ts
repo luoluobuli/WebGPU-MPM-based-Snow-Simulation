@@ -1,5 +1,6 @@
 export enum GpuRenderMethodType {
     Points,
+    Splats,
     Volumetric,
     Ssfr,
     MarchingCubes,

@@ -66,6 +66,16 @@ const updateTimestep = (progress: number) => {
             type="radio"
             name="render-method-type"
             bind:group={simulationState.renderMethodType}
+            value={GpuRenderMethodType.Splats}
+        />
+        Splats
+    </label>
+
+    <label>
+        <input
+            type="radio"
+            name="render-method-type"
+            bind:group={simulationState.renderMethodType}
             value={GpuRenderMethodType.Volumetric}
         />
         Volumetric

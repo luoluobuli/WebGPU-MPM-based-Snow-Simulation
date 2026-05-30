@@ -16,6 +16,7 @@ import { GpuVolumetricRenderPipelineManager } from "./volumetric/GpuVolumetricRe
 import { GpuRaymarchingSurfaceRenderPipelineManager } from "./raymarching/GpuRaymarchingSurfaceRenderPipelineManager";
 import { GpuSsfrRenderPipelineManager } from "./ssfr/GpuSsfrRenderPipelineManager";
 import { GpuMarchingCubesRenderPipelineManager } from "./marchingCubes/GpuMarchingCubesRenderPipelineManager";
+import { GpuSplatsRenderPipelineManager } from "./splats/GpuSplatsRenderPipelineManager";
 import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
 import { GpuSimulationMethodType } from "./GpuSimulationMethod";
 import { GpuEnvironmentRenderPipelineManager } from "./environmentMap/GpuEnvironmentRenderPipelineManager";
@@ -284,6 +285,16 @@ export class GpuSnowPipelineRunner {
                         });
                         break;
 
+                    case GpuRenderMethodType.Splats:
+                        this.renderMethod = new GpuSplatsRenderPipelineManager({
+                            device,
+                            format,
+                            depthFormat: "depth32float",
+                            uniformsManager,
+                            mpmManager,
+                        });
+                        break;
+
                     case GpuRenderMethodType.Volumetric: {
                         const volumetricBufferManager = new GpuVolumetricBufferManager({
                             device,
@@ -535,7 +546,7 @@ export class GpuSnowPipelineRunner {
                 : undefined,
         });
 
-        if ([GpuRenderMethodType.MarchingCubes, GpuRenderMethodType.Points].includes(this.getRenderMethodType())) {
+        if ([GpuRenderMethodType.MarchingCubes, GpuRenderMethodType.Points, GpuRenderMethodType.Splats].includes(this.getRenderMethodType())) {
             this.ssaoPipelineManager.addDraw(ssaoPassEncoder);
         }
         ssaoPassEncoder.end();
