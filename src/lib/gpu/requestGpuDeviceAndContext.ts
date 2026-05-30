@@ -38,6 +38,10 @@ export const requestGpuDeviceAndContext = async ({
         return null;
     }
 
+    device.addEventListener("uncapturederror", (event) => {
+        console.error(event.error.message);
+    });
+
     device.lost.then(() => {
         onErr?.("gpu device was lost. please reload the page!");
     });

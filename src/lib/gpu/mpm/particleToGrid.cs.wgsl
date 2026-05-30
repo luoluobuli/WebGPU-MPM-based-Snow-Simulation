@@ -54,7 +54,7 @@ fn doParticleToGrid(
                 if !cellNumberInGridRange(cell_number) { continue; }
 
                 let cell_index = calculateCellIndexFromCellNumber(cell_number);
-                if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
+                if cell_index == GRID_BLOCK_INDEX_EMPTY { continue; }
 
                 let cell_weight = cell_weights[u32(offsetX + 1)].x
                     * cell_weights[u32(offsetY + 1)].y

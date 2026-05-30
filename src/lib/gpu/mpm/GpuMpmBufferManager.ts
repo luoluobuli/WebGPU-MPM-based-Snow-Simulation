@@ -1,6 +1,9 @@
 
-const HASH_MAP_SIZE = 200_003;
-const N_MAX_BLOCKS_IN_HASH_MAP = 100_000;
+const BLOCK_SIZE = 4;
+const BUKKIT_DOMAIN_GRID_RESOLUTION = 384;
+const BUKKIT_DOMAIN_BLOCKS_PER_AXIS = Math.ceil(BUKKIT_DOMAIN_GRID_RESOLUTION / BLOCK_SIZE);
+const BUKKIT_DOMAIN_BLOCK_COUNT = BUKKIT_DOMAIN_BLOCKS_PER_AXIS ** 3;
+const N_MAX_ACTIVE_BLOCKS = 100_000;
 const GRID_CELLS_PER_BLOCK = 64;
 
 export class GpuMpmBufferManager {
@@ -13,8 +16,8 @@ export class GpuMpmBufferManager {
     readonly sortedParticleIndicesBuffer: GPUBuffer;
 
     readonly nParticles: number;
-    readonly nMaxBlocksInHashMap = N_MAX_BLOCKS_IN_HASH_MAP;
-    readonly hashMapSize = HASH_MAP_SIZE;
+    readonly nMaxActiveBlocks = N_MAX_ACTIVE_BLOCKS;
+    readonly bukkitDomainBlockCount = BUKKIT_DOMAIN_BLOCK_COUNT;
 
     constructor({
         device,
@@ -30,19 +33,22 @@ export class GpuMpmBufferManager {
         });
 
         // SparseGridStorage layout:
-        // - n_allocated_blocks: atomic<u32> (4 bytes) + 12 bytes padding = 16 bytes
-        // - hash_map_entries: array<HashMapEntry, HASH_MAP_SIZE> = HASH_MAP_SIZE * 16 bytes
-        // - mapped_block_indexes: array<u32, N_MAX_BLOCKS_IN_HASH_MAP> = N_MAX_BLOCKS * 4 bytes
-        // - block_particle_counts: array<u32, N_MAX_BLOCKS_IN_HASH_MAP> = N_MAX_BLOCKS * 4 bytes
-        // - block_particle_offsets: array<u32, N_MAX_BLOCKS_IN_HASH_MAP> = N_MAX_BLOCKS * 4 bytes
-        const sparseGridBufferSize = 16 + this.hashMapSize * 16 + this.nMaxBlocksInHashMap * 4 * 3;
+        // - n_allocated_blocks: atomic<u32> (4 bytes) + 12 bytes explicit padding = 16 bytes
+        // - block_index_bukkits: array<atomic<u32>, BUKKIT_DOMAIN_BLOCK_COUNT>
+        // - mapped_block_numbers: array<vec4i, N_MAX_ACTIVE_BLOCKS>
+        // - block_particle_counts: array<u32, N_MAX_ACTIVE_BLOCKS>
+        // - block_particle_offsets: array<u32, N_MAX_ACTIVE_BLOCKS>
+        const sparseGridBufferSize = 16
+            + this.bukkitDomainBlockCount * 4
+            + this.nMaxActiveBlocks * 16
+            + this.nMaxActiveBlocks * 4 * 2;
         const sparseGridBuffer = device.createBuffer({
             label: "MPM sparse grid storage buffer",
             size: sparseGridBufferSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        const gridStorageSize = this.nMaxBlocksInHashMap * GRID_CELLS_PER_BLOCK * 4;
+        const gridStorageSize = this.nMaxActiveBlocks * GRID_CELLS_PER_BLOCK * 4;
         const gridMassBuffer = device.createBuffer({
             label: "MPM physical mass buffer",
             size: gridStorageSize,

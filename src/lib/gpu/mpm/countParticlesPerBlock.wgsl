@@ -17,9 +17,9 @@ fn countParticlesPerBlock(
 
     let cell_number = calculateCellNumber(particle.pos);
     let block_number = calculateBlockNumberContainingCell(cell_number);
-    let block_index = retrieveBlockIndexFromHashMap(block_number);
+    let block_index = retrieveBlockIndexFromBukkit(block_number);
 
-    if block_index != GRID_HASH_MAP_BLOCK_INDEX_EMPTY {
+    if block_index != GRID_BLOCK_INDEX_EMPTY {
         atomicAdd(&sparse_grid.block_particle_counts[block_index], 1u);
     }
 }

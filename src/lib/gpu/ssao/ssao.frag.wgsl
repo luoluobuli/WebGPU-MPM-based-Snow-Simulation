@@ -19,21 +19,17 @@ fn project(worldPos: vec3f) -> vec4f {
 @fragment
 fn frag(input: FragmentInput) -> @location(0) vec4f {
     let dim = textureDimensions(depthTexture);
-    let coords = vec2i(input.uv * vec2f(dim));
-    
-    if (coords.x < 0 || coords.x >= i32(dim.x) || coords.y < 0 || coords.y >= i32(dim.y)) {
-        return vec4f(1.0);
-    }
+    let maxCoords = vec2i(dim) - vec2i(1);
+    let coords = clamp(vec2i(input.uv * vec2f(dim)), vec2i(0), maxCoords);
 
     let depth = textureLoad(depthTexture, coords, 0);
+    let position = unproject(input.uv, depth);
+    let normal = normalize(cross(dpdx(position), dpdy(position)));
 
     if depth >= 1 - 1e-4 {
          // No occlusion on bg
         return vec4f(0);
     }
-
-    let position = unproject(input.uv, depth);
-    let normal = normalize(cross(dpdx(position), dpdy(position)));
     
     const SSAO_RADIUS = 0.5;
     const SSAO_BIAS = 0.15;

@@ -9,7 +9,7 @@ fn clearBlockParticleCounts(
 ) {
     let thread_index = gid.x;
     let count = atomicLoad(&sparse_grid.n_allocated_blocks);
-    if thread_index < count {
+    if thread_index < min(count, N_MAX_ACTIVE_BLOCKS) {
         atomicStore(&sparse_grid.block_particle_counts[thread_index], 0u);
     }
 }

@@ -79,13 +79,12 @@ fn doGridUpdate(
     @builtin(workgroup_id) wid: vec3u,
 ) {
     let block_index = wid.y * 256u + wid.x;
-    if block_index >= N_MAX_BLOCKS_IN_HASH_MAP { return; }
+    if block_index >= N_MAX_ACTIVE_BLOCKS { return; }
     
     let count = atomicLoad(&sparse_grid.n_allocated_blocks);
     if block_index >= count { return; }
     
-    let mapped_block_index = sparse_grid.mapped_block_indexes[block_index];
-    let block_number = sparse_grid.hash_map_entries[mapped_block_index].block_number;
+    let block_number = sparse_grid.mapped_block_numbers[block_index].xyz;
     
     let cell_index_within_block = lid.x;
     let cell_index = block_index * BLOCK_SIZE_CUBED + cell_index_within_block;

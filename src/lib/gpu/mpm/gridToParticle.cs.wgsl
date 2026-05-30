@@ -37,7 +37,7 @@ fn doGridToParticle(
                     if !cellNumberInGridRange(cell_number) { continue; }
 
                     let cell_index = calculateCellIndexFromCellNumber(cell_number);
-                    if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
+                    if cell_index == GRID_BLOCK_INDEX_EMPTY { continue; }
                     
                     let cell_mass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
                     if cell_mass <= 0 { continue; }
@@ -95,7 +95,7 @@ fn doGridToParticle(
                     if !cellNumberInGridRange(cell_number) { continue; }
 
                     let cell_index = calculateCellIndexFromCellNumber(cell_number);
-                    if cell_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY { continue; }
+                    if cell_index == GRID_BLOCK_INDEX_EMPTY { continue; }
                     
                     let cell_mass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
                     if cell_mass <= 0 { continue; }

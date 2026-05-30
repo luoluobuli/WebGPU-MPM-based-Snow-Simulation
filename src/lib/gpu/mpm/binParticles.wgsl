@@ -18,9 +18,9 @@ fn binParticles(
 
     let cell_number = calculateCellNumber(particle.pos);
     let block_number = calculateBlockNumberContainingCell(cell_number);
-    let block_index = retrieveBlockIndexFromHashMap(block_number);
+    let block_index = retrieveBlockIndexFromBukkit(block_number);
 
-    if block_index != GRID_HASH_MAP_BLOCK_INDEX_EMPTY {
+    if block_index != GRID_BLOCK_INDEX_EMPTY {
         let dest_index = atomicAdd(&sparse_grid.block_particle_offsets[block_index], 1u);
         sorted_particle_indices[dest_index] = thread_index;
     }

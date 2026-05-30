@@ -455,8 +455,8 @@ export class GpuSnowPipelineRunner {
                 case GpuSimulationMethodType.ExplicitMpm:
                     this.mpmPipelineManager.addExplicitMpmDispatches({
                         computePassEncoder,
-                        hashMapSize: this.mpmManager.hashMapSize,
-                        nBlocksInHashMap: this.mpmManager.nMaxBlocksInHashMap,
+                        bukkitDomainBlockCount: this.mpmManager.bukkitDomainBlockCount,
+                        nMaxActiveBlocks: this.mpmManager.nMaxActiveBlocks,
                         nParticles: this.mpmManager.nParticles,
                     });
                     break;
@@ -465,8 +465,8 @@ export class GpuSnowPipelineRunner {
                     this.mpmPipelineManager.addMlsMpmDispatches({
                         computePassEncoder,
                         nParticles: this.mpmManager.nParticles,
-                        nBlocksInHashMap: this.mpmManager.nMaxBlocksInHashMap,
-                        hashMapSize: this.mpmManager.hashMapSize,
+                        nMaxActiveBlocks: this.mpmManager.nMaxActiveBlocks,
+                        bukkitDomainBlockCount: this.mpmManager.bukkitDomainBlockCount,
                     });
                     break;
             }

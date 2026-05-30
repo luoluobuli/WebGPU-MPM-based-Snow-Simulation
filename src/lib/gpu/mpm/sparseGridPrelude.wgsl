@@ -3,24 +3,23 @@ const BLOCK_SIZE_CUBED = BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE;
 const LOG_BLOCK_SIZE = 2u; // log2
 const BLOCK_MASK = 3u; // 4 - 1
 
-const HASH_MAP_SIZE = 200003u; // prime modulus that is greater than N_MAX_BLOCKS_IN_HASH_MAP / load_limit (here 0.5)
-const N_MAX_BLOCKS_IN_HASH_MAP = 100000u;
-const N_HASH_MAP_CANDIDATE_INDEX_ATTEMPTS = 100u;
-const GRID_HASH_MAP_BLOCK_INDEX_EMPTY = 0xFFFFFFFFu;
-const GRID_HASH_MAP_BLOCK_INDEX_RESERVED = 0xFFFFFFFEu;
+const BUKKIT_DOMAIN_GRID_RESOLUTION = 384u;
+const BUKKIT_DOMAIN_BLOCKS_X = (BUKKIT_DOMAIN_GRID_RESOLUTION + BLOCK_SIZE - 1u) / BLOCK_SIZE;
+const BUKKIT_DOMAIN_BLOCKS_Y = BUKKIT_DOMAIN_BLOCKS_X;
+const BUKKIT_DOMAIN_BLOCKS_Z = BUKKIT_DOMAIN_BLOCKS_X;
+const BUKKIT_DOMAIN_BLOCK_COUNT = BUKKIT_DOMAIN_BLOCKS_X * BUKKIT_DOMAIN_BLOCKS_Y * BUKKIT_DOMAIN_BLOCKS_Z;
 
-struct HashMapEntry {
-    block_number: vec3i,
-    block_index: atomic<u32>,
-}
+const N_MAX_ACTIVE_BLOCKS = 100000u;
+const GRID_BLOCK_INDEX_EMPTY = 0xFFFFFFFFu;
+const GRID_BLOCK_INDEX_RESERVED = 0xFFFFFFFEu;
 
 struct SparseGridStorage {
     n_allocated_blocks: atomic<u32>,
-    // implicit 12 byte padding
-    hash_map_entries: array<HashMapEntry, HASH_MAP_SIZE>,
-    mapped_block_indexes: array<u32, N_MAX_BLOCKS_IN_HASH_MAP>,
-    block_particle_counts: array<atomic<u32>, N_MAX_BLOCKS_IN_HASH_MAP>,
-    block_particle_offsets: array<atomic<u32>, N_MAX_BLOCKS_IN_HASH_MAP>,
+    _padding: array<u32, 3>,
+    block_index_bukkits: array<atomic<u32>, BUKKIT_DOMAIN_BLOCK_COUNT>,
+    mapped_block_numbers: array<vec4i, N_MAX_ACTIVE_BLOCKS>,
+    block_particle_counts: array<atomic<u32>, N_MAX_ACTIVE_BLOCKS>,
+    block_particle_offsets: array<atomic<u32>, N_MAX_ACTIVE_BLOCKS>,
 }
 
 fn calculateBlockNumberContainingCell(cell_number: vec3i) -> vec3i {
@@ -32,32 +31,39 @@ fn calculateCellIndexWithinBlock(cell_number: vec3i) -> u32 {
     return u32(cell_index_within_block.x + cell_index_within_block.y * 4 + cell_index_within_block.z * 16);
 }
 
-fn retrieveBlockIndexFromHashMap(block_coord: vec3<i32>) -> u32 {
-    let hash_key = hash3(bitcast<vec3u>(block_coord));
+fn bukkitCanContainBlock(block_number: vec3i) -> bool {
+    return all(block_number >= vec3i(0))
+        && u32(block_number.x) < BUKKIT_DOMAIN_BLOCKS_X
+        && u32(block_number.y) < BUKKIT_DOMAIN_BLOCKS_Y
+        && u32(block_number.z) < BUKKIT_DOMAIN_BLOCKS_Z;
+}
 
-    for (var i = 0u; i < N_HASH_MAP_CANDIDATE_INDEX_ATTEMPTS; i++) {
-        let candidate_index = (hash_key + i) % HASH_MAP_SIZE;
-        let stored_coord = sparse_grid.hash_map_entries[candidate_index].block_number;
-        let block_index = atomicLoad(&sparse_grid.hash_map_entries[candidate_index].block_index);
-        
-        if block_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY {
-            return GRID_HASH_MAP_BLOCK_INDEX_EMPTY;
-        }
-        
-        if all(stored_coord == block_coord) {
-            return block_index;
-        }
+fn calculateBukkitIndex(block_number: vec3i) -> u32 {
+    let block = vec3u(block_number);
+    return block.x + BUKKIT_DOMAIN_BLOCKS_X * (block.y + BUKKIT_DOMAIN_BLOCKS_Y * block.z);
+}
+
+fn retrieveBlockIndexFromBukkit(block_number: vec3i) -> u32 {
+    if !bukkitCanContainBlock(block_number) {
+        return GRID_BLOCK_INDEX_EMPTY;
     }
-    return GRID_HASH_MAP_BLOCK_INDEX_EMPTY;
+
+    let bukkit_index = calculateBukkitIndex(block_number);
+    let block_index = atomicLoad(&sparse_grid.block_index_bukkits[bukkit_index]);
+    if block_index >= N_MAX_ACTIVE_BLOCKS {
+        return GRID_BLOCK_INDEX_EMPTY;
+    }
+
+    return block_index;
 }
 
 fn calculateCellIndexFromCellNumber(cell_number: vec3i) -> u32 {
     let block_number = calculateBlockNumberContainingCell(cell_number);
-    let block_index = retrieveBlockIndexFromHashMap(block_number);
+    let block_index = retrieveBlockIndexFromBukkit(block_number);
 
     // failsafe if something went wrong with allocation
-    if block_index == GRID_HASH_MAP_BLOCK_INDEX_EMPTY {
-        return GRID_HASH_MAP_BLOCK_INDEX_EMPTY;
+    if block_index == GRID_BLOCK_INDEX_EMPTY {
+        return GRID_BLOCK_INDEX_EMPTY;
     }
 
     let cell_index_within_block = calculateCellIndexWithinBlock(cell_number);

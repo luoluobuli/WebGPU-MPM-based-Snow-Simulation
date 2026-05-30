@@ -4,7 +4,7 @@ import gridUpdateModuleSrc from "./gridUpdate.cs.wgsl?raw";
 import g2pModuleSrc from "./gridToParticle.cs.wgsl?raw";
 import sparseGridPreludeSrc from "./sparseGridPrelude.wgsl?raw";
 import mapAffectedBlocksSrc from "./mapAffectedBlocks.wgsl?raw";
-import clearHashMapSrc from "./clearHashMap.wgsl?raw";
+import clearBukkitSrc from "./clearBukkit.wgsl?raw";
 import clearMappedBlocksSrc from "./clearMappedBlocks.wgsl?raw";
 import integrateParticlesSrc from "./integrateParticles.wgsl?raw";
 import countParticlesPerBlockSrc from "./countParticlesPerBlock.wgsl?raw";
@@ -22,7 +22,7 @@ export class GpuMpmPipelineManager {
     readonly sparseGridBindGroupLayout: GPUBindGroupLayout;
     readonly sparseGridBindGroup: GPUBindGroup;
 
-    readonly clearHashMapPipeline: GPUComputePipeline;
+    readonly clearBukkitPipeline: GPUComputePipeline;
     readonly mapAffectedBlocksPipeline: GPUComputePipeline;
     readonly clearMappedBlocksPipeline: GPUComputePipeline;
     readonly p2gComputePipeline: GPUComputePipeline;
@@ -146,15 +146,15 @@ export class GpuMpmPipelineManager {
 
 
 
-        this.clearHashMapPipeline = device.createComputePipeline({
-            label: "clear hash map pipeline",
+        this.clearBukkitPipeline = device.createComputePipeline({
+            label: "clear bukkit pipeline",
             layout: sparseGridPipelineLayout,
             compute: {
                 module: device.createShaderModule({
-                    label: "clear hash map module",
-                    code: attachPrelude(`${sparseGridPreludeSrc}\n${clearHashMapSrc}`),
+                    label: "clear bukkit module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${clearBukkitSrc}`),
                 }),
-                entryPoint: "clearHashMap",
+                entryPoint: "clearBukkit",
             },
         });
 
@@ -312,25 +312,25 @@ export class GpuMpmPipelineManager {
 
     addExplicitMpmDispatches({
         computePassEncoder,
-        hashMapSize,
-        nBlocksInHashMap,
+        bukkitDomainBlockCount,
+        nMaxActiveBlocks,
         nParticles,
     }: {
         computePassEncoder: GPUComputePassEncoder,
-        hashMapSize: number,
-        nBlocksInHashMap: number,
+        bukkitDomainBlockCount: number,
+        nMaxActiveBlocks: number,
         nParticles: number,
     }) {
         const gridCellDispatchX = 256;
-        const gridCellDispatchY = Math.ceil(nBlocksInHashMap / gridCellDispatchX);
+        const gridCellDispatchY = Math.ceil(nMaxActiveBlocks / gridCellDispatchX);
 
         // clear grid
 
-        // clear mapping table
+        // clear bukkit table
         this.addDispatch({
             computePassEncoder,
-            pipeline: this.clearHashMapPipeline,
-            dispatchX: Math.ceil(hashMapSize / 256),
+            pipeline: this.clearBukkitPipeline,
+            dispatchX: Math.ceil(bukkitDomainBlockCount / 256),
         });
 
         // determine which blocks in a grid are populated
@@ -345,7 +345,7 @@ export class GpuMpmPipelineManager {
         this.addDispatch({
             computePassEncoder,
             pipeline: this.clearBlockParticleCountsPipeline,
-            dispatchX: Math.ceil(this.mpmManager.nMaxBlocksInHashMap / 256),
+            dispatchX: Math.ceil(this.mpmManager.nMaxActiveBlocks / 256),
         });
 
         this.addDispatch({
@@ -417,18 +417,18 @@ export class GpuMpmPipelineManager {
     addMlsMpmDispatches({
         computePassEncoder,
         nParticles,
-        nBlocksInHashMap,
-        hashMapSize,
+        nMaxActiveBlocks,
+        bukkitDomainBlockCount,
     }: {
         computePassEncoder: GPUComputePassEncoder,
         nParticles: number,
-        nBlocksInHashMap: number,
-        hashMapSize: number,
+        nMaxActiveBlocks: number,
+        bukkitDomainBlockCount: number,
     }) {
         this.addExplicitMpmDispatches({
             computePassEncoder,
-            hashMapSize,
-            nBlocksInHashMap,
+            bukkitDomainBlockCount,
+            nMaxActiveBlocks,
             nParticles,
         });
     }
