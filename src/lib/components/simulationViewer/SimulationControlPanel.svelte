@@ -220,32 +220,3 @@ const updateTimestep = (progress: number) => {
     </label>
 </OverlayPanel>
 
-<Hotkey key="q"
-    onKeyUp={() => simulationState.moveForward = false}
-    onKeyDown={() => simulationState.moveForward = true}
-/>
-
-<Hotkey key="e"
-    onKeyUp={() => simulationState.moveBackward = false}
-    onKeyDown={() => simulationState.moveBackward = true}
-/>
-
-<Hotkey key="a"
-    onKeyUp={() => simulationState.moveLeft = false}
-    onKeyDown={() => simulationState.moveLeft = true}
-/>
-
-<Hotkey key="d"
-    onKeyUp={() => simulationState.moveRight = false}
-    onKeyDown={() => simulationState.moveRight = true}
-/>
-
-<Hotkey key="w"
-    onKeyUp={() => simulationState.moveUp = false}
-    onKeyDown={() => simulationState.moveUp = true}
-/>
-
-<Hotkey key="s"
-    onKeyUp={() => simulationState.moveDown = false}
-    onKeyDown={() => simulationState.moveDown = true}
-/>

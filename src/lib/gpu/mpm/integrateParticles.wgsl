@@ -3,8 +3,7 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 @group(1) @binding(0) var<storage, read_write> sparse_grid: SparseGridStorage;
-@group(1) @binding(9) var<storage, read> colliderData: array<u32>;
-// @group(1) @binding(10) is declared in colliderPrelude.wgsl (bvhNodes)
+// @group(1) @binding(10) is declared in colliderPrelude.wgsl (colliderSdfData)
 
 
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
@@ -69,7 +68,7 @@ fn integrateParticles(
         particle.vel.z *= -0.5;
     }
 
-    // Mesh Collision
+    // SDF collision
     resolveParticleCollision(&particle);
     sanitizeParticle(&particle);
 

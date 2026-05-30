@@ -13,37 +13,34 @@ export interface ColliderGeometry {
     }[];
 }
 
-// BVH Node structure (32 bytes, 8 floats/uints):
-// min: vec3f (12 bytes)
-// leftChildOrPrimIndex: u32 (4 bytes) - If leaf: start index of triangle. If internal: left child index.
-// max: vec3f (12 bytes)
-// rightChildOrPrimCount: u32 (4 bytes) - If leaf: primitive count. If internal: right child index.
-interface BvhNode {
-    minX: number;
-    minY: number;
-    minZ: number;
-    leftChildOrPrimIndex: number;
-    maxX: number;
-    maxY: number;
-    maxZ: number;
-    rightChildOrPrimCount: number;
-    isLeaf: boolean; // Not stored in GPU, used during construction
-}
+export const COLLIDER_SDF_RESOLUTION = 64;
+export const COLLIDER_SDF_SURFACE_THICKNESS = 0.05;
+
+type Vec3 = [number, number, number];
 
 interface Triangle {
-    idx0: number;
-    idx1: number;
-    idx2: number;
-    centroid: [number, number, number];
-    minBounds: [number, number, number];
-    maxBounds: [number, number, number];
+    v0: Vec3;
+    v1: Vec3;
+    v2: Vec3;
+    centroid: Vec3;
+    minBounds: Vec3;
+    maxBounds: Vec3;
+}
+
+interface SdfBvhNode {
+    minBounds: Vec3;
+    maxBounds: Vec3;
+    leftChild: number;
+    rightChild: number;
+    start: number;
+    count: number;
+    isLeaf: boolean;
 }
 
 export class GpuColliderBufferManager {
     readonly colliderDataBuffer: GPUBuffer;
-    readonly colliderBvhBuffer: GPUBuffer;
+    readonly colliderSdfBuffer: GPUBuffer;
     readonly numIndices: number;
-    readonly numBvhNodes: number;
     readonly minCoords: [number, number, number];
     readonly maxCoords: [number, number, number];
 
@@ -75,20 +72,21 @@ export class GpuColliderBufferManager {
         textures: ImageBitmap[],
         indices: number[],
     }) {
-        // tmp stores bounding box as the collider; will use the geometry itself in the future
-        const min: [number, number, number] = [Infinity, Infinity, Infinity];
-        const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+        const meshMin: Vec3 = [Infinity, Infinity, Infinity];
+        const meshMax: Vec3 = [-Infinity, -Infinity, -Infinity];
         for (let i = 0; i < vertices.length; i+=3) {
-            min[0] = Math.min(min[0], vertices[i]);
-            min[1] = Math.min(min[1], vertices[i+1]);
-            min[2] = Math.min(min[2], vertices[i+2]);
+            meshMin[0] = Math.min(meshMin[0], vertices[i]);
+            meshMin[1] = Math.min(meshMin[1], vertices[i+1]);
+            meshMin[2] = Math.min(meshMin[2], vertices[i+2]);
 
-            max[0] = Math.max(max[0], vertices[i]);
-            max[1] = Math.max(max[1], vertices[i+1]);
-            max[2] = Math.max(max[2], vertices[i+2]);
+            meshMax[0] = Math.max(meshMax[0], vertices[i]);
+            meshMax[1] = Math.max(meshMax[1], vertices[i+1]);
+            meshMax[2] = Math.max(meshMax[2], vertices[i+2]);
         }
-        this.minCoords = min;
-        this.maxCoords = max;
+
+        const sdfBounds = this.buildSdfBounds(meshMin, meshMax);
+        this.minCoords = sdfBounds.min;
+        this.maxCoords = sdfBounds.max;
 
         this.numIndices = indices.length;
         this.numTextures = textures.length;
@@ -175,115 +173,135 @@ export class GpuColliderBufferManager {
             });
         }
 
-        // Build BVH from triangles
-        const { nodes, triangleIndices } = this.buildBvh(vertices, indices);
-        this.numBvhNodes = nodes.length;
-
-        // Create BVH buffer (32 bytes per node)
-        const bvhData = new ArrayBuffer(nodes.length * 32);
-        const bvhFloatView = new Float32Array(bvhData);
-        const bvhUintView = new Uint32Array(bvhData);
-
-        for (let i = 0; i < nodes.length; i++) {
-            const node = nodes[i];
-            const baseIdx = i * 8;
-            bvhFloatView[baseIdx + 0] = node.minX;
-            bvhFloatView[baseIdx + 1] = node.minY;
-            bvhFloatView[baseIdx + 2] = node.minZ;
-            bvhUintView[baseIdx + 3] = node.leftChildOrPrimIndex;
-            bvhFloatView[baseIdx + 4] = node.maxX;
-            bvhFloatView[baseIdx + 5] = node.maxY;
-            bvhFloatView[baseIdx + 6] = node.maxZ;
-            // For leaves: store primitive count with high bit set to mark as leaf
-            // For internal: store right child index (high bit clear)
-            bvhUintView[baseIdx + 7] = node.isLeaf 
-                ? (node.rightChildOrPrimCount | 0x80000000) 
-                : node.rightChildOrPrimCount;
-        }
-
-        this.colliderBvhBuffer = device.createBuffer({
-            label: "collider BVH buffer",
-            size: Math.max(bvhData.byteLength, 32), // Minimum 32 bytes
+        const sdfData = this.buildColliderSdf(vertices, indices, sdfBounds);
+        this.colliderSdfBuffer = device.createBuffer({
+            label: "collider SDF buffer",
+            size: Math.max(sdfData.byteLength, 4),
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
-        device.queue.writeBuffer(this.colliderBvhBuffer, 0, bvhData);
-
-        // Rewrite indices in BVH order (triangles reordered by BVH leaf order)
-        const reorderedIndices = new Uint32Array(triangleIndices.length * 3);
-        for (let i = 0; i < triangleIndices.length; i++) {
-            const triIdx = triangleIndices[i];
-            reorderedIndices[i * 3 + 0] = indices[triIdx * 3 + 0];
-            reorderedIndices[i * 3 + 1] = indices[triIdx * 3 + 1];
-            reorderedIndices[i * 3 + 2] = indices[triIdx * 3 + 2];
-        }
-        device.queue.writeBuffer(this.colliderDataBuffer, 0, reorderedIndices);
+        device.queue.writeBuffer(this.colliderSdfBuffer, 0, sdfData.buffer as ArrayBuffer, sdfData.byteOffset, sdfData.byteLength);
     }
 
-    private buildBvh(vertices: number[], indices: number[]): { nodes: BvhNode[], triangleIndices: number[] } {
+    private buildSdfBounds(meshMin: Vec3, meshMax: Vec3): { min: Vec3, max: Vec3 } {
+        const extent: Vec3 = [
+            meshMax[0] - meshMin[0],
+            meshMax[1] - meshMin[1],
+            meshMax[2] - meshMin[2],
+        ];
+        const maxExtent = Math.max(extent[0], extent[1], extent[2], 1e-3);
+        const voxelEstimate = maxExtent / (COLLIDER_SDF_RESOLUTION - 1);
+        const padding = Math.max(COLLIDER_SDF_SURFACE_THICKNESS * 2, voxelEstimate * 2);
+
+        return {
+            min: [meshMin[0] - padding, meshMin[1] - padding, meshMin[2] - padding],
+            max: [meshMax[0] + padding, meshMax[1] + padding, meshMax[2] + padding],
+        };
+    }
+
+    private buildColliderSdf(
+        vertices: number[],
+        indices: number[],
+        bounds: { min: Vec3, max: Vec3 },
+    ): Float32Array {
+        const voxelCount = COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
+        const sdfData = new Float32Array(voxelCount);
+        const { triangles, triangleIndices, nodes } = this.buildSdfBvh(vertices, indices);
+
+        if (triangles.length === 0) {
+            sdfData.fill(1e6);
+            return sdfData;
+        }
+
+        const dx = (bounds.max[0] - bounds.min[0]) / (COLLIDER_SDF_RESOLUTION - 1);
+        const dy = (bounds.max[1] - bounds.min[1]) / (COLLIDER_SDF_RESOLUTION - 1);
+        const dz = (bounds.max[2] - bounds.min[2]) / (COLLIDER_SDF_RESOLUTION - 1);
+        const stack = new Uint32Array(nodes.length);
+
+        for (let z = 0; z < COLLIDER_SDF_RESOLUTION; z++) {
+            const pz = bounds.min[2] + z * dz;
+            for (let y = 0; y < COLLIDER_SDF_RESOLUTION; y++) {
+                const py = bounds.min[1] + y * dy;
+                for (let x = 0; x < COLLIDER_SDF_RESOLUTION; x++) {
+                    const px = bounds.min[0] + x * dx;
+                    const index = x
+                        + y * COLLIDER_SDF_RESOLUTION
+                        + z * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
+                    const distSq = this.closestDistanceSqToMesh(
+                        [px, py, pz],
+                        triangles,
+                        triangleIndices,
+                        nodes,
+                        stack,
+                    );
+                    sdfData[index] = Math.sqrt(distSq) - COLLIDER_SDF_SURFACE_THICKNESS;
+                }
+            }
+        }
+
+        return sdfData;
+    }
+
+    private buildSdfBvh(
+        vertices: number[],
+        indices: number[],
+    ): { triangles: Triangle[], triangleIndices: number[], nodes: SdfBvhNode[] } {
         const numTriangles = indices.length / 3;
-        
+
         if (numTriangles === 0) {
-            // Return a dummy leaf node for empty meshes
             return {
-                nodes: [{
-                    minX: 0, minY: 0, minZ: 0, leftChildOrPrimIndex: 0,
-                    maxX: 0, maxY: 0, maxZ: 0, rightChildOrPrimCount: 0,
-                    isLeaf: true
-                }],
-                triangleIndices: []
+                triangles: [],
+                triangleIndices: [],
+                nodes: [],
             };
         }
 
-        // Build triangle data with centroids and bounds
         const triangles: Triangle[] = [];
         for (let i = 0; i < numTriangles; i++) {
             const idx0 = indices[i * 3 + 0];
             const idx1 = indices[i * 3 + 1];
             const idx2 = indices[i * 3 + 2];
 
-            const v0 = [vertices[idx0 * 3], vertices[idx0 * 3 + 1], vertices[idx0 * 3 + 2]];
-            const v1 = [vertices[idx1 * 3], vertices[idx1 * 3 + 1], vertices[idx1 * 3 + 2]];
-            const v2 = [vertices[idx2 * 3], vertices[idx2 * 3 + 1], vertices[idx2 * 3 + 2]];
+            const v0: Vec3 = [vertices[idx0 * 3], vertices[idx0 * 3 + 1], vertices[idx0 * 3 + 2]];
+            const v1: Vec3 = [vertices[idx1 * 3], vertices[idx1 * 3 + 1], vertices[idx1 * 3 + 2]];
+            const v2: Vec3 = [vertices[idx2 * 3], vertices[idx2 * 3 + 1], vertices[idx2 * 3 + 2]];
 
-            const minBounds: [number, number, number] = [
+            const minBounds: Vec3 = [
                 Math.min(v0[0], v1[0], v2[0]),
                 Math.min(v0[1], v1[1], v2[1]),
                 Math.min(v0[2], v1[2], v2[2])
             ];
-            const maxBounds: [number, number, number] = [
+            const maxBounds: Vec3 = [
                 Math.max(v0[0], v1[0], v2[0]),
                 Math.max(v0[1], v1[1], v2[1]),
                 Math.max(v0[2], v1[2], v2[2])
             ];
-            const centroid: [number, number, number] = [
+            const centroid: Vec3 = [
                 (v0[0] + v1[0] + v2[0]) / 3,
                 (v0[1] + v1[1] + v2[1]) / 3,
                 (v0[2] + v1[2] + v2[2]) / 3
             ];
 
-            triangles.push({ idx0, idx1, idx2, centroid, minBounds, maxBounds });
+            triangles.push({ v0, v1, v2, centroid, minBounds, maxBounds });
         }
 
-        // Build BVH recursively
-        const nodes: BvhNode[] = [];
+        const nodes: SdfBvhNode[] = [];
         const triangleIndices: number[] = Array.from({ length: numTriangles }, (_, i) => i);
 
-        this.buildBvhRecursive(triangles, triangleIndices, 0, numTriangles, nodes);
+        this.buildSdfBvhRecursive(triangles, triangleIndices, 0, numTriangles, nodes);
 
-        return { nodes, triangleIndices };
+        return { triangles, triangleIndices, nodes };
     }
 
-    private buildBvhRecursive(
+    private buildSdfBvhRecursive(
         triangles: Triangle[],
         triangleIndices: number[],
         start: number,
         end: number,
-        nodes: BvhNode[]
+        nodes: SdfBvhNode[],
     ): number {
         const nodeIndex = nodes.length;
         const count = end - start;
 
-        // Compute bounds for this node
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
@@ -297,20 +315,20 @@ export class GpuColliderBufferManager {
             maxZ = Math.max(maxZ, tri.maxBounds[2]);
         }
 
-        // Leaf node threshold
         const MAX_LEAF_SIZE = 4;
         if (count <= MAX_LEAF_SIZE) {
             nodes.push({
-                minX, minY, minZ,
-                leftChildOrPrimIndex: start,
-                maxX, maxY, maxZ,
-                rightChildOrPrimCount: count,
-                isLeaf: true
+                minBounds: [minX, minY, minZ],
+                maxBounds: [maxX, maxY, maxZ],
+                leftChild: 0,
+                rightChild: 0,
+                start,
+                count,
+                isLeaf: true,
             });
             return nodeIndex;
         }
 
-        // Find best split axis using SAH (Surface Area Heuristic) approximation
         const extentX = maxX - minX;
         const extentY = maxY - minY;
         const extentZ = maxZ - minZ;
@@ -319,33 +337,167 @@ export class GpuColliderBufferManager {
         if (extentY > extentX && extentY > extentZ) splitAxis = 1;
         else if (extentZ > extentX && extentZ > extentY) splitAxis = 2;
 
-        // Sort triangles by centroid along split axis
         const subIndices = triangleIndices.slice(start, end);
         subIndices.sort((a, b) => triangles[a].centroid[splitAxis] - triangles[b].centroid[splitAxis]);
         for (let i = 0; i < subIndices.length; i++) {
             triangleIndices[start + i] = subIndices[i];
         }
 
-        // Split at median
         const mid = start + Math.floor(count / 2);
 
-        // Create internal node (placeholder, will update children after recursion)
         nodes.push({
-            minX, minY, minZ,
-            leftChildOrPrimIndex: 0, // Will be updated
-            maxX, maxY, maxZ,
-            rightChildOrPrimCount: 0, // Will be updated
-            isLeaf: false
+            minBounds: [minX, minY, minZ],
+            maxBounds: [maxX, maxY, maxZ],
+            leftChild: 0,
+            rightChild: 0,
+            start,
+            count,
+            isLeaf: false,
         });
 
-        // Build children - left child is always the next node after this one
-        const leftChild = this.buildBvhRecursive(triangles, triangleIndices, start, mid, nodes);
-        const rightChild = this.buildBvhRecursive(triangles, triangleIndices, mid, end, nodes);
+        const leftChild = this.buildSdfBvhRecursive(triangles, triangleIndices, start, mid, nodes);
+        const rightChild = this.buildSdfBvhRecursive(triangles, triangleIndices, mid, end, nodes);
 
-        // Update internal node with child indices
-        nodes[nodeIndex].leftChildOrPrimIndex = leftChild;
-        nodes[nodeIndex].rightChildOrPrimCount = rightChild;
+        nodes[nodeIndex].leftChild = leftChild;
+        nodes[nodeIndex].rightChild = rightChild;
 
         return nodeIndex;
+    }
+
+    private closestDistanceSqToMesh(
+        point: Vec3,
+        triangles: Triangle[],
+        triangleIndices: number[],
+        nodes: SdfBvhNode[],
+        stack: Uint32Array,
+    ): number {
+        let bestDistSq = Infinity;
+        let stackPtr = 0;
+        stack[stackPtr++] = 0;
+
+        while (stackPtr > 0) {
+            const node = nodes[stack[--stackPtr]];
+            if (this.pointAabbDistanceSq(point, node.minBounds, node.maxBounds) > bestDistSq) {
+                continue;
+            }
+
+            if (node.isLeaf) {
+                const end = node.start + node.count;
+                for (let i = node.start; i < end; i++) {
+                    const tri = triangles[triangleIndices[i]];
+                    const distSq = this.pointTriangleDistanceSq(point, tri);
+                    if (distSq < bestDistSq) {
+                        bestDistSq = distSq;
+                    }
+                }
+                continue;
+            }
+
+            const left = nodes[node.leftChild];
+            const right = nodes[node.rightChild];
+            const leftDistSq = this.pointAabbDistanceSq(point, left.minBounds, left.maxBounds);
+            const rightDistSq = this.pointAabbDistanceSq(point, right.minBounds, right.maxBounds);
+
+            if (leftDistSq < rightDistSq) {
+                if (rightDistSq <= bestDistSq) stack[stackPtr++] = node.rightChild;
+                if (leftDistSq <= bestDistSq) stack[stackPtr++] = node.leftChild;
+            } else {
+                if (leftDistSq <= bestDistSq) stack[stackPtr++] = node.leftChild;
+                if (rightDistSq <= bestDistSq) stack[stackPtr++] = node.rightChild;
+            }
+        }
+
+        return bestDistSq;
+    }
+
+    private pointAabbDistanceSq(point: Vec3, minBounds: Vec3, maxBounds: Vec3): number {
+        let distSq = 0;
+
+        for (let axis = 0; axis < 3; axis++) {
+            if (point[axis] < minBounds[axis]) {
+                const d = minBounds[axis] - point[axis];
+                distSq += d * d;
+            } else if (point[axis] > maxBounds[axis]) {
+                const d = point[axis] - maxBounds[axis];
+                distSq += d * d;
+            }
+        }
+
+        return distSq;
+    }
+
+    private pointTriangleDistanceSq(point: Vec3, tri: Triangle): number {
+        const ax = tri.v0[0], ay = tri.v0[1], az = tri.v0[2];
+        const bx = tri.v1[0], by = tri.v1[1], bz = tri.v1[2];
+        const cx = tri.v2[0], cy = tri.v2[1], cz = tri.v2[2];
+        const px = point[0], py = point[1], pz = point[2];
+
+        const abx = bx - ax, aby = by - ay, abz = bz - az;
+        const acx = cx - ax, acy = cy - ay, acz = cz - az;
+        const apx = px - ax, apy = py - ay, apz = pz - az;
+
+        const d1 = abx * apx + aby * apy + abz * apz;
+        const d2 = acx * apx + acy * apy + acz * apz;
+        if (d1 <= 0 && d2 <= 0) {
+            return this.distanceSq(px, py, pz, ax, ay, az);
+        }
+
+        const bpx = px - bx, bpy = py - by, bpz = pz - bz;
+        const d3 = abx * bpx + aby * bpy + abz * bpz;
+        const d4 = acx * bpx + acy * bpy + acz * bpz;
+        if (d3 >= 0 && d4 <= d3) {
+            return this.distanceSq(px, py, pz, bx, by, bz);
+        }
+
+        const vc = d1 * d4 - d3 * d2;
+        if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+            const v = d1 / (d1 - d3);
+            return this.distanceSq(px, py, pz, ax + v * abx, ay + v * aby, az + v * abz);
+        }
+
+        const cpx = px - cx, cpy = py - cy, cpz = pz - cz;
+        const d5 = abx * cpx + aby * cpy + abz * cpz;
+        const d6 = acx * cpx + acy * cpy + acz * cpz;
+        if (d6 >= 0 && d5 <= d6) {
+            return this.distanceSq(px, py, pz, cx, cy, cz);
+        }
+
+        const vb = d5 * d2 - d1 * d6;
+        if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+            const w = d2 / (d2 - d6);
+            return this.distanceSq(px, py, pz, ax + w * acx, ay + w * acy, az + w * acz);
+        }
+
+        const va = d3 * d6 - d5 * d4;
+        if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+            const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+            return this.distanceSq(px, py, pz, bx + w * (cx - bx), by + w * (cy - by), bz + w * (cz - bz));
+        }
+
+        const denom = 1 / (va + vb + vc);
+        const v = vb * denom;
+        const w = vc * denom;
+        return this.distanceSq(
+            px,
+            py,
+            pz,
+            ax + abx * v + acx * w,
+            ay + aby * v + acy * w,
+            az + abz * v + acz * w,
+        );
+    }
+
+    private distanceSq(
+        ax: number,
+        ay: number,
+        az: number,
+        bx: number,
+        by: number,
+        bz: number,
+    ): number {
+        const dx = ax - bx;
+        const dy = ay - by;
+        const dz = az - bz;
+        return dx * dx + dy * dy + dz * dz;
     }
 }

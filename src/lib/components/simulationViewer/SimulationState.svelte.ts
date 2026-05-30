@@ -1,4 +1,3 @@
-import { mat4 } from "wgpu-matrix";
 import { onDestroy, onMount } from "svelte";
 import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner.svelte";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
@@ -24,16 +23,8 @@ export class SimulationState {
     gridResolutionZ = $state(384);
     explicitMpmSimulationTimestepS = $state(1 / 192);
     mlsMpmSimulationTimestepS = $state(1 / 1024);
-    transformMat = $state(mat4.identity());
 
     oneSimulationStepPerFrame = $state(true);
-
-    moveForward  = $state(false); // W
-    moveBackward = $state(false); // S
-    moveLeft     = $state(false); // A
-    moveRight    = $state(false); // D
-    moveUp       = $state(false); // Q
-    moveDown     = $state(false); // E
 
     simulationMethodType = $state(GpuSimulationMethodType.MlsMpm);
     renderMethodType = $state(GpuRenderMethodType.Points);
@@ -97,24 +88,7 @@ export class SimulationState {
                 this.elapsedTime.gpuRenderTimeNs = times.renderNs;
                 this.elapsedTime.gpuPostprocessRenderTimeNs = times.postprocessRenderNs;
             },
-            onUserControlUpdate: () => {
-                const speed = 0.02;
-                this.runner?.updateColliderVel([0.0, 0.0, 0.0]);
-                if (this.moveForward) { this.applyColliderTransform([0.0, -speed, 0.0]); }
-                if (this.moveBackward) { this.applyColliderTransform([0.0, speed, 0.0]); }
-                if (this.moveLeft) { this.applyColliderTransform([speed, 0.0, 0.0]); }
-                if (this.moveRight) { this.applyColliderTransform([-speed, 0.0, 0.0]); }
-                if (this.moveUp) { this.applyColliderTransform([0.0, 0.0, speed]); }
-                if (this.moveDown) { this.applyColliderTransform([0.0, 0.0, -speed]); }
-            },
         });
-    }
-
-    applyColliderTransform(step: [number, number, number]) {
-        const t = mat4.translation(step);
-        this.transformMat = mat4.mul(t, this.transformMat);
-        this.runner?.updateColliderTransformMat(this.transformMat);
-        this.runner?.updateColliderVel(step);
     }
 
     isInteracting = $state(false);

@@ -3,6 +3,7 @@ export class GpuPerformanceMeasurementBufferManager {
 
     readonly resolveBuffer: GPUBuffer;
     readonly resultBuffer: GPUBuffer;
+    private isMappingResultBuffer = false;
 
     constructor({
         device,
@@ -35,22 +36,30 @@ export class GpuPerformanceMeasurementBufferManager {
     
 
     addResolve(commandEncoder: GPUCommandEncoder) {
-        if (this.resultBuffer.mapState !== "unmapped") return;
+        if (this.isMappingResultBuffer || this.resultBuffer.mapState !== "unmapped") return;
 
         commandEncoder.resolveQuerySet(this.querySet, 0, this.querySet.count, this.resolveBuffer, 0);
-        commandEncoder.copyBufferToBuffer(this.resolveBuffer, this.resultBuffer);
+        commandEncoder.copyBufferToBuffer(this.resolveBuffer, 0, this.resultBuffer, 0, this.resolveBuffer.size);
     }
 
 
     async mapTime(fn: (timestamps: BigUint64Array) => void) {
-        if (this.resultBuffer.mapState === "pending") return null;
-        
-        await this.resultBuffer.mapAsync(GPUMapMode.READ);
+        if (this.isMappingResultBuffer || this.resultBuffer.mapState !== "unmapped") return null;
 
-        const startEndGpuTimestamps = new BigUint64Array(this.resultBuffer.getMappedRange());
-        fn(startEndGpuTimestamps);
+        this.isMappingResultBuffer = true;
+        let mapped = false;
+        try {
+            await this.resultBuffer.mapAsync(GPUMapMode.READ);
+            mapped = true;
 
-        this.resultBuffer.unmap();
+            const startEndGpuTimestamps = new BigUint64Array(this.resultBuffer.getMappedRange());
+            fn(startEndGpuTimestamps);
+        } finally {
+            if (mapped) {
+                this.resultBuffer.unmap();
+            }
+            this.isMappingResultBuffer = false;
+        }
     }
 
     buildPrerenderTimestampWritesDescriptor(prerenderPassIndex: number) {

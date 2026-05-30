@@ -1,10 +1,3 @@
-struct ColliderObject {
-    min: vec3f,
-    startIndex: u32,
-    max: vec3f,
-    countIndices: u32,
-}
-
 struct Uniforms {
     // 0
 
@@ -32,9 +25,9 @@ struct Uniforms {
     colliderVelocity: vec3f, // 336
     // 340
     cameraPos: vec3f, // 352
-    colliderNumIndices: u32, // 356
+    colliderReserved0: u32, // 356
     gridCellDims: vec3f, // 364
-    colliderNumObjects: u32, // 368
+    colliderReserved1: u32, // 368
     
     
     lightViewProjMat: mat4x4f, // 368
@@ -50,6 +43,4 @@ struct Uniforms {
     colliderFriction: f32, // 524 -> 528
     
     interactionDir: vec3f, // 528
-    
-    objects: array<ColliderObject, 1024>, // 544
 }

@@ -75,9 +75,6 @@ export class GpuMpmPipelineManager {
             ],
         });
 
-        uniformsManager.writeColliderNumIndices(colliderManager.numIndices);
-
-
         const sparseGridBindGroup = device.createBindGroup({
             label: "MPM sparse grid bind group",
             layout: sparseGridBindGroupLayout,
@@ -88,7 +85,7 @@ export class GpuMpmPipelineManager {
                 { binding: 5, resource: { buffer: gridMomentumYBuffer } },
                 { binding: 6, resource: { buffer: gridMomentumZBuffer } },
                 { binding: 9, resource: { buffer: colliderManager.colliderDataBuffer } },
-                { binding: 10, resource: { buffer: colliderManager.colliderBvhBuffer } },
+                { binding: 10, resource: { buffer: colliderManager.colliderSdfBuffer } },
             ],
         });
 
