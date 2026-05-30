@@ -51,10 +51,30 @@ fn scatterParticles(
     let nTriangles = arrayLength(&meshVertices) / 3;
     var seed = hash4(vec4u(threadIndex, 100, 200, 300));
     var candidatePos = vec3f(0);
+    var foundInteriorPoint = false;
 
     for (var nAttempt = 0u; nAttempt < REJECTION_SAMPLING_N_MAX_ATTEMPTS; nAttempt++) {
         candidatePos = randVec3(&seed, uniforms.meshMinCoords, uniforms.meshMaxCoords);
-        if pointInsideMesh(candidatePos, nTriangles) { break; }
+        if pointInsideMesh(candidatePos, nTriangles) {
+            foundInteriorPoint = true;
+            break;
+        }
+    }
+
+    if !foundInteriorPoint && nTriangles > 0u {
+        let triangleIndex = hash1(seed + threadIndex) % nTriangles;
+        let vert0 = meshVertices[triangleIndex * 3u];
+        let vert1 = meshVertices[triangleIndex * 3u + 1u];
+        let vert2 = meshVertices[triangleIndex * 3u + 2u];
+
+        var bary0 = randFloat(&seed);
+        var bary1 = randFloat(&seed);
+        if bary0 + bary1 > 1.0 {
+            bary0 = 1.0 - bary0;
+            bary1 = 1.0 - bary1;
+        }
+
+        candidatePos = vert0 + bary0 * (vert1 - vert0) + bary1 * (vert2 - vert0);
     }
 
     let noiseScale = 0.1;
@@ -63,6 +83,11 @@ fn scatterParticles(
     let dy = fbm(candidatePos * NOISE_FREQ + vec3f(100, 200, 300));
     let dz = fbm(candidatePos * NOISE_FREQ + vec3f(-300, -200, -100));
     candidatePos += (vec3f(dx, dy, dz) - 0.5) * noiseScale;
+    candidatePos = clamp(
+        candidatePos,
+        uniforms.gridMinCoords + uniforms.gridCellDims,
+        uniforms.gridMaxCoords - uniforms.gridCellDims,
+    );
 
 
     let particle = &particles[threadIndex];

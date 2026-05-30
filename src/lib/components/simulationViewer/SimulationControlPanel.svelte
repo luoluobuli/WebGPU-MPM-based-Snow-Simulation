@@ -28,8 +28,8 @@ let timestepProgress = $derived.by(() => {
         case GpuSimulationMethodType.ExplicitMpm:
             return progressFromTimestep(simulationState.explicitMpmSimulationTimestepS);
 
-        case GpuSimulationMethodType.Pbmpm:
-            return progressFromTimestep(simulationState.pbmpmSimulationTimestepS);
+        case GpuSimulationMethodType.MlsMpm:
+            return progressFromTimestep(simulationState.mlsMpmSimulationTimestepS);
     }
 });
 
@@ -41,8 +41,8 @@ const updateTimestep = (progress: number) => {
             simulationState.explicitMpmSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
             break;
 
-        case GpuSimulationMethodType.Pbmpm:
-            simulationState.pbmpmSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
+        case GpuSimulationMethodType.MlsMpm:
+            simulationState.mlsMpmSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
             break;
     }
 };
@@ -188,26 +188,10 @@ const updateTimestep = (progress: number) => {
             type="radio"
             name="simulation-method-type"
             bind:group={simulationState.simulationMethodType}
-            value={GpuSimulationMethodType.Pbmpm}
+            value={GpuSimulationMethodType.MlsMpm}
         />
-        PBMPM
+        MLS-MPM
     </label>
-
-    {#if simulationState.simulationMethodType === GpuSimulationMethodType.Pbmpm}
-        <div>PBMPM solver iterations</div>
-
-        <labeled-range>
-            <input
-                type="range"
-                bind:value={simulationState.pbmpmSolveIterations}
-                min={1}
-                max={8}
-                step={1}
-            />
-
-            <span>{simulationState.pbmpmSolveIterations}</span>
-        </labeled-range>
-    {/if}
 
     <h4>Timestep</h4>
 

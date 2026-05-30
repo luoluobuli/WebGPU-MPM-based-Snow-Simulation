@@ -10,7 +10,7 @@ struct Uniforms {
 
     simulationTimestep: f32, // 4
     fixedPointScale: f32, // 8
-    use_pbmpm: u32, // 12
+    use_mls_mpm: u32, // 12
     time: u32, // 16
     gridMinCoords: vec3f, // 28
     // 32
@@ -50,7 +50,6 @@ struct Uniforms {
     colliderFriction: f32, // 524 -> 528
     
     interactionDir: vec3f, // 528
-    pbmpmSolveIterations: u32, // 540 -> 544
     
     objects: array<ColliderObject, 1024>, // 544
 }

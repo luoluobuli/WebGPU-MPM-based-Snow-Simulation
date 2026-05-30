@@ -1,4 +1,4 @@
 export enum GpuSimulationMethodType {
     ExplicitMpm,
-    Pbmpm,
+    MlsMpm,
 }

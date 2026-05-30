@@ -23,8 +23,7 @@ export class SimulationState {
     gridResolutionY = $state(384);
     gridResolutionZ = $state(384);
     explicitMpmSimulationTimestepS = $state(1 / 192);
-    pbmpmSimulationTimestepS = $state(1 / 384);
-    pbmpmSolveIterations = $state(3);
+    mlsMpmSimulationTimestepS = $state(1 / 1024);
     transformMat = $state(mat4.identity());
 
     oneSimulationStepPerFrame = $state(true);
@@ -36,7 +35,7 @@ export class SimulationState {
     moveUp       = $state(false); // Q
     moveDown     = $state(false); // E
 
-    simulationMethodType = $state(GpuSimulationMethodType.Pbmpm);
+    simulationMethodType = $state(GpuSimulationMethodType.MlsMpm);
     renderMethodType = $state(GpuRenderMethodType.Points);
     particleControlMode = $state(ParticleControlMode.Repel);
 
@@ -290,8 +289,7 @@ export class SimulationState {
                 gridResolutionY: state.gridResolutionY,
                 gridResolutionZ: state.gridResolutionZ,
                 explicitMpmSimulationTimestepS: () => state.explicitMpmSimulationTimestepS,
-                pbmpmSimulationTimestepS: () => state.pbmpmSimulationTimestepS,
-                pbmpmSolveIterations: () => state.pbmpmSolveIterations,
+                mlsMpmSimulationTimestepS: () => state.mlsMpmSimulationTimestepS,
                 camera: state.camera,
                 meshVertices: vertices,
                 collider: collider,

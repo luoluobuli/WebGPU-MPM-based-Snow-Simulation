@@ -51,3 +51,11 @@ fn outerProduct(u: vec3f, v: vec3f) -> mat3x3f {
         u * v.z,
     );
 }
+
+fn scaleMatrixColumns(matrix: mat3x3f, scale: vec3f) -> mat3x3f {
+    return mat3x3f(
+        matrix[0] * scale.x,
+        matrix[1] * scale.y,
+        matrix[2] * scale.z,
+    );
+}

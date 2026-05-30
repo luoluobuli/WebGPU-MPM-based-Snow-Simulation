@@ -6,7 +6,6 @@ import sparseGridPreludeSrc from "./sparseGridPrelude.wgsl?raw";
 import mapAffectedBlocksSrc from "./mapAffectedBlocks.wgsl?raw";
 import clearHashMapSrc from "./clearHashMap.wgsl?raw";
 import clearMappedBlocksSrc from "./clearMappedBlocks.wgsl?raw";
-import pbmpmSrc from "./pbmpm.wgsl?raw";
 import integrateParticlesSrc from "./integrateParticles.wgsl?raw";
 import countParticlesPerBlockSrc from "./countParticlesPerBlock.wgsl?raw";
 import computeBlockOffsetsSrc from "./computeBlockOffsets.wgsl?raw";
@@ -34,7 +33,6 @@ export class GpuMpmPipelineManager {
     readonly computeBlockOffsetsPipeline: GPUComputePipeline;
     readonly binParticlesPipeline: GPUComputePipeline;
     readonly clearBlockParticleCountsPipeline: GPUComputePipeline;
-    readonly pbmpmPipeline: GPUComputePipeline;
 
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly mpmManager: GpuMpmBufferManager;
@@ -280,18 +278,6 @@ export class GpuMpmPipelineManager {
             },
         });
 
-        this.pbmpmPipeline = device.createComputePipeline({
-            label: "pbmpm fused pipeline",
-            layout: particlePipelineLayout,
-            compute: {
-                module: device.createShaderModule({
-                    label: "pbmpm fused module",
-                    code: attachPrelude(`${sparseGridPreludeSrc}\n${pbmpmSrc}`),
-                }),
-                entryPoint: "pbmpm",
-            },
-        });
-
         this.particleBindGroupLayout = particleBindGroupLayout;
         this.particleDataBindGroup = particleBindGroup;
         this.sparseGridBindGroupLayout = sparseGridBindGroupLayout;
@@ -428,95 +414,22 @@ export class GpuMpmPipelineManager {
     }
 
 
-    addPbmpmDispatches({
+    addMlsMpmDispatches({
         computePassEncoder,
         nParticles,
         nBlocksInHashMap,
         hashMapSize,
-        nSolveConstraintIterations,
     }: {
         computePassEncoder: GPUComputePassEncoder,
         nParticles: number,
         nBlocksInHashMap: number,
         hashMapSize: number,
-        nSolveConstraintIterations: number,
     }) {
-        const gridCellDispatchX = 256;
-        const gridCellDispatchY = Math.ceil(nBlocksInHashMap / gridCellDispatchX);
-
-        // determine which blocks in a grid are populated
-
-        // clear mapping table
-        this.addDispatch({
+        this.addExplicitMpmDispatches({
             computePassEncoder,
-            pipeline: this.clearHashMapPipeline,
-            dispatchX: Math.ceil(hashMapSize / 256),
-        });
-
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.mapAffectedBlocksPipeline,
-            dispatchX: Math.ceil(nParticles / 256),
-            useParticles: true,
-        });
-
-        // Sort particles
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.clearBlockParticleCountsPipeline,
-            dispatchX: Math.ceil(this.mpmManager.nMaxBlocksInHashMap / 256),
-        });
-
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.countParticlesPerBlockPipeline,
-            dispatchX: Math.ceil(nParticles / 256),
-            useParticles: true,
-        });
-
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.computeBlockOffsetsPipeline,
-            dispatchX: 1,
-        });
-
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.binParticlesPipeline,
-            dispatchX: Math.ceil(nParticles / 256),
-            useParticles: true,
-        });
-
-        for (let i = 0; i < nSolveConstraintIterations; i++) {
-            // Clear grid each iteration
-            this.addDispatch({
-                computePassEncoder,
-                pipeline: this.clearMappedBlocksPipeline,
-                dispatchX: gridCellDispatchX,
-                dispatchY: gridCellDispatchY,
-            });
-
-            this.addDispatch({
-                computePassEncoder,
-                pipeline: this.pbmpmPipeline,
-                dispatchX: Math.ceil(nParticles / 256),
-                useParticles: true,
-            });
-
-            // grid-to-particle (needs global synchronization)
-            this.addDispatch({
-                computePassEncoder,
-                pipeline: this.g2pComputePipeline,
-                dispatchX: Math.ceil(nParticles / 256),
-                useParticles: true,
-            });
-        }
-
-        this.addDispatch({
-            computePassEncoder,
-            pipeline: this.integrateParticlesPipeline,
-            dispatchX: Math.ceil(nParticles / 256),
-            useParticles: true,
+            hashMapSize,
+            nBlocksInHashMap,
+            nParticles,
         });
     }
     

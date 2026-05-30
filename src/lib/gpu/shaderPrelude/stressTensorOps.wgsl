@@ -1,56 +1,51 @@
 const YOUNGS_MODULUS_PA = 1.4e5;
 const POISSONS_RATIO = 0.2;
 
-// Lamé parameters
-const SHEAR_RESISTANCE = YOUNGS_MODULUS_PA / (2 * (1 + POISSONS_RATIO)); // μ
-const VOLUME_RESISTANCE = YOUNGS_MODULUS_PA * POISSONS_RATIO / ((1 + POISSONS_RATIO) * (1 - 2 * POISSONS_RATIO)); // λ
-    
-// first Piola-Kirchhoff stress tensor
-fn calculateStressFirstPiolaKirchhoff( // P
-    deformation: mat3x3f, // F
-    shearResistance: f32, // μ
-    volumetricResistance: f32, // λ
-) -> mat3x3f {
-    let volumeScaleFac = determinant(deformation); // J
+// Lame parameters
+const SHEAR_RESISTANCE = YOUNGS_MODULUS_PA / (2 * (1 + POISSONS_RATIO));
+const VOLUME_RESISTANCE = YOUNGS_MODULUS_PA * POISSONS_RATIO / ((1 + POISSONS_RATIO) * (1 - 2 * POISSONS_RATIO));
 
-    // corotation to separate out rotation from scaling
-    let rotation = calculatePolarDecompositionRotation(deformation); // R
+fn calculateStressFirstPiolaKirchhoff(
+    deformation: mat3x3f,
+    shearResistance: f32,
+    volumetricResistance: f32,
+) -> mat3x3f {
+    let volumeScaleFac = determinant(deformation);
+    if volumeScaleFac != volumeScaleFac || volumeScaleFac < 0.05 || volumeScaleFac > 20.0 {
+        return mat3x3f();
+    }
+
+    let rotation = calculatePolarDecompositionRotation(deformation);
     
-    // P = 2 μ (F - R) + λ (J - 1) J (F⁻¹)ᵀ
     return 2 * shearResistance * (deformation - rotation)
-        + volumetricResistance * (volumeScaleFac - 1) * volumeScaleFac * transpose(mat3x3Inverse(deformation));
+        + volumetricResistance * (volumeScaleFac - 1.0) * volumeScaleFac * transpose(mat3x3Inverse(deformation));
 }
 
-// Neo-Hookean constitutive model
-fn calculateStressNeoHookean( // P
-    deformation: mat3x3f, // F
-    shearResistance: f32, // μ
-    volumetricResistance: f32, // λ
+fn calculateStressNeoHookean(
+    deformation: mat3x3f,
+    shearResistance: f32,
+    volumetricResistance: f32,
 ) -> mat3x3f {
-    let volumeScaleFac = determinant(deformation); // J
+    let volumeScaleFac = determinant(deformation);
+    if volumeScaleFac != volumeScaleFac || volumeScaleFac <= 0.05 || volumeScaleFac > 20.0 {
+        return mat3x3f();
+    }
+
     let deformationInverseTranspose = transpose(mat3x3Inverse(deformation));
     
-    // P = μ (F - (F⁻¹)ᵀ) + λ log(J) (F⁻¹)ᵀ
     return shearResistance * (deformation - deformationInverseTranspose)
         + volumetricResistance * log(volumeScaleFac) * deformationInverseTranspose;
 }
 
-// from Stomakhin 
 fn hardenLameParameters(
-    deformationPlastic: mat3x3f, // F_p
-    baseShearResistance: ptr<function, f32>, // μ_0
-    baseVolumetricResistance: ptr<function, f32>, // λ_0
+    deformationPlastic: mat3x3f,
+    baseShearResistance: ptr<function, f32>,
+    baseVolumetricResistance: ptr<function, f32>,
 ) {
-    const HARDENING_COEFFICIENT = 5.; // ξ
+    const HARDENING_COEFFICIENT = 5.;
 
-    let volumeScaleFac = determinant(deformationPlastic); // J
-
-    // check if the particle is being compressed
-    // if volumeScaleFac >= 1 { return; }
-    
-    // μ = μ_0 exp(ξ (1 - J))
-    // λ = λ_0 exp(ξ (1 - J))
-    let expFac = exp(HARDENING_COEFFICIENT * (1 - volumeScaleFac));
+    let volumeScaleFac = clamp(determinant(deformationPlastic), 0.2, 5.0);
+    let expFac = clamp(exp(HARDENING_COEFFICIENT * (1.0 - volumeScaleFac)), 0.1, 10.0);
     *baseShearResistance *= expFac;
     *baseVolumetricResistance *= expFac;
 }

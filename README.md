@@ -10,7 +10,7 @@ You can [view this demo online](https://luoluobuli.github.io/WebGPU-MPM-based-Sn
 
 ### Physics
 This project features a **material point method** (**MPM**) particle engine for dynamic cohesion and fracture, with...
-1. a **position-based material point method** (**PBMPM**) variant for stability.
+1. a **moving least squares material point method** (**MLS-MPM**) variant with affine transfers for stability.
 1. an **explicit MPM** variant for speed.
 
 MPM enables:

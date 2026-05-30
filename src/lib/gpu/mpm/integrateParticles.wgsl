@@ -18,6 +18,7 @@ fn integrateParticles(
     if particle_index >= arrayLength(&particle_data) { return; }
 
     var particle = particle_data[particle_index];
+    sanitizeParticle(&particle);
 
     // let gravitational_acceleration = vec3f(0, 0, -9.81);
     // particle.pos_displacement += gravitational_acceleration * uniforms.simulationTimestep * uniforms.simulationTimestep;
@@ -42,7 +43,7 @@ fn integrateParticles(
     }
     if particle.pos.x >= uniforms.gridMaxCoords.x {
         particle.pos_displacement.x *= -0.5;
-        particle.pos.x = uniforms.gridMaxCoords.x;
+        particle.pos.x = uniforms.gridMaxCoords.x - uniforms.gridCellDims.x * 0.001;
         particle.vel.x *= -0.5;
     }
 
@@ -53,7 +54,7 @@ fn integrateParticles(
     }
     if particle.pos.y >= uniforms.gridMaxCoords.y {
         particle.pos_displacement.y *= -0.5;
-        particle.pos.y = uniforms.gridMaxCoords.y;
+        particle.pos.y = uniforms.gridMaxCoords.y - uniforms.gridCellDims.y * 0.001;
         particle.vel.y *= -0.5;
     }
 
@@ -64,12 +65,13 @@ fn integrateParticles(
     }
     if particle.pos.z >= uniforms.gridMaxCoords.z {
         particle.pos_displacement.z *= -0.5;
-        particle.pos.z = uniforms.gridMaxCoords.z;
+        particle.pos.z = uniforms.gridMaxCoords.z - uniforms.gridCellDims.z * 0.001;
         particle.vel.z *= -0.5;
     }
 
     // Mesh Collision
     resolveParticleCollision(&particle);
+    sanitizeParticle(&particle);
 
     particle_data[particle_index] = particle;
 }

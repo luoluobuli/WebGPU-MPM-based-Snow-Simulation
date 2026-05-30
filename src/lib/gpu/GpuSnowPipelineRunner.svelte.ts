@@ -33,8 +33,7 @@ export class GpuSnowPipelineRunner {
     private readonly context: GPUCanvasContext;
     private readonly nParticles: number;
     private readonly explicitMpmSimulationTimestepS: () => number;
-    private readonly pbmpmSimulationTimestepS: () => number;
-    private readonly pbmpmSolveIterations: () => number;
+    private readonly mlsMpmSimulationTimestepS: () => number;
     private readonly camera: Camera;
     private readonly colliderFriction: () => number;
     private depthTextureView: GPUTextureView;
@@ -80,8 +79,7 @@ export class GpuSnowPipelineRunner {
         mcGridResolutionY,
         mcGridResolutionZ,
         explicitMpmSimulationTimestepS,
-        pbmpmSimulationTimestepS,
-        pbmpmSolveIterations,
+        mlsMpmSimulationTimestepS,
         camera,
         meshVertices,
         collider,
@@ -105,8 +103,7 @@ export class GpuSnowPipelineRunner {
         mcGridResolutionY?: number,
         mcGridResolutionZ?: number,
         explicitMpmSimulationTimestepS: () => number,
-        pbmpmSimulationTimestepS: () => number,
-        pbmpmSolveIterations: () => number,
+        mlsMpmSimulationTimestepS: () => number,
         camera: Camera,
         meshVertices: number[][],
         collider: ColliderGeometry,
@@ -123,8 +120,7 @@ export class GpuSnowPipelineRunner {
         this.context = context;
         this.nParticles = nParticles;
         this.explicitMpmSimulationTimestepS = explicitMpmSimulationTimestepS;
-        this.pbmpmSimulationTimestepS = pbmpmSimulationTimestepS;
-        this.pbmpmSolveIterations = pbmpmSolveIterations;
+        this.mlsMpmSimulationTimestepS = mlsMpmSimulationTimestepS;
         this.colliderFriction = colliderFriction;
 
         this.camera = camera;
@@ -266,7 +262,6 @@ export class GpuSnowPipelineRunner {
             });
             $effect(() => this.uniformsManager.writeSimulationTimestepS(this.selectedSimulationTimestepS));
             $effect(() => this.uniformsManager.writeColliderFriction(this.colliderFriction()));
-            $effect(() => this.uniformsManager.writePbmpmSolveIterations(this.pbmpmSolveIterations()));
 
 
             let lastRenderMethodType: GpuRenderMethodType | null = null;
@@ -436,11 +431,11 @@ export class GpuSnowPipelineRunner {
 
         switch (simulationMethodType) {
             case GpuSimulationMethodType.ExplicitMpm:
-                this.uniformsManager.writeUsePbmpm(false);
+                this.uniformsManager.writeUseMlsMpm(false);
                 break;
                 
-            case GpuSimulationMethodType.Pbmpm:
-                this.uniformsManager.writeUsePbmpm(true);
+            case GpuSimulationMethodType.MlsMpm:
+                this.uniformsManager.writeUseMlsMpm(true);
                 break;
         }
 
@@ -466,13 +461,12 @@ export class GpuSnowPipelineRunner {
                     });
                     break;
                     
-                case GpuSimulationMethodType.Pbmpm:
-                    this.mpmPipelineManager.addPbmpmDispatches({
+                case GpuSimulationMethodType.MlsMpm:
+                    this.mpmPipelineManager.addMlsMpmDispatches({
                         computePassEncoder,
                         nParticles: this.mpmManager.nParticles,
                         nBlocksInHashMap: this.mpmManager.nMaxBlocksInHashMap,
                         hashMapSize: this.mpmManager.hashMapSize,
-                        nSolveConstraintIterations: this.pbmpmSolveIterations(),
                     });
                     break;
             }
@@ -666,8 +660,8 @@ export class GpuSnowPipelineRunner {
             case GpuSimulationMethodType.ExplicitMpm:
                 return this.explicitMpmSimulationTimestepS();
 
-            case GpuSimulationMethodType.Pbmpm:
-                return this.pbmpmSimulationTimestepS();
+            case GpuSimulationMethodType.MlsMpm:
+                return this.mlsMpmSimulationTimestepS();
         }
     });
 

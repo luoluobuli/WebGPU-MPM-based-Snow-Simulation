@@ -17,15 +17,14 @@ fn doGridToParticle(
     let thread_index = gid.x;
     if thread_index >= arrayLength(&particle_data) { return; }
 
-    let particle_index = sortedParticleIndices[thread_index];
-    var particle = particle_data[particle_index];
+    var particle = particle_data[thread_index];
+    if !particlePositionCanTouchGrid(particle.pos) { return; }
 
     let start_cell_number = calculateCellNumber(particle.pos);
-    let cell_center_pos = uniforms.gridMinCoords + uniforms.gridCellDims * (vec3f(start_cell_number) + vec3f(0.5));
     let cell_frac_pos = calculateFractionalPosFromCellMin(particle.pos, start_cell_number);
     let cell_weights = calculateQuadraticBSplineCellWeights(cell_frac_pos);
 
-    if uniforms.use_pbmpm == 0 {
+    if uniforms.use_mls_mpm == 0u {
         let cell_weights_deriv = calculateQuadraticBSplineCellWeightDerivatives(cell_frac_pos);
 
         // enumerate the 3x3 neighborhood of cells around the cell that contains the particle
@@ -59,7 +58,7 @@ fn doGridToParticle(
                         cell_weights_deriv[u32(offsetX + 1)].x * cell_weights[u32(offsetY + 1)].y * cell_weights[u32(offsetZ + 1)].z,
                         cell_weights[u32(offsetX + 1)].x * cell_weights_deriv[u32(offsetY + 1)].y * cell_weights[u32(offsetZ + 1)].z,
                         cell_weights[u32(offsetX + 1)].x * cell_weights[u32(offsetY + 1)].y * cell_weights_deriv[u32(offsetZ + 1)].z,
-                    );
+                    ) / uniforms.gridCellDims;
 
                     total_velocity_gradient += mat3x3f(
                         cell_weight_gradient.x * cell_velocity,
@@ -70,18 +69,17 @@ fn doGridToParticle(
             }
         }
 
+        new_particle_velocity = clampVec3Length(new_particle_velocity, maxStableParticleSpeed());
         particle.vel = new_particle_velocity;
         
         // Defer position and deformation update to integrateParticles
         particle.pos_displacement = new_particle_velocity * uniforms.simulationTimestep;
-        particle.deformation_displacement = total_velocity_gradient * uniforms.simulationTimestep;
+        particle.deformation_displacement = sanitizeDeformationDelta(total_velocity_gradient * uniforms.simulationTimestep);
         
-        particle_data[particle_index] = particle;
+        particle_data[thread_index] = particle;
     }
 
     else {
-        let particle_cell_pos = vec3f(start_cell_number) + cell_frac_pos - 0.5;
-
         // enumerate the 3x3 neighborhood of cells around the cell that contains the particle
         var new_particle_velocity = vec3f(0); 
         var B = mat3x3f(
@@ -114,18 +112,23 @@ fn doGridToParticle(
                         
                     new_particle_velocity += cell_weight * cell_velocity;
 
-                    let dist = vec3f(cell_number) - particle_cell_pos;
+                    let dist = calculateCellGridOffsetFromParticle(cell_number, particle.pos);
                     B += outerProduct(cell_weight * cell_velocity, dist);
                 }
             }
         }
 
+        new_particle_velocity = clampVec3Length(new_particle_velocity, maxStableParticleSpeed());
         particle.pos_displacement = new_particle_velocity * uniforms.simulationTimestep;
-        particle.deformation_displacement = B * uniforms.simulationTimestep * 4.0;
+        particle.deformation_displacement = scaleMatrixColumns(
+            B,
+            4.0 * uniforms.simulationTimestep / uniforms.gridCellDims,
+        );
+        particle.deformation_displacement = sanitizeDeformationDelta(particle.deformation_displacement);
 
         // temp
         particle.vel = new_particle_velocity;
 
-        particle_data[particle_index] = particle;
+        particle_data[thread_index] = particle;
     }
 }

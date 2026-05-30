@@ -14,6 +14,8 @@ fn binParticles(
     if thread_index >= arrayLength(&particle_data) { return; }
 
     let particle = particle_data[thread_index];
+    if !particlePositionCanTouchGrid(particle.pos) { return; }
+
     let cell_number = calculateCellNumber(particle.pos);
     let block_number = calculateBlockNumberContainingCell(cell_number);
     let block_index = retrieveBlockIndexFromHashMap(block_number);

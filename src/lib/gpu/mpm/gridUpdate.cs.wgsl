@@ -1,23 +1,84 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
-@group(1) @binding(0) var<storage, read_write> sparse_grid : SparseGridStorage;
+@group(1) @binding(0) var<storage, read_write> sparse_grid: SparseGridStorage;
 
 @group(1) @binding(3) var<storage, read_write> grid_mass: array<i32>;
 @group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<i32>;
 @group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<i32>;
 @group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<i32>;
 
+fn cellCenterGridCoord(block_number: vec3i, cell_index_within_block: u32) -> vec3f {
+    let cell_offset = vec3f(
+        f32(cell_index_within_block % BLOCK_SIZE),
+        f32((cell_index_within_block / BLOCK_SIZE) % BLOCK_SIZE),
+        f32(cell_index_within_block / (BLOCK_SIZE * BLOCK_SIZE)),
+    );
 
+    return vec3f(block_number * i32(BLOCK_SIZE)) + cell_offset + vec3f(0.5);
+}
 
+fn applyExternalGridForces(
+    velocity: vec3f,
+    block_number: vec3i,
+    cell_index_within_block: u32,
+) -> vec3f {
+    var updated_velocity = velocity + vec3f(0.0, 0.0, -9.81) * uniforms.simulationTimestep;
+
+    if uniforms.isInteracting != 0u && uniforms.interactionRadius > 0.0 {
+        let grid_pos = cellCenterGridCoord(block_number, cell_index_within_block);
+        let offset = grid_pos - uniforms.interactionPos;
+        let dist = length(offset);
+
+        if dist < uniforms.interactionRadius {
+            var dir = vec3f(0.0, 0.0, 1.0);
+            if dist > 0.001 {
+                dir = offset / dist;
+            }
+
+            let falloff_linear = dist / uniforms.interactionRadius;
+            let falloff = 1.0 - falloff_linear * falloff_linear;
+            let signed_strength = select(1.0, -1.0, uniforms.interactionMode == 1u);
+            updated_velocity += signed_strength * dir * uniforms.interactionStrength * falloff * uniforms.simulationTimestep;
+        }
+    }
+
+    return updated_velocity;
+}
+
+fn applyDomainBoundaryVelocity(
+    velocity: vec3f,
+    block_number: vec3i,
+    cell_index_within_block: u32,
+) -> vec3f {
+    let cell = block_number * i32(BLOCK_SIZE) + vec3i(
+        i32(cell_index_within_block % BLOCK_SIZE),
+        i32((cell_index_within_block / BLOCK_SIZE) % BLOCK_SIZE),
+        i32(cell_index_within_block / (BLOCK_SIZE * BLOCK_SIZE)),
+    );
+
+    var bounded_velocity = velocity;
+    let boundary_width = 2i;
+    if cell.x < boundary_width && bounded_velocity.x < 0.0 { bounded_velocity.x = 0.0; }
+    if cell.x > i32(uniforms.gridResolution.x) - boundary_width - 1i && bounded_velocity.x > 0.0 { bounded_velocity.x = 0.0; }
+    if cell.y < boundary_width && bounded_velocity.y < 0.0 { bounded_velocity.y = 0.0; }
+    if cell.y > i32(uniforms.gridResolution.y) - boundary_width - 1i && bounded_velocity.y > 0.0 { bounded_velocity.y = 0.0; }
+    if cell.z < boundary_width && bounded_velocity.z < 0.0 { bounded_velocity.z = 0.0; }
+    if cell.z > i32(uniforms.gridResolution.z) - boundary_width - 1i && bounded_velocity.z > 0.0 { bounded_velocity.z = 0.0; }
+
+    return bounded_velocity;
+}
+
+fn limitVelocityToCfl(velocity: vec3f) -> vec3f {
+    return clampVec3Length(velocity, maxStableParticleSpeed());
+}
 
 @compute
-@workgroup_size(64) // run per block
+@workgroup_size(64)
 fn doGridUpdate(
-    @builtin(global_invocation_id) gid: vec3u,
     @builtin(local_invocation_id) lid: vec3u,
     @builtin(workgroup_id) wid: vec3u,
 ) {
-    let block_index = wid.y * 256 + wid.x;
+    let block_index = wid.y * 256u + wid.x;
     if block_index >= N_MAX_BLOCKS_IN_HASH_MAP { return; }
     
     let count = atomicLoad(&sparse_grid.n_allocated_blocks);
@@ -27,104 +88,28 @@ fn doGridUpdate(
     let block_number = sparse_grid.hash_map_entries[mapped_block_index].block_number;
     
     let cell_index_within_block = lid.x;
-    let cell_index = block_index * 64u + cell_index_within_block;
+    let cell_index = block_index * BLOCK_SIZE_CUBED + cell_index_within_block;
     
-    let cellMass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
-    if cellMass <= 0.0 { return; }
+    let cell_mass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
+    if cell_mass <= 0.0 { return; }
 
-    if uniforms.use_pbmpm == 0 {
-        let momX = f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale;
-        let momY = f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale;
-        let momZ = f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale;
+    let cell_momentum = vec3f(
+        f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale,
+        f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale,
+        f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale,
+    );
 
-        var v = vec3f(momX, momY, momZ) / cellMass;
+    var cell_velocity = applyExternalGridForces(
+        cell_momentum / cell_mass,
+        block_number,
+        cell_index_within_block,
+    );
+    cell_velocity = applyDomainBoundaryVelocity(cell_velocity, block_number, cell_index_within_block);
+    cell_velocity = limitVelocityToCfl(cell_velocity);
 
-        // ------------ Gravity -------------
-        let gravity = vec3f(0.0, 0.0, -9.81);
-        v += gravity * uniforms.simulationTimestep;
-        
+    let new_momentum = cell_velocity * cell_mass;
 
-
-        let newMomentum = v * cellMass * uniforms.fixedPointScale;
-
-        grid_momentum_x[cell_index] = i32(newMomentum.x);
-        grid_momentum_y[cell_index] = i32(newMomentum.y);
-        grid_momentum_z[cell_index] = i32(newMomentum.z);
-    }
-    
-    else {
-        let cell_momentum = vec3f(
-            f32(grid_momentum_x[cell_index]) / uniforms.fixedPointScale,
-            f32(grid_momentum_y[cell_index]) / uniforms.fixedPointScale,
-            f32(grid_momentum_z[cell_index]) / uniforms.fixedPointScale,
-        );
-
-        let cell_mass = f32(grid_mass[cell_index]) / uniforms.fixedPointScale;
-
-        var cell_velocity = cell_momentum / cell_mass;
-
-        let gravitational_acceleration = vec3f(0, 0, -9.81) / f32(max(uniforms.pbmpmSolveIterations, 1u));
-        cell_velocity += gravitational_acceleration * uniforms.simulationTimestep;
-
-        // Interaction
-        if (uniforms.isInteracting != 0u) {
-            let cell_coord = vec3f(
-                f32(block_number.x * 4 + i32(lid.x % 4u)) - 0.5, // Approx? Wait.
-                // Reconstruct cell coord from block index and lid
-                // lid is 0..63.
-                // block_number is vec3i.
-                // block is 4x4x4.
-                0.0, 0.0 // placeholder
-            );
-             // We need real cell coords.
-        }
-        // Wait, I need to reconstruct cell coords.
-        // lid.x is cell_index_within_block (0-63).
-        // sparseGridPrelude has helpers?
-        // No, I have block_number.
-        
-        let cell_offset = vec3f(
-            f32(lid.x % 4u),
-            f32((lid.x / 4u) % 4u),
-            f32(lid.x / 16u)
-        );
-        let grid_node_pos = vec3f(block_number * 4) + cell_offset;
-
-        if (uniforms.isInteracting != 0u) {
-                // Sphere Distance
-                let dist = distance(grid_node_pos, uniforms.interactionPos);
-                if (dist < uniforms.interactionRadius) {
-                    let offset = grid_node_pos - uniforms.interactionPos;
-                var dir = vec3f(0.0, 0.0, 1.0);
-                if (length(offset) > 0.001) {
-                    dir = normalize(offset);
-                }
-                
-                let falloff_linear = dist / uniforms.interactionRadius;
-                var accel = vec3f(0.0);
-
-                
-                // 1. Attract
-                if (uniforms.interactionMode == 1u) {
-                    let falloff = 1 - falloff_linear * falloff_linear;
-                     accel = -dir * uniforms.interactionStrength * falloff * (1 - falloff);
-                }
-                // 0. Repel (Default)
-                else {
-                    let falloff = 1 - falloff_linear * falloff_linear;
-                    accel = dir * uniforms.interactionStrength * falloff; 
-                }
-
-                cell_velocity += accel * uniforms.simulationTimestep;
-            }
-        }
-        
-
-
-        let new_momentum = cell_velocity * cell_mass * uniforms.fixedPointScale;
-
-        grid_momentum_x[cell_index] = i32(new_momentum.x);
-        grid_momentum_y[cell_index] = i32(new_momentum.y);
-        grid_momentum_z[cell_index] = i32(new_momentum.z);
-    }
+    grid_momentum_x[cell_index] = toFixedPointI32(new_momentum.x);
+    grid_momentum_y[cell_index] = toFixedPointI32(new_momentum.y);
+    grid_momentum_z[cell_index] = toFixedPointI32(new_momentum.z);
 }

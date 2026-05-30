@@ -490,7 +490,7 @@ We noted before that all of our particles, with only a gravity force, are going 
 > [!note]
 > TBD
 
-### Position-based material point method (PBMPM)
+### Moving least squares material point method (MLS-MPM)
 > [!note]
 > TBD
 

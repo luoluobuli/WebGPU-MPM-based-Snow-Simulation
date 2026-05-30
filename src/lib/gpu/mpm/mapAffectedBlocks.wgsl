@@ -68,6 +68,7 @@ fn mapAffectedBlocks(@builtin(global_invocation_id) gid: vec3u) {
     if threadIndex >= arrayLength(&particleData) { return; }
 
     let particle = particleData[threadIndex];
+    if !particlePositionCanTouchGrid(particle.pos) { return; }
     
     let start_cell_number = calculateCellNumber(particle.pos);
 
