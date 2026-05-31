@@ -1,40 +1,7 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 @group(1) @binding(0) var<storage, read_write> particles: array<ParticleData>;
-@group(1) @binding(1) var<storage, read> meshVertices: array<vec3f>;
-
-
-fn randFloat(seed: ptr<function, u32>) -> f32 {
-    *seed = hash1(*seed);
-    return f32(*seed) / f32(0xFFFFFFFF);
-}
-
-fn randVec3(seed: ptr<function, u32>, minCoords: vec3f, maxCoords: vec3f) -> vec3f {
-    return vec3f(
-        mix(minCoords.x, maxCoords.x, randFloat(seed)),
-        mix(minCoords.y, maxCoords.y, randFloat(seed)),
-        mix(minCoords.z, maxCoords.z, randFloat(seed)),
-    );
-}
-
-fn pointInsideMesh(point: vec3f, numTriangles: u32) -> bool {
-    // even-odd check in +x direction
-
-    let rayDir = normalize(vec3f(1, 1, 1));
-    var inside = false;
-    
-    for (var i = 0u; i < numTriangles; i++) {
-        let vert0 = meshVertices[i * 3];
-        let vert1 = meshVertices[i * 3 + 1];
-        let vert2 = meshVertices[i * 3 + 2];
-        
-        if rayIntersectsTriangle(point, rayDir, vert0, vert1, vert2) {
-            inside = !inside;
-        }
-    }
-    
-    return inside;
-}
+@group(1) @binding(1) var<storage, read> spawnPoints: array<vec4f>;
 
 @compute
 @workgroup_size(256)
@@ -44,54 +11,14 @@ fn scatterParticles(
     let threadIndex = globalId.x;
     if threadIndex >= arrayLength(&particles) { return; }
 
-
-
-    const REJECTION_SAMPLING_N_MAX_ATTEMPTS = 512u;
-
-    let nTriangles = arrayLength(&meshVertices) / 3;
-    var seed = hash4(vec4u(threadIndex, 100, 200, 300));
-    var candidatePos = vec3f(0);
-    var foundInteriorPoint = false;
-
-    for (var nAttempt = 0u; nAttempt < REJECTION_SAMPLING_N_MAX_ATTEMPTS; nAttempt++) {
-        candidatePos = randVec3(&seed, uniforms.meshMinCoords, uniforms.meshMaxCoords);
-        if pointInsideMesh(candidatePos, nTriangles) {
-            foundInteriorPoint = true;
-            break;
-        }
-    }
-
-    if !foundInteriorPoint && nTriangles > 0u {
-        let triangleIndex = hash1(seed + threadIndex) % nTriangles;
-        let vert0 = meshVertices[triangleIndex * 3u];
-        let vert1 = meshVertices[triangleIndex * 3u + 1u];
-        let vert2 = meshVertices[triangleIndex * 3u + 2u];
-
-        var bary0 = randFloat(&seed);
-        var bary1 = randFloat(&seed);
-        if bary0 + bary1 > 1.0 {
-            bary0 = 1.0 - bary0;
-            bary1 = 1.0 - bary1;
-        }
-
-        candidatePos = vert0 + bary0 * (vert1 - vert0) + bary1 * (vert2 - vert0);
-    }
-
-    let noiseScale = 0.1;
-    let NOISE_FREQ = 4.;
-    let dx = fbm(candidatePos * NOISE_FREQ);
-    let dy = fbm(candidatePos * NOISE_FREQ + vec3f(100, 200, 300));
-    let dz = fbm(candidatePos * NOISE_FREQ + vec3f(-300, -200, -100));
-    candidatePos += (vec3f(dx, dy, dz) - 0.5) * noiseScale;
-    candidatePos = clamp(
-        candidatePos,
+    let spawnPointIndex = min(threadIndex, arrayLength(&spawnPoints) - 1u);
+    let candidatePos = clamp(
+        spawnPoints[spawnPointIndex].xyz,
         uniforms.gridMinCoords + uniforms.gridCellDims,
         uniforms.gridMaxCoords - uniforms.gridCellDims,
     );
 
-
     let particle = &particles[threadIndex];
-    
 
     (*particle).pos = candidatePos;
     (*particle)._hom = 1;
@@ -101,5 +28,5 @@ fn scatterParticles(
     (*particle).deformationPlastic = IDENTITY_MAT3;
 
     (*particle).pos_displacement = vec3f();
-    (*particle).deformation_displacement = mat3x3f(); // Zero matrix - represents change in deformation
+    (*particle).deformation_displacement = mat3x3f();
 }

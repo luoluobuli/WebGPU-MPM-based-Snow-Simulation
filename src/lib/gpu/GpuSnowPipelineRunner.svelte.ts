@@ -7,6 +7,7 @@ import { GpuMpmBufferManager } from "./mpm/GpuMpmBufferManager";
 import { GpuRenderMethodType, type GpuRenderMethod } from "./GpuRenderMethod";
 import { GpuPerformanceMeasurementBufferManager } from "./performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 import { GpuMeshBufferManager } from "./particleInitialize/GpuMeshBufferManager";
+import { GpuSpawnVolumeBufferManager } from "./particleInitialize/GpuSpawnVolumeBufferManager";
 import { GpuColliderBufferManager } from "./collider/GpuColliderBufferManager";
 import { GpuParticleInitializePipelineManager } from "./particleInitialize/GpuParticleInitializePipelineManager";
 import { GpuRasterizeRenderPipelineManager } from "./collider/GpuRasterizeRenderPipelineManager";
@@ -28,6 +29,13 @@ import { GpuDepthPicker } from "./GpuDepthPicker";
 
 const MAX_SIMULATION_DRIFT_MS = 250;
 const FP_SCALE = 65536;
+
+type SpawnMeshObject = {
+    min: [number, number, number];
+    max: [number, number, number];
+    startVertex: number;
+    countVertices: number;
+};
 
 export class GpuSnowPipelineRunner {
     private readonly device: GPUDevice;
@@ -83,6 +91,7 @@ export class GpuSnowPipelineRunner {
         mlsMpmSimulationTimestepS,
         camera,
         meshVertices,
+        meshObjects,
         collider,
         getSimulationMethodType,
         getRenderMethodType,
@@ -107,6 +116,7 @@ export class GpuSnowPipelineRunner {
         mlsMpmSimulationTimestepS: () => number,
         camera: Camera,
         meshVertices: number[][],
+        meshObjects?: SpawnMeshObject[],
         collider: ColliderGeometry,
         getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
@@ -165,6 +175,13 @@ export class GpuSnowPipelineRunner {
         uniformsManager.writeMeshMinCoords(meshManager.minCoords);
         uniformsManager.writeMeshMaxCoords(meshManager.maxCoords);
 
+        const spawnVolumeManager = new GpuSpawnVolumeBufferManager({
+            device,
+            vertices: meshVertices,
+            nParticles,
+            objects: meshObjects,
+        });
+
         const colliderManager = new GpuColliderBufferManager({
             device, 
             vertices: collider.positions, 
@@ -184,7 +201,7 @@ export class GpuSnowPipelineRunner {
         const particleInitializePipelineManager = new GpuParticleInitializePipelineManager({
             device,
             particleDataBuffer: mpmManager.particleDataBuffer,
-            meshVerticesBuffer: meshManager.meshVerticesBuffer,
+            spawnPointsBuffer: spawnVolumeManager.spawnPointsBuffer,
             uniformsManager,
         });
         this.particleInitializePipelineManager = particleInitializePipelineManager;

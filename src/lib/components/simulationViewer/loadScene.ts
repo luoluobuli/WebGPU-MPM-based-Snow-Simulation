@@ -132,6 +132,8 @@ export const loadGltfScene = async (url: string) => {
     const objects: {
         min: [number, number, number];
         max: [number, number, number];
+        startVertex: number;
+        countVertices: number;
         startIndex: number;
         countIndices: number;
     }[] = [];
@@ -159,6 +161,7 @@ export const loadGltfScene = async (url: string) => {
         }
         
         const startIndex = indices.length;
+        const startVertex = vertices.length;
         const objectMin: [number, number, number] = [Infinity, Infinity, Infinity];
         const objectMax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
@@ -207,6 +210,8 @@ export const loadGltfScene = async (url: string) => {
         objects.push({
             min: objectMin,
             max: objectMax,
+            startVertex,
+            countVertices: vertices.length - startVertex,
             startIndex: startIndex,
             countIndices: indices.length - startIndex,
         });

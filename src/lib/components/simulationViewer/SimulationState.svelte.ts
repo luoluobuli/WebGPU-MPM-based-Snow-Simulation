@@ -13,6 +13,17 @@ import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 import { loadEnvironmentMap } from "$lib/gpu/environmentMap/loadEnvironmentMap";
 import { ParticleControlMode } from "./ParticleControlMode";
 
+const waitForBrowserPaint = () => new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === "undefined") {
+        resolve();
+        return;
+    }
+
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+});
+
+const errorToString = (error: unknown) => error instanceof Error ? error.message : String(error);
+
 export class SimulationState {
     width = $state(300);
     height = $state(150);
@@ -46,6 +57,7 @@ export class SimulationState {
     private stopSimulation = $state<(() => void) | null>(null);
     private runner = $state<GpuSnowPipelineRunner | null>(null);
     prerenderElapsedTimes = $derived(this.runner?.prerenderElapsedTimes ?? null);
+    private restartEpoch = 0;
 
     private onStatusChange: ((status: string) => void) | null = null;
     private onErr: ((err: string) => void) | null = null;
@@ -66,15 +78,26 @@ export class SimulationState {
     async restart() {
         if (this.runner === null || this.device === null) return;
 
+        const restartEpoch = ++this.restartEpoch;
+
         this.stopSimulation?.();
         this.stopSimulation = null;
+
+        this.onStatusChange?.("initializing particles...");
+        await waitForBrowserPaint();
+        if (restartEpoch !== this.restartEpoch) return;
         
-        this.runner.scatterParticlesInMeshVolume();
+        try {
+            this.runner.scatterParticlesInMeshVolume();
 
-        this.onStatusChange?.("initializing particles");
+            await this.device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
+        } catch (error) {
+            console.error(error);
+            this.onErr?.(errorToString(error));
+            return;
+        }
 
-        await this.device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
-        if (this.stopSimulation !== null) return;
+        if (restartEpoch !== this.restartEpoch || this.stopSimulation !== null) return;
 
         this.onStatusChange?.("off and racing");
 
@@ -222,62 +245,73 @@ export class SimulationState {
 
 
 
-        onMount(async () => {
-            const response = await requestGpuDeviceAndContext({
-                onStatusChange,
-                onErr,
-                canvas: await canvasPromise,
-            });
-            if (response === null) return;
-            const { device, context, format, supportsTimestamp } = response;
-            state.device = device;
+        onMount(() => {
+            void (async () => {
+                try {
+                    const response = await requestGpuDeviceAndContext({
+                        onStatusChange,
+                        onErr,
+                        canvas: await canvasPromise,
+                    });
+                    if (response === null) return;
+                    const { device, context, format, supportsTimestamp } = response;
+                    state.device = device;
 
-            onStatusChange?.("loading geometry...");
-            const { vertices } = await loadGltfScene(modelUrl);
+                    onStatusChange?.("loading geometry...");
+                    const { vertices, objects: meshObjects } = await loadGltfScene(modelUrl);
 
-            const { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(colliderUrl);
+                    const { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(colliderUrl);
 
-            const collider: ColliderGeometry = {
-                positions,
-                normals,
-                uvs,
-                materialIndices,
-                textures,
-                indices,
-                objects,
-                //transform: state.transformMat,
-            };
+                    const collider: ColliderGeometry = {
+                        positions,
+                        normals,
+                        uvs,
+                        materialIndices,
+                        textures,
+                        indices,
+                        objects,
+                        //transform: state.transformMat,
+                    };
 
-            onStatusChange?.("loading environment...");
-            const environmentImageBitmap = await loadEnvironmentMap();
+                    onStatusChange?.("loading environment...");
+                    const environmentImageBitmap = await loadEnvironmentMap();
 
-            state.width = innerWidth;
-            state.height = innerHeight;
+                    onStatusChange?.("initializing renderer...");
+                    await waitForBrowserPaint();
 
-            state.runner = new GpuSnowPipelineRunner({
-                device,
-                format,
-                context,
-                nParticles: state.nParticles,
-                gridResolutionX: state.gridResolutionX,
-                gridResolutionY: state.gridResolutionY,
-                gridResolutionZ: state.gridResolutionZ,
-                explicitMpmSimulationTimestepS: () => state.explicitMpmSimulationTimestepS,
-                mlsMpmSimulationTimestepS: () => state.mlsMpmSimulationTimestepS,
-                camera: state.camera,
-                meshVertices: vertices,
-                collider: collider,
-                getSimulationMethodType: () => state.simulationMethodType,
-                getRenderMethodType: () => state.renderMethodType,
-                oneSimulationStepPerFrame: () => state.oneSimulationStepPerFrame,
-                environmentImageBitmap,
-                measurePerf: supportsTimestamp,
-                width: () => state.width,
-                height: () => state.height,
-                colliderFriction: () => state.colliderFriction,
-            });
+                    state.width = innerWidth;
+                    state.height = innerHeight;
 
-            state.restart();
+                    state.runner = new GpuSnowPipelineRunner({
+                        device,
+                        format,
+                        context,
+                        nParticles: state.nParticles,
+                        gridResolutionX: state.gridResolutionX,
+                        gridResolutionY: state.gridResolutionY,
+                        gridResolutionZ: state.gridResolutionZ,
+                        explicitMpmSimulationTimestepS: () => state.explicitMpmSimulationTimestepS,
+                        mlsMpmSimulationTimestepS: () => state.mlsMpmSimulationTimestepS,
+                        camera: state.camera,
+                        meshVertices: vertices,
+                        meshObjects,
+                        collider: collider,
+                        getSimulationMethodType: () => state.simulationMethodType,
+                        getRenderMethodType: () => state.renderMethodType,
+                        oneSimulationStepPerFrame: () => state.oneSimulationStepPerFrame,
+                        environmentImageBitmap,
+                        measurePerf: supportsTimestamp,
+                        width: () => state.width,
+                        height: () => state.height,
+                        colliderFriction: () => state.colliderFriction,
+                    });
+
+                    await state.restart();
+                } catch (error) {
+                    console.error(error);
+                    onErr?.(errorToString(error));
+                }
+            })();
         });
 
         onDestroy(() => {

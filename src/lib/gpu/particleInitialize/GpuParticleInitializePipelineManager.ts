@@ -12,12 +12,12 @@ export class GpuParticleInitializePipelineManager {
     constructor({
         device,
         particleDataBuffer,
-        meshVerticesBuffer,
+        spawnPointsBuffer,
         uniformsManager,
     }: {
         device: GPUDevice,
         particleDataBuffer: GPUBuffer,
-        meshVerticesBuffer: GPUBuffer,
+        spawnPointsBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
     }) {
         const storageBindGroupLayout = device.createBindGroupLayout({
@@ -53,7 +53,7 @@ export class GpuParticleInitializePipelineManager {
                 {
                     binding: 1,
                     resource: {
-                        buffer: meshVerticesBuffer,
+                        buffer: spawnPointsBuffer,
                     },
                 },
             ],
