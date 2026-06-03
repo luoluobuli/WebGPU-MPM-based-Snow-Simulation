@@ -4,9 +4,19 @@ const IDENTITY_MAT3 = mat3x3f(
     0, 0, 1,
 );
 
+fn mat3x3IsIdentity(matrix: mat3x3f) -> bool {
+    return all(matrix[0] == vec3f(1.0, 0.0, 0.0))
+        && all(matrix[1] == vec3f(0.0, 1.0, 0.0))
+        && all(matrix[2] == vec3f(0.0, 0.0, 1.0));
+}
 
-fn mat3x3Inverse(matrix: mat3x3f) -> mat3x3f {
-    let det = determinant(matrix);
+fn mat3x3IsZero(matrix: mat3x3f) -> bool {
+    return all(matrix[0] == vec3f(0.0))
+        && all(matrix[1] == vec3f(0.0))
+        && all(matrix[2] == vec3f(0.0));
+}
+
+fn mat3x3InverseWithDeterminant(matrix: mat3x3f, det: f32) -> mat3x3f {
     if det == 0 {
         return IDENTITY_MAT3;
     }
@@ -24,6 +34,10 @@ fn mat3x3Inverse(matrix: mat3x3f) -> mat3x3f {
         matrix[0][1] * matrix[2][0] - matrix[0][0] * matrix[2][1],
         matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0],
     ) * (1 / det);
+}
+
+fn mat3x3Inverse(matrix: mat3x3f) -> mat3x3f {
+    return mat3x3InverseWithDeterminant(matrix, determinant(matrix));
 }
 
 

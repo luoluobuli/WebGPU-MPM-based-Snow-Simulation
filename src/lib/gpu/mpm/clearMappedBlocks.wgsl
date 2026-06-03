@@ -6,24 +6,21 @@
 @group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<i32>;
 @group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<i32>;
 
+@group(2) @binding(0) var<storage, read> active_block_dispatch_args: array<u32>;
+
 @compute
-@workgroup_size(64) // 64 = # cells in a 4×4×4 block
+@workgroup_size(256)
 fn clearMappedBlocks(
     @builtin(global_invocation_id) gid: vec3u,
-    @builtin(local_invocation_id) lid: vec3u,
     @builtin(workgroup_id) wid: vec3u,
+    @builtin(num_workgroups) num_workgroups: vec3u,
 ) {
-    let block_index = wid.y * 256u + wid.x; // TODO this calculation comes from magic numbers set in the runner
-    if block_index >= N_MAX_ACTIVE_BLOCKS { return; }
+    let cell_index = gid.x;
+    if wid.x + 1u == num_workgroups.x {
+        let active_cell_count = active_block_dispatch_args[7];
+        if cell_index >= active_cell_count { return; }
+    }
 
-    let count = atomicLoad(&sparse_grid.n_allocated_blocks);
-    if block_index >= count { return; }
-
-    let cell_index_in_block = lid.x;
-    
-    let cell_index = block_index * 64u + cell_index_in_block;
-    if cell_index >= arrayLength(&grid_mass) { return; }
-    
     grid_mass[cell_index] = 0;
     grid_momentum_x[cell_index] = 0;
     grid_momentum_y[cell_index] = 0;

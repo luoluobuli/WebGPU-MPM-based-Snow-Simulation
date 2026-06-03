@@ -26,23 +26,27 @@ const progressFromTimestep = (timestep: number) => {
 let timestepProgress = $derived.by(() => {
     switch (simulationState.simulationMethodType) {
         case GpuSimulationMethodType.ExplicitMpm:
-            return progressFromTimestep(simulationState.explicitMpmSimulationTimestepS);
+            return progressFromTimestep(simulationState.explicitMpmMaxSimulationTimestepS);
 
         case GpuSimulationMethodType.MlsMpm:
-            return progressFromTimestep(simulationState.mlsMpmSimulationTimestepS);
+            return progressFromTimestep(simulationState.mlsMpmMaxSimulationTimestepS);
     }
 });
 
 const timestepDivisor = $derived(Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - timestepProgress) * MIN_TIMESTEP_DIVISOR);
+const actualTimestepDivisor = $derived(simulationState.actualSimulationTimestepS === null
+    ? null
+    : 1 / simulationState.actualSimulationTimestepS);
+const isTimestepCflLimited = $derived(actualTimestepDivisor !== null && actualTimestepDivisor > timestepDivisor * 1.001);
 
 const updateTimestep = (progress: number) => {
     switch (simulationState.simulationMethodType) {
         case GpuSimulationMethodType.ExplicitMpm:
-            simulationState.explicitMpmSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
+            simulationState.explicitMpmMaxSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
             break;
 
         case GpuSimulationMethodType.MlsMpm:
-            simulationState.mlsMpmSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
+            simulationState.mlsMpmMaxSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
             break;
     }
 };
@@ -203,7 +207,7 @@ const updateTimestep = (progress: number) => {
         MLS-MPM
     </label>
 
-    <h4>Timestep</h4>
+    <h4>Max timestep</h4>
 
     <labeled-range>
         <input
@@ -216,17 +220,21 @@ const updateTimestep = (progress: number) => {
         />
 
         <span>
-            <sup>1</sup>⁄<sub>{timestepDivisor.toFixed(1)}</sub>
+            max 1 / {timestepDivisor.toFixed(1)}
             s
         </span>
     </labeled-range>
+
+    {#if isTimestepCflLimited && actualTimestepDivisor !== null}
+        <div>Actual timestep: 1 / {actualTimestepDivisor.toFixed(1)} s</div>
+    {/if}
     
     <label>
         <input
             type="checkbox"
             bind:checked={simulationState.oneSimulationStepPerFrame}
         />
-        Limit to 1 simulation step per frame
+        Limit to 1 max-timestep advance per frame
     </label>
 </OverlayPanel>
 

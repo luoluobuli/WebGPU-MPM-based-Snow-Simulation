@@ -3,7 +3,7 @@ struct Uniforms {
 
     simulationTimestep: f32, // 4
     fixedPointScale: f32, // 8
-    use_mls_mpm: u32, // 12
+    invSimulationTimestep: f32, // 12
     time: u32, // 16
     gridMinCoords: vec3f, // 28
     // 32
@@ -25,9 +25,9 @@ struct Uniforms {
     colliderVelocity: vec3f, // 336
     // 340
     cameraPos: vec3f, // 352
-    colliderReserved0: u32, // 356
+    colliderTransformIsIdentity: u32, // 356
     gridCellDims: vec3f, // 364
-    colliderReserved1: u32, // 368
+    colliderVelocityIsZero: u32, // 368
     
     
     lightViewProjMat: mat4x4f, // 368
@@ -43,4 +43,25 @@ struct Uniforms {
     colliderFriction: f32, // 524 -> 528
     
     interactionDir: vec3f, // 528
+    interactionRadiusSquared: f32, // 540
+    maxStableParticleSpeed: f32, // 544
+    maxStableParticleSpeedSquared: f32, // 548
+    maxStableParticleDisplacement: f32, // 552
+    maxStableParticleDisplacementSquared: f32, // 556
+    colliderSdfGridScale: vec3f, // 560
+    colliderSdfCellSize: vec3f, // 576
+    colliderSdfValid: u32, // 588
+    colliderWorldMinCoords: vec3f, // 604
+    colliderWorldMaxCoords: vec3f, // 620
+    colliderSdfMaxCellSize: f32, // 624
+    invGridCellDims: vec3f, // 636
+    invGridCellDimsSquared: vec3f, // 652
+    simulationDomainCenter: vec3f, // 668
+    simulationDomainMaxInside: vec3f, // 684
+    gravityDeltaVelocity: vec3f, // 700
+    interactionStrengthDelta: f32, // 704
+    mlsDeformationGradientScale: vec3f, // 716
+    explicitDeformationGradientScale: f32, // 720
+    mlsStressAffineScale: vec3f, // 732
+    explicitStressImpulseScale: f32, // 736
 }

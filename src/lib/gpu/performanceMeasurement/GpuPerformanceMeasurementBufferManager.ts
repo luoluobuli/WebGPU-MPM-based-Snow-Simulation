@@ -4,6 +4,9 @@ export class GpuPerformanceMeasurementBufferManager {
     readonly resolveBuffer: GPUBuffer;
     readonly resultBuffer: GPUBuffer;
     private isMappingResultBuffer = false;
+    private hasPendingReadback = false;
+    private prerenderTimestampBaseIndex = 6;
+    enabled = true;
 
     constructor({
         device,
@@ -14,10 +17,11 @@ export class GpuPerformanceMeasurementBufferManager {
             type: "timestamp",
             count: 16,
         });
+        const queryResultByteLength = querySet.count * BigUint64Array.BYTES_PER_ELEMENT;
 
 
         const resolveRenderBuffer = device.createBuffer({
-            size: querySet.count * 32,
+            size: queryResultByteLength,
             usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
         });
 
@@ -33,18 +37,33 @@ export class GpuPerformanceMeasurementBufferManager {
         this.resolveBuffer = resolveRenderBuffer;
         this.resultBuffer = resultRenderBuffer;
     }
+
+    setEnabled(enabled: boolean) {
+        this.enabled = enabled;
+    }
+
+    setPrerenderTimestampBaseIndex(baseIndex: number) {
+        this.prerenderTimestampBaseIndex = baseIndex;
+    }
     
 
-    addResolve(commandEncoder: GPUCommandEncoder) {
-        if (this.isMappingResultBuffer || this.resultBuffer.mapState !== "unmapped") return;
+    addResolve(commandEncoder: GPUCommandEncoder, queryCount = this.querySet.count) {
+        if (!this.enabled || this.isMappingResultBuffer || this.resultBuffer.mapState !== "unmapped") return;
 
-        commandEncoder.resolveQuerySet(this.querySet, 0, this.querySet.count, this.resolveBuffer, 0);
-        commandEncoder.copyBufferToBuffer(this.resolveBuffer, 0, this.resultBuffer, 0, this.resolveBuffer.size);
+        const resolvedQueryCount = Math.min(this.querySet.count, Math.max(0, queryCount));
+        if (resolvedQueryCount === 0) return;
+
+        const resolvedByteLength = resolvedQueryCount * BigUint64Array.BYTES_PER_ELEMENT;
+        commandEncoder.resolveQuerySet(this.querySet, 0, resolvedQueryCount, this.resolveBuffer, 0);
+        commandEncoder.copyBufferToBuffer(this.resolveBuffer, 0, this.resultBuffer, 0, resolvedByteLength);
+        this.hasPendingReadback = true;
     }
 
 
     async mapTime(fn: (timestamps: BigUint64Array) => void) {
-        if (this.isMappingResultBuffer || this.resultBuffer.mapState !== "unmapped") return null;
+        if (!this.hasPendingReadback || this.isMappingResultBuffer || this.resultBuffer.mapState !== "unmapped") {
+            return null;
+        }
 
         this.isMappingResultBuffer = true;
         let mapped = false;
@@ -58,15 +77,18 @@ export class GpuPerformanceMeasurementBufferManager {
             if (mapped) {
                 this.resultBuffer.unmap();
             }
+            this.hasPendingReadback = false;
             this.isMappingResultBuffer = false;
         }
     }
 
     buildPrerenderTimestampWritesDescriptor(prerenderPassIndex: number) {
+        if (!this.enabled) return undefined;
+
         return {
             querySet: this.querySet,
-            beginningOfPassWriteIndex: 2 * (prerenderPassIndex + 3),
-            endOfPassWriteIndex: 2 * (prerenderPassIndex + 3) + 1,
+            beginningOfPassWriteIndex: this.prerenderTimestampBaseIndex + 2 * prerenderPassIndex,
+            endOfPassWriteIndex: this.prerenderTimestampBaseIndex + 2 * prerenderPassIndex + 1,
         };
     }
 }

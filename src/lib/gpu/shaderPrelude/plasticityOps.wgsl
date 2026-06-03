@@ -6,9 +6,24 @@
  */
 fn applyPlasticity(
     particle: ptr<function, ParticleData>
-) {
+) -> bool {
     var dE = (*particle).deformationElastic; // F_e
     var dP = (*particle).deformationPlastic; // F_p
+    if mat3x3IsIdentity(dE) {
+        return false;
+    }
+
+    let stretch_metric = transpose(dE) * dE;
+    let stretch_delta = stretch_metric - IDENTITY_MAT3;
+    let stretch_delta_frobenius_squared = dot(stretch_delta[0], stretch_delta[0])
+        + dot(stretch_delta[1], stretch_delta[1])
+        + dot(stretch_delta[2], stretch_delta[2]);
+    // If F^T F is very close to identity, all stretch factors are safely inside
+    // the plastic yield window and the polar decomposition below is unnecessary.
+    if stretch_delta_frobenius_squared <= 1e-4 {
+        return false;
+    }
+
     // extract rotation and scale from the elastic deformation
     let rotation = calculatePolarDecompositionRotation(dE); // R
     // S = Rᵀ F_e  (<=  F_e = R S) 
@@ -23,7 +38,7 @@ fn applyPlasticity(
 
 
     // compare the singulars to the range to know whether the material yields
-    if all(vec3f(MIN_STRETCH_FAC) <= singulars) && all(singulars <= vec3f(MAX_STRETCH_FAC)) { return; }
+    if all(vec3f(MIN_STRETCH_FAC) <= singulars) && all(singulars <= vec3f(MAX_STRETCH_FAC)) { return false; }
 
 
     // clamped scale factors represent how much of the compression or stretching can actually be restored later
@@ -39,10 +54,17 @@ fn applyPlasticity(
     let newDeformationElastic = rotation * newScale; // F_e
     
     // assuming the overall deformaton stays the same, we can also derive the new plastic deformation
-    let newDeformationElasticInv = mat3x3Inverse(newDeformationElastic);
+    let rotation_transpose = transpose(rotation);
+    let inv_singulars_clamped = vec3f(1.0) / singularsClamped;
+    let newDeformationElasticInv = mat3x3f(
+        rotation_transpose[0] * inv_singulars_clamped,
+        rotation_transpose[1] * inv_singulars_clamped,
+        rotation_transpose[2] * inv_singulars_clamped,
+    );
     let deformation = (dE) * (dP);
     
     (*particle).deformationElastic = newDeformationElastic;
     // F_p = (F_e)⁻¹ F  (<=  F = F_e F_p)  
     (*particle).deformationPlastic = newDeformationElasticInv * deformation;
+    return true;
 }

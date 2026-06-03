@@ -1,10 +1,17 @@
 
 const BLOCK_SIZE = 4;
 const BUKKIT_DOMAIN_GRID_RESOLUTION = 384;
-const BUKKIT_DOMAIN_BLOCKS_PER_AXIS = Math.ceil(BUKKIT_DOMAIN_GRID_RESOLUTION / BLOCK_SIZE);
-const BUKKIT_DOMAIN_BLOCK_COUNT = BUKKIT_DOMAIN_BLOCKS_PER_AXIS ** 3;
+export const BUKKIT_DOMAIN_BLOCKS_PER_AXIS = Math.ceil(BUKKIT_DOMAIN_GRID_RESOLUTION / BLOCK_SIZE);
+export const BUKKIT_DOMAIN_BLOCK_COUNT = BUKKIT_DOMAIN_BLOCKS_PER_AXIS ** 3;
 const N_MAX_ACTIVE_BLOCKS = 100_000;
 const GRID_CELLS_PER_BLOCK = 64;
+const SPARSE_GRID_HEADER_BYTES = 16;
+const UINT32_BYTES = 4;
+const VEC3I_STORAGE_STRIDE_BYTES = 16;
+
+function alignTo(value: number, alignment: number) {
+    return Math.ceil(value / alignment) * alignment;
+}
 
 export class GpuMpmBufferManager {
     readonly particleDataBuffer: GPUBuffer;
@@ -13,7 +20,7 @@ export class GpuMpmBufferManager {
     readonly gridMomentumXBuffer: GPUBuffer;
     readonly gridMomentumYBuffer: GPUBuffer;
     readonly gridMomentumZBuffer: GPUBuffer;
-    readonly sortedParticleIndicesBuffer: GPUBuffer;
+    readonly activeBlockDispatchBuffer: GPUBuffer;
 
     readonly nParticles: number;
     readonly nMaxActiveBlocks = N_MAX_ACTIVE_BLOCKS;
@@ -33,15 +40,16 @@ export class GpuMpmBufferManager {
         });
 
         // SparseGridStorage layout:
-        // - n_allocated_blocks: atomic<u32> (4 bytes) + 12 bytes explicit padding = 16 bytes
+        // - n_allocated_blocks + current_generation: u32 * 2 + 8 bytes explicit padding = 16 bytes
         // - block_index_bukkits: array<atomic<u32>, BUKKIT_DOMAIN_BLOCK_COUNT>
-        // - mapped_block_numbers: array<vec4i, N_MAX_ACTIVE_BLOCKS>
-        // - block_particle_counts: array<u32, N_MAX_ACTIVE_BLOCKS>
-        // - block_particle_offsets: array<u32, N_MAX_ACTIVE_BLOCKS>
-        const sparseGridBufferSize = 16
-            + this.bukkitDomainBlockCount * 4
-            + this.nMaxActiveBlocks * 16
-            + this.nMaxActiveBlocks * 4 * 2;
+        // - bukkit_generations: array<atomic<u32>, BUKKIT_DOMAIN_BLOCK_COUNT>
+        // - mapped_block_numbers: array<vec3i, N_MAX_ACTIVE_BLOCKS> with 16-byte storage stride
+        const mappedBlockNumbersOffset = alignTo(
+            SPARSE_GRID_HEADER_BYTES + this.bukkitDomainBlockCount * UINT32_BYTES * 2,
+            VEC3I_STORAGE_STRIDE_BYTES,
+        );
+        const sparseGridBufferSize = mappedBlockNumbersOffset
+            + this.nMaxActiveBlocks * VEC3I_STORAGE_STRIDE_BYTES;
         const sparseGridBuffer = device.createBuffer({
             label: "MPM sparse grid storage buffer",
             size: sparseGridBufferSize,
@@ -73,10 +81,12 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        const sortedParticleIndicesBuffer = device.createBuffer({
-            label: "MPM sorted particle indices buffer",
-            size: nParticles * 4,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        // 0..2: active block dispatch, 3: active block count,
+        // 4..6: clear-cell dispatch, 7: active cell count.
+        const activeBlockDispatchBuffer = device.createBuffer({
+            label: "MPM active block indirect dispatch buffer",
+            size: 32,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
         });
 
         this.particleDataBuffer = particleDataBuffer;
@@ -85,7 +95,7 @@ export class GpuMpmBufferManager {
         this.gridMomentumXBuffer = gridMomentumXBuffer;
         this.gridMomentumYBuffer = gridMomentumYBuffer;
         this.gridMomentumZBuffer = gridMomentumZBuffer;
-        this.sortedParticleIndicesBuffer = sortedParticleIndicesBuffer;
+        this.activeBlockDispatchBuffer = activeBlockDispatchBuffer;
 
         this.nParticles = nParticles;
     }

@@ -28,9 +28,16 @@ const nPrerenderPasses = $derived(simulationState.prerenderElapsedTimes?.length)
     <h4>Simulation</h4>
 
     <perf-item>
-        <perf-label>GPU simulation compute pass (sample)</perf-label>
+        <perf-label>GPU simulation compute pass ({simulationState.elapsedTime.nSimulationSubsteps} substeps)</perf-label>
         <ElapsedTimeDisplay
             ns={simulationState.elapsedTime.gpuComputeSimulationStepTimeNs}
+        />
+    </perf-item>
+
+    <perf-item>
+        <perf-label>GPU simulation substep (sample)</perf-label>
+        <ElapsedTimeDisplay
+            ns={simulationState.elapsedTime.gpuComputeSimulationSubstepTimeNs}
         />
     </perf-item>
 

@@ -32,8 +32,8 @@ export class SimulationState {
     gridResolutionX = $state(384);
     gridResolutionY = $state(384);
     gridResolutionZ = $state(384);
-    explicitMpmSimulationTimestepS = $state(1 / 192);
-    mlsMpmSimulationTimestepS = $state(1 / 1024);
+    explicitMpmMaxSimulationTimestepS = $state(1 / 192);
+    mlsMpmMaxSimulationTimestepS = $state(1 / 1024);
 
     oneSimulationStepPerFrame = $state(true);
 
@@ -57,6 +57,7 @@ export class SimulationState {
     private stopSimulation = $state<(() => void) | null>(null);
     private runner = $state<GpuSnowPipelineRunner | null>(null);
     prerenderElapsedTimes = $derived(this.runner?.prerenderElapsedTimes ?? null);
+    actualSimulationTimestepS = $derived(this.runner?.selectedSimulationTimestepS ?? null);
     private restartEpoch = 0;
 
     private onStatusChange: ((status: string) => void) | null = null;
@@ -108,6 +109,8 @@ export class SimulationState {
                 )),
             onGpuTimeUpdate: (times) => {
                 this.elapsedTime.gpuComputeSimulationStepTimeNs = times.computeSimulationStepNs;
+                this.elapsedTime.gpuComputeSimulationSubstepTimeNs = times.computeSimulationSubstepNs;
+                this.elapsedTime.nSimulationSubsteps = times.nSimulationSubsteps;
                 this.elapsedTime.gpuRenderTimeNs = times.renderNs;
                 this.elapsedTime.gpuPostprocessRenderTimeNs = times.postprocessRenderNs;
             },
@@ -290,8 +293,8 @@ export class SimulationState {
                         gridResolutionX: state.gridResolutionX,
                         gridResolutionY: state.gridResolutionY,
                         gridResolutionZ: state.gridResolutionZ,
-                        explicitMpmSimulationTimestepS: () => state.explicitMpmSimulationTimestepS,
-                        mlsMpmSimulationTimestepS: () => state.mlsMpmSimulationTimestepS,
+                        explicitMpmMaxSimulationTimestepS: () => state.explicitMpmMaxSimulationTimestepS,
+                        mlsMpmMaxSimulationTimestepS: () => state.mlsMpmMaxSimulationTimestepS,
                         camera: state.camera,
                         meshVertices: vertices,
                         meshObjects,
@@ -304,6 +307,8 @@ export class SimulationState {
                         width: () => state.width,
                         height: () => state.height,
                         colliderFriction: () => state.colliderFriction,
+                        isInteracting: () => state.isInteracting,
+                        interactionStrength: () => state.interactionStrength,
                     });
 
                     await state.restart();
