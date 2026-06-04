@@ -3,14 +3,13 @@
 @group(1) @binding(0) var<storage, read_write> sparse_grid: SparseGridStorage;
 
 @group(2) @binding(0) var<storage, read> particle_data: array<ParticleData>;
-@group(2) @binding(3) var<storage, read> active_block_dispatch_args: array<u32>;
 
 struct BukkitThreadData {
     range_start: u32,
     range_count: u32,
-    block_x: u32,
-    block_y: u32,
-    block_z: u32,
+    origin_cell_x: u32,
+    origin_cell_y: u32,
+    origin_cell_z: u32,
     _pad0: u32,
     _pad1: u32,
     _pad2: u32,
@@ -42,23 +41,63 @@ struct BukkitThreadGroupCount {
 
 override N_PARTICLES: u32 = 0u;
 override PARTICLE_WORKGROUP_SIZE: u32 = 256u;
+override FUSED_PARTICLE_WORKGROUP_SIZE: u32 = 64u;
 
+const FUSED_BUKKIT_SIZE = 2u;
+const FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK = BLOCK_SIZE / FUSED_BUKKIT_SIZE;
+const FUSED_BUKKIT_SUBBUKKITS_PER_BLOCK = FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK
+    * FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK
+    * FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK;
 const BUKKIT_DISPATCH_WIDTH = 256u;
 
-fn blockNumberFromParticlePosition(pos: vec3f) -> vec3i {
-    let grid_coord = calculateGridCoordinate(pos);
-    let start_cell_number = vec3i(floor(grid_coord));
-    return calculateBlockNumberContainingCell(start_cell_number);
+fn sourceActiveBlockCount() -> u32 {
+    return min(atomicLoad(&sparse_grid.n_allocated_blocks), N_MAX_ACTIVE_BLOCKS);
 }
 
-fn sourceGridContainsBlock(block_number: vec3i) -> bool {
+fn startCellNumberFromParticlePosition(pos: vec3f) -> vec3i {
+    let grid_coord = calculateGridCoordinate(pos);
+    return vec3i(floor(grid_coord));
+}
+
+fn sourceGridBlockIndex(block_number: vec3i) -> u32 {
     if !bukkitCanContainBlock(block_number) {
-        return false;
+        return GRID_BLOCK_INDEX_EMPTY;
     }
 
     let bukkit_index = calculateBukkitIndex(block_number);
-    return atomicLoad(&sparse_grid.bukkit_generations[bukkit_index])
-        == sparse_grid.current_generation;
+    if atomicLoad(&sparse_grid.bukkit_generations[bukkit_index]) != sparse_grid.current_generation {
+        return GRID_BLOCK_INDEX_EMPTY;
+    }
+
+    let block_index = atomicLoad(&sparse_grid.block_index_bukkits[bukkit_index]);
+    if block_index >= N_MAX_ACTIVE_BLOCKS {
+        return GRID_BLOCK_INDEX_EMPTY;
+    }
+
+    return block_index;
+}
+
+fn subbukkitIndexFromStartCell(start_cell_number: vec3i) -> u32 {
+    let local_cell = vec3u(start_cell_number & vec3i(i32(BLOCK_MASK)));
+    let subbukkit = local_cell / FUSED_BUKKIT_SIZE;
+    return subbukkit.x
+        + FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK * (
+            subbukkit.y + FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK * subbukkit.z
+        );
+}
+
+fn subbukkitOffsetFromIndex(subbukkit_index: u32) -> vec3u {
+    return vec3u(
+        subbukkit_index % FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK,
+        (subbukkit_index / FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK) % FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK,
+        subbukkit_index / (
+            FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK * FUSED_BUKKIT_SUBDIVISIONS_PER_BLOCK
+        ),
+    );
+}
+
+fn bukkitIndexFromActiveBlockAndSubbukkit(active_block_index: u32, subbukkit_index: u32) -> u32 {
+    return active_block_index * FUSED_BUKKIT_SUBBUKKITS_PER_BLOCK + subbukkit_index;
 }
 
 @compute
@@ -75,15 +114,17 @@ fn resetBukkitBuildBuffers(@builtin(global_invocation_id) gid: vec3u) {
         atomicStore(&bukkit_thread_group_count.count, 0u);
     }
 
-    if thread_index >= active_block_dispatch_args[3] { return; }
+    if thread_index >= sourceActiveBlockCount() { return; }
 
     let block_number = sparse_grid.mapped_block_numbers[thread_index];
     if !bukkitCanContainBlock(block_number) { return; }
 
-    let bukkit_index = calculateBukkitIndex(block_number);
-
-    atomicStore(&bukkit_particle_counts[bukkit_index], 0u);
-    atomicStore(&bukkit_insert_counters[bukkit_index], 0u);
+    let bukkit_base_index = thread_index * FUSED_BUKKIT_SUBBUKKITS_PER_BLOCK;
+    for (var subbukkit_index = 0u; subbukkit_index < FUSED_BUKKIT_SUBBUKKITS_PER_BLOCK; subbukkit_index = subbukkit_index + 1u) {
+        let bukkit_index = bukkit_base_index + subbukkit_index;
+        atomicStore(&bukkit_particle_counts[bukkit_index], 0u);
+        atomicStore(&bukkit_insert_counters[bukkit_index], 0u);
+    }
 }
 
 @compute
@@ -95,54 +136,60 @@ fn countParticlesPerBukkit(@builtin(global_invocation_id) gid: vec3u) {
     let particle_pos = particle_data[particle_index].pos;
     if !particlePositionCanTouchGrid(particle_pos) { return; }
 
-    let block_number = blockNumberFromParticlePosition(particle_pos);
-    if !sourceGridContainsBlock(block_number) { return; }
+    let start_cell_number = startCellNumberFromParticlePosition(particle_pos);
+    let block_number = calculateBlockNumberContainingCell(start_cell_number);
+    let active_block_index = sourceGridBlockIndex(block_number);
+    if active_block_index == GRID_BLOCK_INDEX_EMPTY { return; }
 
-    atomicAdd(&bukkit_particle_counts[calculateBukkitIndex(block_number)], 1u);
-}
-
-fn blockNumberFromBukkitIndex(bukkit_index: u32) -> vec3u {
-    let block_x = bukkit_index % BUKKIT_DOMAIN_BLOCKS_X;
-    let block_y = (bukkit_index / BUKKIT_DOMAIN_BLOCKS_X) % BUKKIT_DOMAIN_BLOCKS_Y;
-    let block_z = bukkit_index / (BUKKIT_DOMAIN_BLOCKS_X * BUKKIT_DOMAIN_BLOCKS_Y);
-    return vec3u(block_x, block_y, block_z);
+    let subbukkit_index = subbukkitIndexFromStartCell(start_cell_number);
+    atomicAdd(
+        &bukkit_particle_counts[
+            bukkitIndexFromActiveBlockAndSubbukkit(active_block_index, subbukkit_index)
+        ],
+        1u,
+    );
 }
 
 @compute
 @workgroup_size(256)
 fn allocateBukkitThreadData(@builtin(global_invocation_id) gid: vec3u) {
     let active_block_index = gid.x;
-    if active_block_index >= active_block_dispatch_args[3] { return; }
+    if active_block_index >= sourceActiveBlockCount() { return; }
 
-    let block_number_i = sparse_grid.mapped_block_numbers[active_block_index];
-    if !bukkitCanContainBlock(block_number_i) { return; }
+    let block_number = sparse_grid.mapped_block_numbers[active_block_index];
+    if !bukkitCanContainBlock(block_number) { return; }
 
-    let bukkit_index = calculateBukkitIndex(block_number_i);
+    let block_cell_base = vec3u(block_number) * BLOCK_SIZE;
+    let bukkit_base_index = active_block_index * FUSED_BUKKIT_SUBBUKKITS_PER_BLOCK;
 
-    let bukkit_count = atomicLoad(&bukkit_particle_counts[bukkit_index]);
-    if bukkit_count == 0u { return; }
+    for (var subbukkit_index = 0u; subbukkit_index < FUSED_BUKKIT_SUBBUKKITS_PER_BLOCK; subbukkit_index = subbukkit_index + 1u) {
+        let bukkit_index = bukkit_base_index + subbukkit_index;
+        let bukkit_count = atomicLoad(&bukkit_particle_counts[bukkit_index]);
+        if bukkit_count == 0u { continue; }
 
-    let dispatch_count = (bukkit_count + PARTICLE_WORKGROUP_SIZE - 1u) / PARTICLE_WORKGROUP_SIZE;
-    let dispatch_start = atomicAdd(&bukkit_dispatch_args.count, dispatch_count);
-    let particle_start = atomicAdd(&bukkit_particle_allocator.count, bukkit_count);
-    let block_number = vec3u(block_number_i);
+        let dispatch_count = (bukkit_count + FUSED_PARTICLE_WORKGROUP_SIZE - 1u) / FUSED_PARTICLE_WORKGROUP_SIZE;
+        let dispatch_start = atomicAdd(&bukkit_dispatch_args.count, dispatch_count);
+        let particle_start = atomicAdd(&bukkit_particle_allocator.count, bukkit_count);
+        let origin_cell = block_cell_base
+            + subbukkitOffsetFromIndex(subbukkit_index) * FUSED_BUKKIT_SIZE;
 
-    bukkit_index_start[bukkit_index] = particle_start;
+        bukkit_index_start[bukkit_index] = particle_start;
 
-    for (var i = 0u; i < dispatch_count; i = i + 1u) {
-        let range_start = particle_start + i * PARTICLE_WORKGROUP_SIZE;
-        let particles_remaining = bukkit_count - i * PARTICLE_WORKGROUP_SIZE;
-        let range_count = min(PARTICLE_WORKGROUP_SIZE, particles_remaining);
-        bukkit_thread_data[dispatch_start + i] = BukkitThreadData(
-            range_start,
-            range_count,
-            block_number.x,
-            block_number.y,
-            block_number.z,
-            0u,
-            0u,
-            0u,
-        );
+        for (var i = 0u; i < dispatch_count; i = i + 1u) {
+            let range_start = particle_start + i * FUSED_PARTICLE_WORKGROUP_SIZE;
+            let particles_remaining = bukkit_count - i * FUSED_PARTICLE_WORKGROUP_SIZE;
+            let range_count = min(FUSED_PARTICLE_WORKGROUP_SIZE, particles_remaining);
+            bukkit_thread_data[dispatch_start + i] = BukkitThreadData(
+                range_start,
+                range_count,
+                origin_cell.x,
+                origin_cell.y,
+                origin_cell.z,
+                0u,
+                0u,
+                0u,
+            );
+        }
     }
 }
 
@@ -155,10 +202,13 @@ fn insertParticlesIntoBukkit(@builtin(global_invocation_id) gid: vec3u) {
     let particle_pos = particle_data[particle_index].pos;
     if !particlePositionCanTouchGrid(particle_pos) { return; }
 
-    let block_number = blockNumberFromParticlePosition(particle_pos);
-    if !sourceGridContainsBlock(block_number) { return; }
+    let start_cell_number = startCellNumberFromParticlePosition(particle_pos);
+    let block_number = calculateBlockNumberContainingCell(start_cell_number);
+    let active_block_index = sourceGridBlockIndex(block_number);
+    if active_block_index == GRID_BLOCK_INDEX_EMPTY { return; }
 
-    let bukkit_index = calculateBukkitIndex(block_number);
+    let subbukkit_index = subbukkitIndexFromStartCell(start_cell_number);
+    let bukkit_index = bukkitIndexFromActiveBlockAndSubbukkit(active_block_index, subbukkit_index);
     let index_start = bukkit_index_start[bukkit_index];
     let particle_slot = atomicAdd(&bukkit_insert_counters[bukkit_index], 1u);
     bukkit_particle_data[index_start + particle_slot] = particle_index;

@@ -11,12 +11,6 @@ struct GridAccumulatorAtomic {
 
 @group(1) @binding(3) var<storage, read_write> grid_accumulator: array<GridAccumulatorAtomic>;
 
-struct GridVelocity {
-    velocity: vec3f,
-}
-
-@group(1) @binding(7) var<storage, read_write> grid_velocity: array<GridVelocity>;
-
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
 @group(2) @binding(1) var<storage, read_write> max_particle_speed_bits: atomic<u32>;
 @group(2) @binding(2) var<storage, read_write> particle_flags: array<u32>;
@@ -24,9 +18,9 @@ struct GridVelocity {
 struct BukkitThreadData {
     range_start: u32,
     range_count: u32,
-    block_x: u32,
-    block_y: u32,
-    block_z: u32,
+    origin_cell_x: u32,
+    origin_cell_y: u32,
+    origin_cell_z: u32,
     _pad0: u32,
     _pad1: u32,
     _pad2: u32,
@@ -44,16 +38,26 @@ struct BukkitThreadGroupCountRead {
 }
 
 @group(3) @binding(0) var<storage, read_write> next_sparse_grid: SparseGridStorage;
+
+@group(3) @binding(3) var<storage, read_write> next_grid_accumulator: array<GridAccumulatorAtomic>;
 @group(3) @binding(5) var<storage, read_write> bukkit_thread_data: array<BukkitThreadData>;
 @group(3) @binding(6) var<storage, read_write> bukkit_particle_data: array<u32>;
 @group(3) @binding(9) var<storage, read_write> bukkit_thread_group_count: BukkitThreadGroupCountRead;
 
 override N_PARTICLES: u32 = 0u;
 override PARTICLE_WORKGROUP_SIZE: u32 = 256u;
+override ENABLE_INTERACTION: u32 = 1u;
+override GRID_BOUNDARY_MAX_X: i32 = 381i;
+override GRID_BOUNDARY_MAX_Y: i32 = 381i;
+override GRID_BOUNDARY_MAX_Z: i32 = 381i;
+override GRID_BOUNDARY_HIGH_BLOCK_X: i32 = 95i;
+override GRID_BOUNDARY_HIGH_BLOCK_Y: i32 = 95i;
+override GRID_BOUNDARY_HIGH_BLOCK_Z: i32 = 95i;
 override RECORD_PARTICLE_SPEED: u32 = 0u;
 override PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE: u32 = 256u;
 
-const FUSED_BUKKIT_SIZE = BLOCK_SIZE;
+const GRID_BOUNDARY_WIDTH = 2i;
+const FUSED_BUKKIT_SIZE = 2u;
 const FUSED_BUKKIT_HALO = 1u;
 const FUSED_TILE_EDGE = FUSED_BUKKIT_SIZE + 2u * FUSED_BUKKIT_HALO;
 const FUSED_TILE_CELL_COUNT = FUSED_TILE_EDGE * FUSED_TILE_EDGE * FUSED_TILE_EDGE;
@@ -93,6 +97,90 @@ fn tileAccumulatorIndex(tile_index: u32) -> u32 {
     return tile_index * 4u;
 }
 
+fn cellOffsetWithinBlock(cell_number: vec3i) -> vec3u {
+    return vec3u(cell_number & vec3i(i32(BLOCK_MASK)));
+}
+
+fn cellCenterGridCoord(cell_number: vec3i) -> vec3f {
+    return vec3f(cell_number) + vec3f(0.5);
+}
+
+fn boundaryLowEnd(block_axis: i32) -> u32 {
+    return u32(clamp(
+        GRID_BOUNDARY_WIDTH - block_axis * i32(BLOCK_SIZE),
+        0i,
+        i32(BLOCK_SIZE),
+    ));
+}
+
+fn boundaryHighStart(block_axis: i32, boundary_max: i32) -> u32 {
+    return u32(clamp(
+        boundary_max - block_axis * i32(BLOCK_SIZE) + 1i,
+        0i,
+        i32(BLOCK_SIZE),
+    ));
+}
+
+fn applyInteractionVelocity(
+    velocity: vec3f,
+    cell_number: vec3i,
+) -> vec3f {
+    let grid_pos = cellCenterGridCoord(cell_number);
+    let offset = grid_pos - uniforms.interactionPos;
+    let dist_squared = dot(offset, offset);
+    let radius_squared = uniforms.interactionRadiusSquared;
+
+    if dist_squared < radius_squared {
+        var dir = vec3f(0.0, 0.0, 1.0);
+        if dist_squared > 1e-6 {
+            dir = offset * inverseSqrt(dist_squared);
+        }
+
+        let falloff = 1.0 - dist_squared / radius_squared;
+        let signed_strength = select(1.0, -1.0, uniforms.interactionMode == 1u);
+        return velocity + signed_strength * dir * uniforms.interactionStrengthDelta * falloff;
+    }
+
+    return velocity;
+}
+
+fn applyDomainBoundaryVelocity(
+    velocity: vec3f,
+    block_number: vec3i,
+    cell_offset: vec3u,
+) -> vec3f {
+    let boundary_low_end = vec3u(
+        boundaryLowEnd(block_number.x),
+        boundaryLowEnd(block_number.y),
+        boundaryLowEnd(block_number.z),
+    );
+    let boundary_high_start = vec3u(
+        boundaryHighStart(block_number.x, GRID_BOUNDARY_MAX_X),
+        boundaryHighStart(block_number.y, GRID_BOUNDARY_MAX_Y),
+        boundaryHighStart(block_number.z, GRID_BOUNDARY_MAX_Z),
+    );
+
+    var bounded_velocity = velocity;
+    if cell_offset.x < boundary_low_end.x && bounded_velocity.x < 0.0 { bounded_velocity.x = 0.0; }
+    if cell_offset.x >= boundary_high_start.x && bounded_velocity.x > 0.0 { bounded_velocity.x = 0.0; }
+    if cell_offset.y < boundary_low_end.y && bounded_velocity.y < 0.0 { bounded_velocity.y = 0.0; }
+    if cell_offset.y >= boundary_high_start.y && bounded_velocity.y > 0.0 { bounded_velocity.y = 0.0; }
+    if cell_offset.z < boundary_low_end.z && bounded_velocity.z < 0.0 { bounded_velocity.z = 0.0; }
+    if cell_offset.z >= boundary_high_start.z && bounded_velocity.z > 0.0 { bounded_velocity.z = 0.0; }
+
+    return bounded_velocity;
+}
+
+fn limitVelocityToCfl(velocity: vec3f) -> vec3f {
+    let len_squared = dot(velocity, velocity);
+    let max_len_squared = uniforms.maxStableParticleSpeedSquared;
+    if len_squared > max_len_squared {
+        return velocity * (uniforms.maxStableParticleSpeed * inverseSqrt(len_squared));
+    }
+
+    return velocity;
+}
+
 fn loadTileVelocity(cell_number: vec3i) -> vec3f {
     if !cellNumberInSparseGridRange(cell_number) {
         return vec3f(0.0);
@@ -103,7 +191,40 @@ fn loadTileVelocity(cell_number: vec3i) -> vec3f {
         return vec3f(0.0);
     }
 
-    return grid_velocity[cell_index].velocity;
+    let cell_mass_fixed_i32 = atomicLoad(&grid_accumulator[cell_index].mass);
+    if cell_mass_fixed_i32 <= 0i {
+        return vec3f(0.0);
+    }
+
+    let inv_cell_mass_fixed = 1.0 / f32(cell_mass_fixed_i32);
+    var cell_velocity = vec3f(vec3i(
+        atomicLoad(&grid_accumulator[cell_index].momentum_x),
+        atomicLoad(&grid_accumulator[cell_index].momentum_y),
+        atomicLoad(&grid_accumulator[cell_index].momentum_z),
+    )) * inv_cell_mass_fixed + uniforms.gravityDeltaVelocity;
+
+    let block_number = calculateBlockNumberContainingCell(cell_number);
+    let is_interior_block = block_number.x > 0i && block_number.x < GRID_BOUNDARY_HIGH_BLOCK_X
+        && block_number.y > 0i && block_number.y < GRID_BOUNDARY_HIGH_BLOCK_Y
+        && block_number.z > 0i && block_number.z < GRID_BOUNDARY_HIGH_BLOCK_Z;
+    if ENABLE_INTERACTION != 0u && uniforms.isInteracting != 0u && uniforms.interactionRadiusSquared > 0.0 {
+        cell_velocity = applyInteractionVelocity(cell_velocity, cell_number);
+        if !is_interior_block {
+            cell_velocity = applyDomainBoundaryVelocity(
+                cell_velocity,
+                block_number,
+                cellOffsetWithinBlock(cell_number),
+            );
+        }
+    } else if !is_interior_block {
+        cell_velocity = applyDomainBoundaryVelocity(
+            cell_velocity,
+            block_number,
+            cellOffsetWithinBlock(cell_number),
+        );
+    }
+
+    return limitVelocityToCfl(cell_velocity);
 }
 
 fn velocityFromTile(cell_number: vec3i, local_grid_origin: vec3i) -> vec3f {
@@ -195,10 +316,10 @@ fn accumulateFixedUnitsToNextGridCell(
 
     let cell_index = (block_index << LOG_BLOCK_SIZE_CUBED)
         + calculateCellIndexWithinBlock(cell_number);
-    atomicAdd(&grid_accumulator[cell_index].mass, mass_i);
-    atomicAdd(&grid_accumulator[cell_index].momentum_x, momentum_i.x);
-    atomicAdd(&grid_accumulator[cell_index].momentum_y, momentum_i.y);
-    atomicAdd(&grid_accumulator[cell_index].momentum_z, momentum_i.z);
+    atomicAdd(&next_grid_accumulator[cell_index].mass, mass_i);
+    atomicAdd(&next_grid_accumulator[cell_index].momentum_x, momentum_i.x);
+    atomicAdd(&next_grid_accumulator[cell_index].momentum_y, momentum_i.y);
+    atomicAdd(&next_grid_accumulator[cell_index].momentum_z, momentum_i.z);
 }
 
 fn accumulateFixedUnitsToTileOrNextGrid(
@@ -566,9 +687,9 @@ fn doFusedMlsG2p2g(
         if workgroup_has_thread_data {
             let thread_data = bukkit_thread_data[thread_data_index];
             workgroup_local_grid_origin = vec3i(
-                i32(thread_data.block_x * FUSED_BUKKIT_SIZE) - i32(FUSED_BUKKIT_HALO),
-                i32(thread_data.block_y * FUSED_BUKKIT_SIZE) - i32(FUSED_BUKKIT_HALO),
-                i32(thread_data.block_z * FUSED_BUKKIT_SIZE) - i32(FUSED_BUKKIT_HALO),
+                i32(thread_data.origin_cell_x) - i32(FUSED_BUKKIT_HALO),
+                i32(thread_data.origin_cell_y) - i32(FUSED_BUKKIT_HALO),
+                i32(thread_data.origin_cell_z) - i32(FUSED_BUKKIT_HALO),
             );
         } else {
             workgroup_local_grid_origin = vec3i(0);
@@ -585,10 +706,6 @@ fn doFusedMlsG2p2g(
             cell_velocity = loadTileVelocity(cell_number);
         }
         tile_velocity[tile_index] = vec4f(cell_velocity, 0.0);
-    }
-
-    for (var accumulator_index = local_index; accumulator_index < FUSED_TILE_ACCUMULATOR_SIZE; accumulator_index = accumulator_index + PARTICLE_WORKGROUP_SIZE) {
-        atomicStore(&tile_accumulator[accumulator_index], 0i);
     }
 
     workgroupBarrier();

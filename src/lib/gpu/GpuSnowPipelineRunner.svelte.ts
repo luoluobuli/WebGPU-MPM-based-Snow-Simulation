@@ -43,7 +43,7 @@ const GRAVITATIONAL_ACCELERATION_M_PER_S2 = 9.81;
 const FP_SCALE = 65536;
 const MAX_FIXED_POINT_I32 = 2_147_483_000;
 const MAX_FIXED_POINT_GRID_SPEED = MAX_FIXED_POINT_I32 / FP_SCALE;
-const GPU_TIMING_SAMPLE_INTERVAL_FRAMES = 8;
+const GPU_TIMING_SAMPLE_INTERVAL_FRAMES = 7;
 const PARTICLE_SPEED_SAMPLE_INTERVAL_FRAMES = 4;
 // A prime-ish relaxed cadence avoids regular aliasing with browser frame pacing.
 // Due speed samples preempt GPU timestamp telemetry in the frame loop below.
@@ -321,6 +321,7 @@ export class GpuSnowPipelineRunner {
             sparseGridBuffer: mpmManager.sparseGridBuffer,
             nextSparseGridBuffer: mpmManager.nextSparseGridBuffer,
             gridAccumulatorBuffer: mpmManager.gridAccumulatorBuffer,
+            nextGridAccumulatorBuffer: mpmManager.nextGridAccumulatorBuffer,
             gridVelocityBuffer: mpmManager.gridVelocityBuffer,
             maxParticleSpeedBuffer: this.particleSpeedReductionPipelineManager.maxSpeedBuffer,
             activeBlockDispatchBuffer: mpmManager.activeBlockDispatchBuffer,

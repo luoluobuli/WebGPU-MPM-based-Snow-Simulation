@@ -9,6 +9,7 @@ const SPARSE_GRID_HEADER_BYTES = 16;
 const UINT32_BYTES = 4;
 const VEC3I_STORAGE_STRIDE_BYTES = 16;
 const BUKKIT_THREAD_DATA_BYTES = 32;
+const FUSED_SUBBUKKITS_PER_BLOCK = 8;
 
 function alignTo(value: number, alignment: number) {
     return Math.ceil(value / alignment) * alignment;
@@ -20,6 +21,7 @@ export class GpuMpmBufferManager {
     readonly sparseGridBuffer: GPUBuffer;
     readonly nextSparseGridBuffer: GPUBuffer;
     readonly gridAccumulatorBuffer: GPUBuffer;
+    readonly nextGridAccumulatorBuffer: GPUBuffer;
     readonly gridVelocityBuffer: GPUBuffer;
     readonly activeBlockDispatchBuffer: GPUBuffer;
     readonly nextActiveBlockDispatchBuffer: GPUBuffer;
@@ -75,11 +77,15 @@ export class GpuMpmBufferManager {
         const nextSparseGridBuffer = createSparseGridBuffer("MPM fused next sparse grid storage buffer");
 
         const gridVectorStorageSize = this.nMaxActiveBlocks * GRID_CELLS_PER_BLOCK * VEC3I_STORAGE_STRIDE_BYTES;
-        const gridAccumulatorBuffer = device.createBuffer({
-            label: "MPM packed grid accumulator buffer",
+        const createGridAccumulatorBuffer = (label: string) => device.createBuffer({
+            label,
             size: gridVectorStorageSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
+        const gridAccumulatorBuffer = createGridAccumulatorBuffer("MPM packed grid accumulator buffer");
+        const nextGridAccumulatorBuffer = createGridAccumulatorBuffer(
+            "MPM fused next packed grid accumulator buffer",
+        );
 
         const gridVelocityBuffer = device.createBuffer({
             label: "MPM packed grid velocity buffer",
@@ -98,8 +104,15 @@ export class GpuMpmBufferManager {
             size: 4 * UINT32_BYTES,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
         });
+        const emptyActiveBlockDispatchArgs = new Uint32Array([1, 1, 1, 0]);
+        device.queue.writeBuffer(activeBlockDispatchBuffer, 0, emptyActiveBlockDispatchArgs);
+        device.queue.writeBuffer(nextActiveBlockDispatchBuffer, 0, emptyActiveBlockDispatchArgs);
 
-        const bukkitTableSize = this.bukkitDomainBlockCount * UINT32_BYTES;
+        const bukkitTableEntryCount = Math.max(
+            this.bukkitDomainBlockCount,
+            this.nMaxActiveBlocks * FUSED_SUBBUKKITS_PER_BLOCK,
+        );
+        const bukkitTableSize = bukkitTableEntryCount * UINT32_BYTES;
         const bukkitParticleCountsBuffer = device.createBuffer({
             label: "MPM fused bukkit particle counts buffer",
             size: bukkitTableSize,
@@ -146,6 +159,7 @@ export class GpuMpmBufferManager {
         this.sparseGridBuffer = sparseGridBuffer;
         this.nextSparseGridBuffer = nextSparseGridBuffer;
         this.gridAccumulatorBuffer = gridAccumulatorBuffer;
+        this.nextGridAccumulatorBuffer = nextGridAccumulatorBuffer;
         this.gridVelocityBuffer = gridVelocityBuffer;
         this.activeBlockDispatchBuffer = activeBlockDispatchBuffer;
         this.nextActiveBlockDispatchBuffer = nextActiveBlockDispatchBuffer;
