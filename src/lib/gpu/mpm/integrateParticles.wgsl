@@ -8,11 +8,14 @@
 
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
 @group(2) @binding(1) var<storage, read_write> max_particle_speed_bits: atomic<u32>;
+@group(2) @binding(2) var<storage, read_write> particle_flags: array<u32>;
 
 override N_PARTICLES: u32 = 0u;
 override RECORD_PARTICLE_SPEED: u32 = 0u;
+override PARTICLE_WORKGROUP_SIZE: u32 = 256u;
+override PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE: u32 = 1u;
 
-var<workgroup> workgroup_max_particle_speed_bits: array<u32, 256>;
+var<workgroup> workgroup_max_particle_speed_bits: array<u32, PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE>;
 
 fn recordWorkgroupMaxParticleSpeed(local_index: u32, speed_squared: f32) {
     workgroup_max_particle_speed_bits[local_index] = select(
@@ -21,7 +24,7 @@ fn recordWorkgroupMaxParticleSpeed(local_index: u32, speed_squared: f32) {
         speed_squared > 0.0,
     );
 
-    for (var stride = 128u; stride > 0u; stride = stride >> 1u) {
+    for (var stride = PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE >> 1u; stride > 0u; stride = stride >> 1u) {
         workgroupBarrier();
         if local_index < stride {
             workgroup_max_particle_speed_bits[local_index] = max(
@@ -82,7 +85,7 @@ fn applySimulationDomainBoundary(particle: ptr<function, ParticleData>) {
 }
 
 @compute
-@workgroup_size(256)
+@workgroup_size(PARTICLE_WORKGROUP_SIZE)
 fn integrateParticles(
     @builtin(global_invocation_id) gid: vec3u,
     @builtin(local_invocation_id) lid: vec3u,
@@ -92,9 +95,9 @@ fn integrateParticles(
     var speed_squared = 0.0;
 
     if particle_index < N_PARTICLES {
+        let sparse_grid_generation = sparse_grid.current_generation;
         var particle = particle_data[particle_index];
-        let write_hom = !isFiniteScalar(particle._hom) || particle._hom != 1.0;
-        let write_mass = !isFiniteScalar(particle.mass) || particle.mass <= 0.0;
+        var flags = particle_flags[particle_index];
 
         // let gravitational_acceleration = vec3f(0, 0, -9.81);
         // particle.pos_displacement += gravitational_acceleration * uniforms.simulationTimestep * uniforms.simulationTimestep;
@@ -102,7 +105,8 @@ fn integrateParticles(
         particle.pos_displacement = particle.vel * uniforms.simulationTimestep;
         particle.pos += particle.pos_displacement;
 
-        let deformation_matrices_changed = !mat3x3IsZero(particle.deformation_displacement);
+        let deformation_matrices_changed = (flags & PARTICLE_FLAG_DEFORMATION_DELTA_VALID) != 0u;
+        var deformation_delta_remains_valid = deformation_matrices_changed;
         var deformation_plastic_changed = false;
         if deformation_matrices_changed {
             particle.deformationElastic = (IDENTITY_MAT3 + particle.deformation_displacement) * particle.deformationElastic;
@@ -112,6 +116,7 @@ fn integrateParticles(
                 particle.deformationElastic = IDENTITY_MAT3;
                 particle.deformationPlastic = IDENTITY_MAT3;
                 particle.deformation_displacement = mat3x3f();
+                deformation_delta_remains_valid = false;
                 deformation_plastic_changed = true;
             } else {
                 deformation_plastic_changed = applyPlasticity(&particle);
@@ -124,36 +129,39 @@ fn integrateParticles(
         resolveParticleCollision(&particle);
         sanitizeParticleKinematicsWithoutDeformationDeltaWithKnownScalarRepairs(
             &particle,
-            write_hom,
-            write_mass,
+            false,
+            false,
         );
         if deformation_matrices_changed {
             particle.deformation_displacement = sanitizeNonZeroDeformationDelta(particle.deformation_displacement);
             let matrix_sanitize_flags = sanitizeParticleMatricesAndGetChangedFlags(&particle);
             deformation_plastic_changed = deformation_plastic_changed
                 || (matrix_sanitize_flags & PARTICLE_MATRIX_PLASTIC_CHANGED) != 0u;
+            deformation_delta_remains_valid = !mat3x3IsZero(particle.deformation_displacement);
         }
         if RECORD_PARTICLE_SPEED != 0u {
             speed_squared = dot(particle.vel, particle.vel);
         }
 
-        mapParticleAffectedBlocksInGrid(particle.pos, sparse_grid.current_generation);
+        mapParticleAffectedBlocksInGrid(particle.pos, sparse_grid_generation);
 
         particle_data[particle_index].pos = particle.pos;
         particle_data[particle_index].vel = particle.vel;
-        particle_data[particle_index].pos_displacement = particle.pos_displacement;
-        if write_hom {
-            particle_data[particle_index]._hom = particle._hom;
-        }
-        if write_mass {
-            particle_data[particle_index].mass = particle.mass;
-        }
         if deformation_matrices_changed {
             particle_data[particle_index].deformation_displacement = particle.deformation_displacement;
             particle_data[particle_index].deformationElastic = particle.deformationElastic;
             if deformation_plastic_changed {
                 particle_data[particle_index].deformationPlastic = particle.deformationPlastic;
             }
+            if mat3x3IsIdentity(particle.deformationElastic) {
+                flags = flags & ~PARTICLE_FLAG_ELASTIC_NON_IDENTITY;
+            } else {
+                flags = flags | PARTICLE_FLAG_ELASTIC_NON_IDENTITY;
+            }
+            if !deformation_delta_remains_valid {
+                flags = flags & ~PARTICLE_FLAG_DEFORMATION_DELTA_VALID;
+            }
+            particle_flags[particle_index] = flags;
         }
     }
 

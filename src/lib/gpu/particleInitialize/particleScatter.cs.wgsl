@@ -2,6 +2,7 @@
 
 @group(1) @binding(0) var<storage, read_write> particles: array<ParticleData>;
 @group(1) @binding(1) var<storage, read> spawnPoints: array<vec4f>;
+@group(1) @binding(2) var<storage, read_write> particle_flags: array<u32>;
 
 @compute
 @workgroup_size(256)
@@ -23,10 +24,11 @@ fn scatterParticles(
     (*particle).pos = candidatePos;
     (*particle)._hom = 1;
     (*particle).vel = vec3f();
-    (*particle).mass = 1.0 / 3.0;
+    (*particle).mass = DEFAULT_PARTICLE_MASS;
     (*particle).deformationElastic = IDENTITY_MAT3;
     (*particle).deformationPlastic = IDENTITY_MAT3;
 
     (*particle).pos_displacement = vec3f();
     (*particle).deformation_displacement = mat3x3f();
+    particle_flags[threadIndex] = 0u;
 }

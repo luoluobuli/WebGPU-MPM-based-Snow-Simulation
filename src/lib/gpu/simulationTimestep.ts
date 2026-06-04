@@ -74,3 +74,46 @@ export const calculateSimulationSubstepTimestepS = ({
         maxSimulationTimestepS / substepsPerMaxStep,
     );
 };
+
+export const canRelaxParticleSpeedSampling = ({
+    maxSimulationTimestepS,
+    minGridCellDim,
+    latestMaxParticleSpeed,
+    externalAcceleration,
+    relaxedSampleIntervalFrames,
+    speedHeadroom,
+    oneSimulationStepPerFrame,
+}: {
+    maxSimulationTimestepS: number,
+    minGridCellDim: number,
+    latestMaxParticleSpeed: number,
+    externalAcceleration: number,
+    relaxedSampleIntervalFrames: number,
+    speedHeadroom: number,
+    oneSimulationStepPerFrame: boolean,
+}) => {
+    if (
+        !oneSimulationStepPerFrame
+        || !Number.isFinite(maxSimulationTimestepS)
+        || !Number.isFinite(minGridCellDim)
+        || !Number.isFinite(latestMaxParticleSpeed)
+        || !Number.isFinite(externalAcceleration)
+        || !Number.isFinite(relaxedSampleIntervalFrames)
+        || !Number.isFinite(speedHeadroom)
+        || maxSimulationTimestepS <= 0
+        || minGridCellDim <= 0
+        || relaxedSampleIntervalFrames <= 0
+        || speedHeadroom <= 0
+    ) {
+        return false;
+    }
+
+    const speedLimitedMaxStepThreshold = CFL_NUMBER * minGridCellDim / maxSimulationTimestepS;
+    const maxUnobservedSpeedGrowth =
+        Math.max(0, externalAcceleration)
+        * maxSimulationTimestepS
+        * relaxedSampleIntervalFrames;
+
+    return Math.max(0, latestMaxParticleSpeed) + maxUnobservedSpeedGrowth
+        < speedLimitedMaxStepThreshold * Math.min(1, speedHeadroom);
+};

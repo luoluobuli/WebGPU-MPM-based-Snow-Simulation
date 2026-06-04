@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    canRelaxParticleSpeedSampling,
     calculateCflLimitedSimulationTimestepS,
     calculateSimulationSubstepTimestepS,
     calculateSimulationSubstepsPerMaxStep,
@@ -46,5 +47,41 @@ describe("simulation timestep CFL subdivision", () => {
 
         expect(cflLimitedSimulationTimestepS).toBe(maxSimulationTimestepS);
         expect(substepsPerMaxStep).toBe(1);
+    });
+
+    it("relaxes speed sampling when acceleration cannot consume CFL headroom", () => {
+        expect(canRelaxParticleSpeedSampling({
+            maxSimulationTimestepS: 1 / 1024,
+            minGridCellDim: gridCellDim,
+            latestMaxParticleSpeed: 2,
+            externalAcceleration: 9.81,
+            relaxedSampleIntervalFrames: 24,
+            speedHeadroom: 0.8,
+            oneSimulationStepPerFrame: true,
+        })).toBe(true);
+    });
+
+    it("keeps frequent speed sampling near the CFL speed threshold", () => {
+        expect(canRelaxParticleSpeedSampling({
+            maxSimulationTimestepS: 1 / 192,
+            minGridCellDim: gridCellDim,
+            latestMaxParticleSpeed: 1,
+            externalAcceleration: 9.81,
+            relaxedSampleIntervalFrames: 24,
+            speedHeadroom: 0.8,
+            oneSimulationStepPerFrame: true,
+        })).toBe(false);
+    });
+
+    it("keeps frequent speed sampling when backlog frames can advance multiple max steps", () => {
+        expect(canRelaxParticleSpeedSampling({
+            maxSimulationTimestepS: 1 / 1024,
+            minGridCellDim: gridCellDim,
+            latestMaxParticleSpeed: 0,
+            externalAcceleration: 9.81,
+            relaxedSampleIntervalFrames: 24,
+            speedHeadroom: 0.8,
+            oneSimulationStepPerFrame: false,
+        })).toBe(false);
     });
 });

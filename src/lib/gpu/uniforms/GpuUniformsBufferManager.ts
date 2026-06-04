@@ -1,7 +1,6 @@
 import type { Mat4 } from "wgpu-matrix";
 
 const FIXED_POINT_SCALE = 65536;
-const INV_FIXED_POINT_SCALE = 1 / FIXED_POINT_SCALE;
 const INVERSE_PARTICLE_DENSITY = 1 / 400;
 
 export class GpuUniformsBufferManager {
@@ -272,10 +271,10 @@ export class GpuUniformsBufferManager {
         upload[1] = 0;
         upload[2] = -9.81 * timestep;
         upload[3] = this.interactionStrength * timestep;
-        upload[4] = 4 * timestep * this.invGridCellDims[0] * INV_FIXED_POINT_SCALE;
-        upload[5] = 4 * timestep * this.invGridCellDims[1] * INV_FIXED_POINT_SCALE;
-        upload[6] = 4 * timestep * this.invGridCellDims[2] * INV_FIXED_POINT_SCALE;
-        upload[7] = timestep * INV_FIXED_POINT_SCALE;
+        upload[4] = 4 * timestep * this.invGridCellDims[0];
+        upload[5] = 4 * timestep * this.invGridCellDims[1];
+        upload[6] = 4 * timestep * this.invGridCellDims[2];
+        upload[7] = timestep;
         upload[8] = -4 * timestep * this.invGridCellDimsSquared[0] * FIXED_POINT_SCALE * INVERSE_PARTICLE_DENSITY;
         upload[9] = -4 * timestep * this.invGridCellDimsSquared[1] * FIXED_POINT_SCALE * INVERSE_PARTICLE_DENSITY;
         upload[10] = -4 * timestep * this.invGridCellDimsSquared[2] * FIXED_POINT_SCALE * INVERSE_PARTICLE_DENSITY;

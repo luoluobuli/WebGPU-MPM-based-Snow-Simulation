@@ -82,40 +82,35 @@ fn allocateBlockInDomain(block_number: vec3i, target_generation: u32) {
     for (var i = 0u; i < 64u; i++) {
         let current_generation = atomicLoad(&sparse_grid.bukkit_generations[bukkit_index]);
 
-        if current_generation != target_generation {
-            if current_generation != BUKKIT_GENERATION_RESERVED {
-                let res = atomicCompareExchangeWeak(
-                    &sparse_grid.bukkit_generations[bukkit_index],
-                    current_generation,
-                    BUKKIT_GENERATION_RESERVED
-                );
-
-                if res.exchanged {
-                    let next_block_index = atomicAdd(&sparse_grid.n_allocated_blocks, 1u);
-
-                    if next_block_index >= N_MAX_ACTIVE_BLOCKS {
-                        atomicStore(&sparse_grid.block_index_bukkits[bukkit_index], GRID_BLOCK_INDEX_EMPTY);
-                        atomicStore(&sparse_grid.bukkit_generations[bukkit_index], target_generation);
-                        return;
-                    }
-
-                    sparse_grid.mapped_block_numbers[next_block_index] = block_number;
-                    atomicStore(&sparse_grid.block_index_bukkits[bukkit_index], next_block_index);
-                    atomicStore(&sparse_grid.bukkit_generations[bukkit_index], target_generation);
-                    return;
-                }
-            }
-
-            continue;
-        }
-
-        let current_allocated_block_index = atomicLoad(&sparse_grid.block_index_bukkits[bukkit_index]);
-        if current_allocated_block_index != GRID_BLOCK_INDEX_RESERVED {
+        if current_generation == target_generation
+            || current_generation == BUKKIT_GENERATION_RESERVED
+        {
+            // The map is only consumed by later dispatches, so a thread that
+            // observes an in-flight reservation can let the reserving thread
+            // publish the final block assignment before the dispatch ends.
             return;
         }
 
-        // Another invocation is assigning this bukkit. Spin briefly so later
-        // dispatches see a stable block index without paying hash probes.
+        let res = atomicCompareExchangeWeak(
+            &sparse_grid.bukkit_generations[bukkit_index],
+            current_generation,
+            BUKKIT_GENERATION_RESERVED
+        );
+
+        if res.exchanged {
+            let next_block_index = atomicAdd(&sparse_grid.n_allocated_blocks, 1u);
+
+            if next_block_index >= N_MAX_ACTIVE_BLOCKS {
+                atomicStore(&sparse_grid.block_index_bukkits[bukkit_index], GRID_BLOCK_INDEX_EMPTY);
+                atomicStore(&sparse_grid.bukkit_generations[bukkit_index], target_generation);
+                return;
+            }
+
+            sparse_grid.mapped_block_numbers[next_block_index] = block_number;
+            atomicStore(&sparse_grid.block_index_bukkits[bukkit_index], next_block_index);
+            atomicStore(&sparse_grid.bukkit_generations[bukkit_index], target_generation);
+            return;
+        }
     }
 }
 
@@ -198,7 +193,10 @@ fn calculateCellIndexFromCellNumber(cell_number: vec3i) -> u32 {
     return (block_index << LOG_BLOCK_SIZE_CUBED) + cell_index_within_block;
 }
 
-fn loadThreeCellStencilBlockNeighborhood(start_cell_number: vec3i) -> BlockNeighborhood {
+fn loadThreeCellStencilBlockNeighborhoodForGeneration(
+    start_cell_number: vec3i,
+    current_generation: u32,
+) -> BlockNeighborhood {
     let start_block = calculateBlockNumberContainingCell(start_cell_number);
     let cell_offset = start_cell_number & vec3i(i32(BLOCK_MASK));
     let lower_block_delta = vec3i(
@@ -221,7 +219,6 @@ fn loadThreeCellStencilBlockNeighborhood(start_cell_number: vec3i) -> BlockNeigh
         any(start_cell_number <= vec3i(0)) || any(start_cell_number >= last_grid_cell)
     );
 
-    let current_generation = sparse_grid.current_generation;
     if all(lower_block_delta == vec3i(0)) && all(upper_block_delta == vec3i(0)) {
         let block_index = retrieveBlockIndexFromBukkitGeneration(start_block, current_generation);
         neighborhood.min_block = start_block;
@@ -252,6 +249,13 @@ fn loadThreeCellStencilBlockNeighborhood(start_cell_number: vec3i) -> BlockNeigh
     }
 
     return neighborhood;
+}
+
+fn loadThreeCellStencilBlockNeighborhood(start_cell_number: vec3i) -> BlockNeighborhood {
+    return loadThreeCellStencilBlockNeighborhoodForGeneration(
+        start_cell_number,
+        sparse_grid.current_generation,
+    );
 }
 
 fn calculateCellIndexFromLoadedBlockNeighborhood(
@@ -293,4 +297,23 @@ fn calculateCellIndexFromLoadedBlockNeighborhoodWithLocalIndex(
     }
 
     return (block_index << LOG_BLOCK_SIZE_CUBED) + cell_index_within_block;
+}
+
+fn calculateCellIndexFromLoadedBlockNeighborhoodFast(
+    cell_x: i32,
+    cell_y: i32,
+    cell_z: i32,
+    cell_index_within_block: u32,
+    neighborhood: ptr<function, BlockNeighborhood>,
+) -> u32 {
+    let single_block_cell_index_base = (*neighborhood).single_block_cell_index_base;
+    if single_block_cell_index_base != GRID_BLOCK_INDEX_EMPTY {
+        return single_block_cell_index_base + cell_index_within_block;
+    }
+
+    return calculateCellIndexFromLoadedBlockNeighborhoodWithLocalIndex(
+        vec3i(cell_x, cell_y, cell_z),
+        cell_index_within_block,
+        neighborhood,
+    );
 }

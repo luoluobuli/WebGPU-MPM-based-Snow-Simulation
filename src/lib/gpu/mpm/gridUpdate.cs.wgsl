@@ -2,10 +2,13 @@
 
 @group(1) @binding(0) var<storage, read_write> sparse_grid: SparseGridStorage;
 
-@group(1) @binding(3) var<storage, read_write> grid_mass: array<i32>;
-@group(1) @binding(4) var<storage, read_write> grid_momentum_x: array<i32>;
-@group(1) @binding(5) var<storage, read_write> grid_momentum_y: array<i32>;
-@group(1) @binding(6) var<storage, read_write> grid_momentum_z: array<i32>;
+@group(1) @binding(3) var<storage, read_write> grid_accumulator: array<vec4i>;
+
+struct GridVelocity {
+    velocity: vec3f,
+}
+
+@group(1) @binding(7) var<storage, read_write> grid_velocity: array<GridVelocity>;
 
 @group(2) @binding(0) var<storage, read> active_block_dispatch_args: array<u32>;
 
@@ -18,6 +21,7 @@ override GRID_BOUNDARY_HIGH_BLOCK_Y: i32 = 95i;
 override GRID_BOUNDARY_HIGH_BLOCK_Z: i32 = 95i;
 
 const GRID_BOUNDARY_WIDTH = 2i;
+const ACTIVE_BLOCK_DISPATCH_WIDTH = 256u;
 
 var<workgroup> workgroup_block_cell_base: vec3i;
 var<workgroup> workgroup_is_interior_block: bool;
@@ -107,14 +111,10 @@ fn limitVelocityToCfl(velocity: vec3f) -> vec3f {
 fn doGridUpdate(
     @builtin(local_invocation_id) lid: vec3u,
     @builtin(workgroup_id) wid: vec3u,
-    @builtin(num_workgroups) num_workgroups: vec3u,
 ) {
-    let block_index = wid.y * num_workgroups.x + wid.x;
+    let block_index = wid.y * ACTIVE_BLOCK_DISPATCH_WIDTH + wid.x;
     if lid.x == 0u {
-        var has_active_block = true;
-        if wid.y + 1u == num_workgroups.y {
-            has_active_block = block_index < active_block_dispatch_args[3];
-        }
+        let has_active_block = block_index < active_block_dispatch_args[3];
         workgroup_has_active_block = has_active_block;
 
         if has_active_block {
@@ -123,10 +123,7 @@ fn doGridUpdate(
             workgroup_is_interior_block = block_number.x > 0i && block_number.x < GRID_BOUNDARY_HIGH_BLOCK_X
                 && block_number.y > 0i && block_number.y < GRID_BOUNDARY_HIGH_BLOCK_Y
                 && block_number.z > 0i && block_number.z < GRID_BOUNDARY_HIGH_BLOCK_Z;
-            if workgroup_is_interior_block {
-                workgroup_boundary_low_end = vec3u(0u);
-                workgroup_boundary_high_start = vec3u(BLOCK_SIZE);
-            } else {
+            if !workgroup_is_interior_block {
                 workgroup_boundary_low_end = vec3u(
                     boundaryLowEnd(block_number.x),
                     boundaryLowEnd(block_number.y),
@@ -149,16 +146,18 @@ fn doGridUpdate(
     let cell_index_within_block = lid.x;
     let cell_index = (block_index << LOG_BLOCK_SIZE_CUBED) + cell_index_within_block;
 
-    let cell_mass_fixed_i32 = grid_mass[cell_index];
-    if cell_mass_fixed_i32 <= 0i { return; }
+    let cell_accumulator = grid_accumulator[cell_index];
+    grid_accumulator[cell_index] = vec4i(0);
+
+    let cell_mass_fixed_i32 = cell_accumulator.x;
+    if cell_mass_fixed_i32 <= 0i {
+        grid_velocity[cell_index].velocity = vec3f(0.0);
+        return;
+    }
     let cell_mass_fixed = f32(cell_mass_fixed_i32);
     let inv_cell_mass_fixed = 1.0 / cell_mass_fixed;
 
-    let cell_velocity_in = vec3f(
-        f32(grid_momentum_x[cell_index]),
-        f32(grid_momentum_y[cell_index]),
-        f32(grid_momentum_z[cell_index]),
-    ) * inv_cell_mass_fixed;
+    let cell_velocity_in = vec3f(cell_accumulator.yzw) * inv_cell_mass_fixed;
 
     var cell_velocity = cell_velocity_in + uniforms.gravityDeltaVelocity;
     if ENABLE_INTERACTION != 0u && uniforms.isInteracting != 0u && uniforms.interactionRadiusSquared > 0.0 {
@@ -173,14 +172,5 @@ fn doGridUpdate(
     }
     cell_velocity = limitVelocityToCfl(cell_velocity);
 
-    // P2G accumulates fixed-point momentum. From here until the next clear/P2G,
-    // these buffers intentionally hold fixed-point velocity for G2P.
-    let cell_velocity_fixed = vec3i(clamp(
-        cell_velocity * FIXED_POINT_SCALE,
-        vec3f(-2147483000.0),
-        vec3f(2147483000.0),
-    ));
-    grid_momentum_x[cell_index] = cell_velocity_fixed.x;
-    grid_momentum_y[cell_index] = cell_velocity_fixed.y;
-    grid_momentum_z[cell_index] = cell_velocity_fixed.z;
+    grid_velocity[cell_index].velocity = cell_velocity;
 }

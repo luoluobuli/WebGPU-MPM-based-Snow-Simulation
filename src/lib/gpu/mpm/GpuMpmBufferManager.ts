@@ -15,11 +15,10 @@ function alignTo(value: number, alignment: number) {
 
 export class GpuMpmBufferManager {
     readonly particleDataBuffer: GPUBuffer;
+    readonly particleFlagsBuffer: GPUBuffer;
     readonly sparseGridBuffer: GPUBuffer;
-    readonly gridMassBuffer: GPUBuffer;
-    readonly gridMomentumXBuffer: GPUBuffer;
-    readonly gridMomentumYBuffer: GPUBuffer;
-    readonly gridMomentumZBuffer: GPUBuffer;
+    readonly gridAccumulatorBuffer: GPUBuffer;
+    readonly gridVelocityBuffer: GPUBuffer;
     readonly activeBlockDispatchBuffer: GPUBuffer;
 
     readonly nParticles: number;
@@ -39,6 +38,12 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
         });
 
+        const particleFlagsBuffer = device.createBuffer({
+            label: "MPM particle flags buffer",
+            size: nParticles * UINT32_BYTES,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+
         // SparseGridStorage layout:
         // - n_allocated_blocks + current_generation: u32 * 2 + 8 bytes explicit padding = 16 bytes
         // - block_index_bukkits: array<atomic<u32>, BUKKIT_DOMAIN_BLOCK_COUNT>
@@ -56,45 +61,31 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        const gridStorageSize = this.nMaxActiveBlocks * GRID_CELLS_PER_BLOCK * 4;
-        const gridMassBuffer = device.createBuffer({
-            label: "MPM physical mass buffer",
-            size: gridStorageSize,
+        const gridVectorStorageSize = this.nMaxActiveBlocks * GRID_CELLS_PER_BLOCK * VEC3I_STORAGE_STRIDE_BYTES;
+        const gridAccumulatorBuffer = device.createBuffer({
+            label: "MPM packed grid accumulator buffer",
+            size: gridVectorStorageSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        const gridMomentumXBuffer = device.createBuffer({
-            label: "MPM physical momentum X buffer",
-            size: gridStorageSize,
+        const gridVelocityBuffer = device.createBuffer({
+            label: "MPM packed grid velocity buffer",
+            size: gridVectorStorageSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        const gridMomentumYBuffer = device.createBuffer({
-            label: "MPM physical momentum Y buffer",
-            size: gridStorageSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-
-        const gridMomentumZBuffer = device.createBuffer({
-            label: "MPM physical momentum Z buffer",
-            size: gridStorageSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-
-        // 0..2: active block dispatch, 3: active block count,
-        // 4..6: clear-cell dispatch, 7: active cell count.
+        // 0..2: active block dispatch, 3: active block count.
         const activeBlockDispatchBuffer = device.createBuffer({
             label: "MPM active block indirect dispatch buffer",
-            size: 32,
+            size: 4 * UINT32_BYTES,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
         });
 
         this.particleDataBuffer = particleDataBuffer;
+        this.particleFlagsBuffer = particleFlagsBuffer;
         this.sparseGridBuffer = sparseGridBuffer;
-        this.gridMassBuffer = gridMassBuffer;
-        this.gridMomentumXBuffer = gridMomentumXBuffer;
-        this.gridMomentumYBuffer = gridMomentumYBuffer;
-        this.gridMomentumZBuffer = gridMomentumZBuffer;
+        this.gridAccumulatorBuffer = gridAccumulatorBuffer;
+        this.gridVelocityBuffer = gridVelocityBuffer;
         this.activeBlockDispatchBuffer = activeBlockDispatchBuffer;
 
         this.nParticles = nParticles;

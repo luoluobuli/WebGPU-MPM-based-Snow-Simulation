@@ -32,6 +32,7 @@ import {
     calculateCflLimitedSimulationTimestepS,
     calculateSimulationSubstepTimestepS,
     calculateSimulationSubstepsPerMaxStep,
+    canRelaxParticleSpeedSampling,
     MIN_SIMULATION_TIMESTEP_S,
 } from "./simulationTimestep";
 
@@ -40,8 +41,14 @@ const MAX_SIMULATION_STEPS_PER_FRAME = 128;
 const MAX_SIMULATION_SUBSTEPS_PER_FRAME = 512;
 const GRAVITATIONAL_ACCELERATION_M_PER_S2 = 9.81;
 const FP_SCALE = 65536;
+const MAX_FIXED_POINT_I32 = 2_147_483_000;
+const MAX_FIXED_POINT_GRID_SPEED = MAX_FIXED_POINT_I32 / FP_SCALE;
 const GPU_TIMING_SAMPLE_INTERVAL_FRAMES = 8;
 const PARTICLE_SPEED_SAMPLE_INTERVAL_FRAMES = 4;
+// A prime-ish relaxed cadence avoids regular aliasing with browser frame pacing.
+// Due speed samples preempt GPU timestamp telemetry in the frame loop below.
+const PARTICLE_SPEED_RELAXED_SAMPLE_INTERVAL_FRAMES = 23;
+const PARTICLE_SPEED_RELAXED_CFL_HEADROOM = 0.8;
 const MOVING_COLLIDER_SPEED_EPSILON = 1e-3;
 const COLLIDER_VELOCITY_ZERO_EPSILON_SQUARED = 1e-20;
 const COLLIDER_TRANSFORM_IDENTITY_EPSILON = 1e-6;
@@ -108,6 +115,9 @@ export class GpuSnowPipelineRunner {
     readonly prerenderElapsedTimes = $derived(this.#prerenderElapsedTimes);
     private latestMaxParticleSpeed = $state(0);
     private currentColliderSpeed = $state(0);
+    private colliderTransformIsIdentity = true;
+    private colliderVelocityIsZero = true;
+    private colliderSdfValid = false;
     private lastWrittenSimulationTimestepS = Number.NaN;
     private lastWrittenMaxStableParticleSpeed = Number.NaN;
 
@@ -293,6 +303,7 @@ export class GpuSnowPipelineRunner {
         const particleInitializePipelineManager = new GpuParticleInitializePipelineManager({
             device,
             particleDataBuffer: mpmManager.particleDataBuffer,
+            particleFlagsBuffer: mpmManager.particleFlagsBuffer,
             spawnPointsBuffer: spawnVolumeManager.spawnPointsBuffer,
             uniformsManager,
         });
@@ -306,11 +317,10 @@ export class GpuSnowPipelineRunner {
             gridResolutionY,
             gridResolutionZ,
             particleDataBuffer: mpmManager.particleDataBuffer,
+            particleFlagsBuffer: mpmManager.particleFlagsBuffer,
             sparseGridBuffer: mpmManager.sparseGridBuffer,
-            gridMassBuffer: mpmManager.gridMassBuffer,
-            gridMomentumXBuffer: mpmManager.gridMomentumXBuffer,
-            gridMomentumYBuffer: mpmManager.gridMomentumYBuffer,
-            gridMomentumZBuffer: mpmManager.gridMomentumZBuffer,
+            gridAccumulatorBuffer: mpmManager.gridAccumulatorBuffer,
+            gridVelocityBuffer: mpmManager.gridVelocityBuffer,
             maxParticleSpeedBuffer: this.particleSpeedReductionPipelineManager.maxSpeedBuffer,
             activeBlockDispatchBuffer: mpmManager.activeBlockDispatchBuffer,
             uniformsManager,
@@ -542,9 +552,11 @@ export class GpuSnowPipelineRunner {
     }
 
     updateColliderTransformMat(transformMat: Mat4) {
+        const colliderTransformIsIdentity = mat4IsIdentity(transformMat);
+        this.colliderTransformIsIdentity = colliderTransformIsIdentity;
         this.uniformsManager.writeColliderTransformMat(transformMat);
         this.uniformsManager.writeColliderTransformInv(mat4.inverse(transformMat));
-        this.uniformsManager.writeColliderTransformIsIdentity(mat4IsIdentity(transformMat));
+        this.uniformsManager.writeColliderTransformIsIdentity(colliderTransformIsIdentity);
         this.writeColliderWorldBounds(transformMat);
     }
 
@@ -553,9 +565,11 @@ export class GpuSnowPipelineRunner {
             transform[0] * transform[0]
             + transform[1] * transform[1]
             + transform[2] * transform[2];
+        const colliderVelocityIsZero = speedSquared <= COLLIDER_VELOCITY_ZERO_EPSILON_SQUARED;
+        this.colliderVelocityIsZero = colliderVelocityIsZero;
         this.currentColliderSpeed = Math.sqrt(speedSquared);
         this.uniformsManager.writeColliderVel(transform);
-        this.uniformsManager.writeColliderVelocityIsZero(speedSquared <= COLLIDER_VELOCITY_ZERO_EPSILON_SQUARED);
+        this.uniformsManager.writeColliderVelocityIsZero(colliderVelocityIsZero);
     }
 
     private writeColliderSdfMetadata(
@@ -583,6 +597,7 @@ export class GpuSnowPipelineRunner {
             ]
             : [1, 1, 1];
         this.colliderSdfMaxCellSize = Math.max(...cellSize);
+        this.colliderSdfValid = valid;
 
         this.uniformsManager.writeColliderSdfGridScale(gridScale);
         this.uniformsManager.writeColliderSdfCellSize(cellSize);
@@ -631,7 +646,10 @@ export class GpuSnowPipelineRunner {
             ? Math.max(timestepS, MIN_SIMULATION_TIMESTEP_S)
             : MIN_SIMULATION_TIMESTEP_S;
 
-        const maxStableParticleSpeed = CFL_NUMBER * this.minGridCellDim / safeTimestepS;
+        const maxStableParticleSpeed = Math.min(
+            CFL_NUMBER * this.minGridCellDim / safeTimestepS,
+            MAX_FIXED_POINT_GRID_SPEED,
+        );
         const maxStableParticleDisplacement = CFL_NUMBER * this.minGridCellDim;
 
         if (timestepS !== this.lastWrittenSimulationTimestepS) {
@@ -648,6 +666,11 @@ export class GpuSnowPipelineRunner {
         }
     }
 
+    private cflExternalAcceleration(isInteracting: boolean) {
+        return GRAVITATIONAL_ACCELERATION_M_PER_S2
+            + (isInteracting ? Math.abs(this.interactionStrength()) : 0);
+    }
+
     private addSimulationStepsComputePass({
         commandEncoder,
         nSimulationSteps,
@@ -662,6 +685,10 @@ export class GpuSnowPipelineRunner {
         enableInteraction: boolean,
     }) {
         const simulationMethodType = this.getSimulationMethodType();
+        const useStaticColliderPipeline = this.colliderTransformIsIdentity
+            && this.colliderVelocityIsZero
+            && this.colliderSdfValid;
+        const useValidColliderPipeline = this.colliderSdfValid;
 
         const computePassEncoder = commandEncoder.beginComputePass({
             label: "simulation step compute pass",
@@ -684,6 +711,8 @@ export class GpuSnowPipelineRunner {
                     enableInteraction,
                     nSimulationSteps,
                     recordParticleSpeed,
+                    useStaticColliderPipeline,
+                    useValidColliderPipeline,
                     bindCommonGroups: false,
                 });
                 break;
@@ -695,6 +724,8 @@ export class GpuSnowPipelineRunner {
                     enableInteraction,
                     nSimulationSteps,
                     recordParticleSpeed,
+                    useStaticColliderPipeline,
+                    useValidColliderPipeline,
                     bindCommonGroups: false,
                 });
                 break;
@@ -793,7 +824,7 @@ export class GpuSnowPipelineRunner {
 
         let simulatedThroughTimeMs = performance.now();
         let gpuTimingFrameIndex = 0;
-        let particleSpeedSampleFrameIndex = 0;
+        let framesSinceLastParticleSpeedSample = PARTICLE_SPEED_SAMPLE_INTERVAL_FRAMES;
         let hasRequestedParticleSpeedSample = false;
 
         let lastFrameTime = 0;
@@ -852,7 +883,33 @@ export class GpuSnowPipelineRunner {
                 nSteps * substepsPerMaxStep,
                 MAX_SIMULATION_SUBSTEPS_PER_FRAME,
             );
-            const measureGpuTimestamps = canMeasureGpuTimestamps && nSubsteps > 0;
+
+            const canSampleParticleSpeed = this.particleSpeedReductionPipelineManager.canScheduleReadback();
+            const shouldForceParticleSpeedSample = !hasRequestedParticleSpeedSample
+                || enableInteraction
+                || this.currentColliderSpeed > MOVING_COLLIDER_SPEED_EPSILON;
+            const particleSpeedSampleIntervalFrames = canRelaxParticleSpeedSampling({
+                maxSimulationTimestepS,
+                minGridCellDim: this.minGridCellDim,
+                latestMaxParticleSpeed: this.latestMaxParticleSpeed,
+                externalAcceleration: this.cflExternalAcceleration(enableInteraction),
+                relaxedSampleIntervalFrames: PARTICLE_SPEED_RELAXED_SAMPLE_INTERVAL_FRAMES,
+                speedHeadroom: PARTICLE_SPEED_RELAXED_CFL_HEADROOM,
+                oneSimulationStepPerFrame: this.oneSimulationStepPerFrame(),
+            })
+                ? PARTICLE_SPEED_RELAXED_SAMPLE_INTERVAL_FRAMES
+                : PARTICLE_SPEED_SAMPLE_INTERVAL_FRAMES;
+            const speedSampleIsDue =
+                framesSinceLastParticleSpeedSample >= particleSpeedSampleIntervalFrames;
+            const shouldSampleParticleSpeed = nSubsteps > 0
+                && (
+                    shouldForceParticleSpeedSample
+                    || speedSampleIsDue
+                )
+                && canSampleParticleSpeed;
+            const measureGpuTimestamps = canMeasureGpuTimestamps
+                && nSubsteps > 0
+                && !shouldSampleParticleSpeed;
             this.performanceMeasurementManager?.setEnabled(measureGpuTimestamps);
 
             const frameRenderUsesSsao = this.renderUsesSsao;
@@ -862,16 +919,11 @@ export class GpuSnowPipelineRunner {
                 : 0;
             const timestampQueryCount = framePrerenderTimestampBaseIndex + 2 * framePrerenderPassCount;
 
-            const canSampleParticleSpeed = this.particleSpeedReductionPipelineManager.canScheduleReadback();
-            const shouldSampleParticleSpeed = nSubsteps > 0 && (
-                !hasRequestedParticleSpeedSample
-                || enableInteraction
-                || this.currentColliderSpeed > MOVING_COLLIDER_SPEED_EPSILON
-                || particleSpeedSampleFrameIndex % PARTICLE_SPEED_SAMPLE_INTERVAL_FRAMES === 0
-            ) && canSampleParticleSpeed;
-            particleSpeedSampleFrameIndex++;
             if (shouldSampleParticleSpeed) {
                 hasRequestedParticleSpeedSample = true;
+                framesSinceLastParticleSpeedSample = 0;
+            } else {
+                framesSinceLastParticleSpeedSample++;
             }
 
             const completedMaxSteps = substepsPerMaxStep > 0
@@ -986,14 +1038,12 @@ export class GpuSnowPipelineRunner {
             this.latestMaxParticleSpeed,
             this.currentColliderSpeed,
         );
-        const externalAcceleration = GRAVITATIONAL_ACCELERATION_M_PER_S2
-            + (this.isInteracting() ? Math.abs(this.interactionStrength()) : 0);
 
         return calculateCflLimitedSimulationTimestepS({
             maxSimulationTimestepS,
             minGridCellDim: this.minGridCellDim,
             maxCflSpeed,
-            externalAcceleration,
+            externalAcceleration: this.cflExternalAcceleration(this.isInteracting()),
         });
     });
 

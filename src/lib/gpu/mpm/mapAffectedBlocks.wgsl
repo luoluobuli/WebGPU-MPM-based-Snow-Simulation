@@ -5,9 +5,10 @@
 @group(2) @binding(0) var<storage, read> particleData: array<ParticleData>;
 
 override N_PARTICLES: u32 = 0u;
+override PARTICLE_WORKGROUP_SIZE: u32 = 256u;
 
 @compute
-@workgroup_size(256)
+@workgroup_size(PARTICLE_WORKGROUP_SIZE)
 fn mapAffectedBlocks(@builtin(global_invocation_id) gid: vec3u) {
     let threadIndex = gid.x;
     if threadIndex >= N_PARTICLES { return; }

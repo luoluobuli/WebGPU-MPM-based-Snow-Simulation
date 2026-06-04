@@ -5,6 +5,10 @@ const COLLIDER_SDF_MAX_SWEEP_STEPS = 16u;
 const COLLIDER_SDF_LOG_RESOLUTION = 6u;
 const COLLIDER_SDF_Z_SHIFT = COLLIDER_SDF_LOG_RESOLUTION * 2u;
 
+override COLLIDER_TRANSFORM_ALWAYS_IDENTITY: u32 = 0u;
+override COLLIDER_VELOCITY_ALWAYS_ZERO: u32 = 0u;
+override COLLIDER_SDF_ALWAYS_VALID: u32 = 0u;
+
 @group(1) @binding(10) var<storage, read> colliderSdfData: array<f32>;
 
 struct ColliderSdfValueGradient {
@@ -20,6 +24,30 @@ struct ColliderSdfGridValueGradient {
 
 fn colliderSdfCellSize() -> vec3f {
     return uniforms.colliderSdfCellSize;
+}
+
+fn colliderSdfIsValid() -> bool {
+    if COLLIDER_SDF_ALWAYS_VALID != 0u {
+        return true;
+    }
+
+    return uniforms.colliderSdfValid != 0u;
+}
+
+fn colliderTransformIsIdentity() -> bool {
+    if COLLIDER_TRANSFORM_ALWAYS_IDENTITY != 0u {
+        return true;
+    }
+
+    return uniforms.colliderTransformIsIdentity != 0u;
+}
+
+fn colliderVelocityIsZero() -> bool {
+    if COLLIDER_VELOCITY_ALWAYS_ZERO != 0u {
+        return true;
+    }
+
+    return uniforms.colliderVelocityIsZero != 0u;
 }
 
 fn colliderSdfIndex(cell: vec3u) -> u32 {
@@ -115,7 +143,7 @@ fn sampleColliderSdfGrid(grid_pos_in: vec3f) -> f32 {
 }
 
 fn sampleColliderSdfNearest(local_pos: vec3f) -> f32 {
-    if uniforms.colliderSdfValid == 0u {
+    if !colliderSdfIsValid() {
         return 1e6;
     }
 
@@ -132,7 +160,7 @@ fn sampleColliderSdfNearest(local_pos: vec3f) -> f32 {
 }
 
 fn sampleColliderSdf(local_pos: vec3f) -> f32 {
-    if uniforms.colliderSdfValid == 0u {
+    if !colliderSdfIsValid() {
         return 1e6;
     }
 
@@ -277,7 +305,7 @@ fn segmentOutsideColliderWorldBounds(prev_world: vec3f, current_world: vec3f) ->
 }
 
 fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
-    if uniforms.colliderSdfValid == 0u {
+    if !colliderSdfIsValid() {
         return;
     }
 
@@ -287,7 +315,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
         return;
     }
 
-    let collider_transform_is_identity = uniforms.colliderTransformIsIdentity != 0u;
+    let collider_transform_is_identity = colliderTransformIsIdentity();
     var current_local = current_pos;
     var prev_local = prev_pos;
     if !collider_transform_is_identity {
@@ -299,7 +327,9 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
 
     let max_cell_size = uniforms.colliderSdfMaxCellSize;
     let bounds_margin = max_cell_size * 2.0;
-    if segmentOutsideColliderSdfBounds(prev_local, current_local, bounds_margin) {
+    if !collider_transform_is_identity
+        && segmentOutsideColliderSdfBounds(prev_local, current_local, bounds_margin)
+    {
         return;
     }
 
@@ -380,7 +410,7 @@ fn resolveParticleCollision(particle: ptr<function, ParticleData>) {
     }
 
     let velocity_scale_fac = 0.2 * uniforms.invSimulationTimestep;
-    let collider_velocity_is_zero = uniforms.colliderVelocityIsZero != 0u;
+    let collider_velocity_is_zero = colliderVelocityIsZero();
     var v_rel = (*particle).vel;
     if !collider_velocity_is_zero {
         v_rel = v_rel - uniforms.colliderVelocity;

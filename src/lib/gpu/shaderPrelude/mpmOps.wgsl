@@ -13,6 +13,9 @@ struct ParticleData {
 
 const FIXED_POINT_SCALE = 65536.0;
 const INV_FIXED_POINT_SCALE = 1.0 / FIXED_POINT_SCALE;
+const DEFAULT_PARTICLE_MASS = 1.0 / 3.0;
+const PARTICLE_FLAG_DEFORMATION_DELTA_VALID = 1u;
+const PARTICLE_FLAG_ELASTIC_NON_IDENTITY = 2u;
 const PARTICLE_MATRIX_ELASTIC_CHANGED = 1u;
 const PARTICLE_MATRIX_PLASTIC_CHANGED = 2u;
 
@@ -160,7 +163,7 @@ fn sanitizeParticleKinematicsWithoutDeformationDelta(particle: ptr<function, Par
     (*particle).pos = clampPositionToSimulationDomain((*particle).pos);
 
     if !isFiniteScalar((*particle).mass) || (*particle).mass <= 0.0 {
-        (*particle).mass = 1.0 / 3.0;
+        (*particle).mass = DEFAULT_PARTICLE_MASS;
     }
 
     (*particle).vel = clampVec3LengthWithMaxSquared(
@@ -186,7 +189,7 @@ fn sanitizeParticleKinematicsWithoutDeformationDeltaWithKnownScalarRepairs(
     (*particle).pos = clampPositionToSimulationDomain((*particle).pos);
 
     if write_mass {
-        (*particle).mass = 1.0 / 3.0;
+        (*particle).mass = DEFAULT_PARTICLE_MASS;
     }
 
     (*particle).vel = clampVec3LengthWithMaxSquared(

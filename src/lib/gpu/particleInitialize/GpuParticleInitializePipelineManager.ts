@@ -12,11 +12,13 @@ export class GpuParticleInitializePipelineManager {
     constructor({
         device,
         particleDataBuffer,
+        particleFlagsBuffer,
         spawnPointsBuffer,
         uniformsManager,
     }: {
         device: GPUDevice,
         particleDataBuffer: GPUBuffer,
+        particleFlagsBuffer: GPUBuffer,
         spawnPointsBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
     }) {
@@ -37,6 +39,13 @@ export class GpuParticleInitializePipelineManager {
                         type: "read-only-storage",
                     },
                 },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage",
+                    },
+                },
             ],
         });
 
@@ -54,6 +63,12 @@ export class GpuParticleInitializePipelineManager {
                     binding: 1,
                     resource: {
                         buffer: spawnPointsBuffer,
+                    },
+                },
+                {
+                    binding: 2,
+                    resource: {
+                        buffer: particleFlagsBuffer,
                     },
                 },
             ],
