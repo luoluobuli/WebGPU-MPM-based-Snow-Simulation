@@ -7,10 +7,13 @@ import mapAffectedBlocksSrc from "./mapAffectedBlocks.wgsl?raw";
 import clearBukkitSrc from "./clearBukkit.wgsl?raw";
 import resetBukkitTableSrc from "./resetBukkitTable.wgsl?raw";
 import integrateParticlesSrc from "./integrateParticles.wgsl?raw";
+import bukkitBuildSrc from "./bukkitBuild.wgsl?raw";
+import fusedMlsG2p2gSrc from "./fusedMlsG2p2g.cs.wgsl?raw";
+import finalizeNextActiveBlocksSrc from "./finalizeNextActiveBlocks.wgsl?raw";
 import { attachPrelude } from "../shaderPrelude";
 import type { GpuColliderBufferManager } from "../collider/GpuColliderBufferManager";
 import colliderPreludeModuleSrc from "./colliderPrelude.wgsl?raw";
-import { BUKKIT_DOMAIN_BLOCK_COUNT, BUKKIT_DOMAIN_BLOCKS_PER_AXIS } from "./GpuMpmBufferManager";
+import { BUKKIT_DOMAIN_BLOCK_COUNT, BUKKIT_DOMAIN_BLOCKS_PER_AXIS, N_MAX_ACTIVE_BLOCKS } from "./GpuMpmBufferManager";
 
 const BUKKIT_GENERATION_RESERVED = 0xFFFFFFFF;
 const PARTICLE_WORKGROUP_SIZE = 256;
@@ -22,9 +25,15 @@ export class GpuMpmPipelineManager {
     readonly particleReadBindGroup: GPUBindGroup;
     readonly sparseGridBindGroupLayout: GPUBindGroupLayout;
     readonly sparseGridBindGroup: GPUBindGroup;
+    readonly nextSparseGridBindGroup: GPUBindGroup;
 
     readonly clearBukkitPipeline: GPUComputePipeline;
     readonly resetBukkitTablePipeline: GPUComputePipeline;
+    readonly resetBukkitBuildBuffersPipeline: GPUComputePipeline;
+    readonly countParticlesPerBukkitPipeline: GPUComputePipeline;
+    readonly allocateBukkitThreadDataPipeline: GPUComputePipeline;
+    readonly insertParticlesIntoBukkitPipeline: GPUComputePipeline;
+    readonly finalizeBukkitDispatchPipeline: GPUComputePipeline;
     readonly mapAffectedBlocksPipeline: GPUComputePipeline;
     readonly explicitP2gComputePipeline: GPUComputePipeline;
     readonly mlsP2gComputePipeline: GPUComputePipeline;
@@ -38,12 +47,29 @@ export class GpuMpmPipelineManager {
     readonly validColliderSpeedRecordingIntegrateParticlesPipeline: GPUComputePipeline;
     readonly staticColliderIntegrateParticlesPipeline: GPUComputePipeline;
     readonly staticColliderSpeedRecordingIntegrateParticlesPipeline: GPUComputePipeline;
+    readonly fusedMlsG2p2gPipeline: GPUComputePipeline;
+    readonly fusedMlsSpeedRecordingG2p2gPipeline: GPUComputePipeline;
+    readonly finalizeNextActiveBlockDispatchPipeline: GPUComputePipeline;
     readonly activeBlockDispatchArgsReadBindGroup: GPUBindGroup;
+    readonly nextActiveBlockDispatchArgsReadBindGroup: GPUBindGroup;
 
     private readonly uniformsManager: GpuUniformsBufferManager;
     private readonly nParticleWorkgroups: number;
+    private readonly nBukkitWorkgroups: number;
+    private readonly nActiveBlockWorkgroups: number;
+    private readonly fusedSparseGridBindGroups: GPUBindGroup[];
+    private readonly fusedActiveBlockDispatchArgsReadBindGroups: GPUBindGroup[];
+    private readonly fusedBukkitBindGroups: GPUBindGroup[];
+    private readonly fusedG2p2gBindGroups: GPUBindGroup[];
+    private readonly fusedActiveBlockDispatchBuffers: GPUBuffer[];
+    private readonly bukkitDispatchBuffer: GPUBuffer;
+    private readonly bukkitParticleReadBindGroups: GPUBindGroup[];
     private currentBukkitGeneration = 0;
+    private fusedBukkitGenerations = [0, 0];
     private activeBlocksPrepared = false;
+    private fusedActiveBlocksPrepared = false;
+    private fusedSourceSparseGridIndex = 0;
+    private dispatchMode: "classic" | "fused" | null = null;
 
     constructor({
         device,
@@ -54,10 +80,20 @@ export class GpuMpmPipelineManager {
         particleDataBuffer,
         particleFlagsBuffer,
         sparseGridBuffer,
+        nextSparseGridBuffer,
         gridAccumulatorBuffer,
         gridVelocityBuffer,
         maxParticleSpeedBuffer,
         activeBlockDispatchBuffer,
+        nextActiveBlockDispatchBuffer,
+        bukkitParticleCountsBuffer,
+        bukkitInsertCountersBuffer,
+        bukkitIndexStartBuffer,
+        bukkitThreadDataBuffer,
+        bukkitParticleDataBuffer,
+        bukkitDispatchBuffer,
+        bukkitParticleAllocatorBuffer,
+        bukkitThreadGroupCountBuffer,
         uniformsManager,
         colliderManager,
     }: {
@@ -69,15 +105,27 @@ export class GpuMpmPipelineManager {
         particleDataBuffer: GPUBuffer,
         particleFlagsBuffer: GPUBuffer,
         sparseGridBuffer: GPUBuffer,
+        nextSparseGridBuffer: GPUBuffer,
         gridAccumulatorBuffer: GPUBuffer,
         gridVelocityBuffer: GPUBuffer,
         maxParticleSpeedBuffer: GPUBuffer,
         activeBlockDispatchBuffer: GPUBuffer,
+        nextActiveBlockDispatchBuffer: GPUBuffer,
+        bukkitParticleCountsBuffer: GPUBuffer,
+        bukkitInsertCountersBuffer: GPUBuffer,
+        bukkitIndexStartBuffer: GPUBuffer,
+        bukkitThreadDataBuffer: GPUBuffer,
+        bukkitParticleDataBuffer: GPUBuffer,
+        bukkitDispatchBuffer: GPUBuffer,
+        bukkitParticleAllocatorBuffer: GPUBuffer,
+        bukkitThreadGroupCountBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
         colliderManager: GpuColliderBufferManager,
     }) {
         const particleCountConstant = nParticles;
         const nParticleWorkgroups = Math.ceil(nParticles / PARTICLE_WORKGROUP_SIZE);
+        const nBukkitWorkgroups = Math.ceil(BUKKIT_DOMAIN_BLOCK_COUNT / 256);
+        const nActiveBlockWorkgroups = Math.ceil(N_MAX_ACTIVE_BLOCKS / 256);
         const particleKernelConstants = {
             N_PARTICLES: particleCountConstant,
             PARTICLE_WORKGROUP_SIZE,
@@ -110,16 +158,25 @@ export class GpuMpmPipelineManager {
             ],
         });
 
-        const sparseGridBindGroup = device.createBindGroup({
-            label: "MPM sparse grid bind group",
+        const createSparseGridBindGroup = (label: string, sparseBuffer: GPUBuffer) => device.createBindGroup({
+            label,
             layout: sparseGridBindGroupLayout,
             entries: [
-                { binding: 0, resource: { buffer: sparseGridBuffer } },
+                { binding: 0, resource: { buffer: sparseBuffer } },
                 { binding: 3, resource: { buffer: gridAccumulatorBuffer } },
                 { binding: 7, resource: { buffer: gridVelocityBuffer } },
                 { binding: 10, resource: { buffer: colliderManager.colliderSdfBuffer } },
             ],
         });
+        const sparseGridBindGroup = createSparseGridBindGroup(
+            "MPM sparse grid bind group",
+            sparseGridBuffer,
+        );
+        const nextSparseGridBindGroup = createSparseGridBindGroup(
+            "MPM fused next sparse grid bind group",
+            nextSparseGridBuffer,
+        );
+        const fusedSparseGridBindGroups = [sparseGridBindGroup, nextSparseGridBindGroup];
 
 
 
@@ -227,6 +284,58 @@ export class GpuMpmPipelineManager {
             ],
         });
 
+        const bukkitParticleReadBindGroupLayout = device.createBindGroupLayout({
+            label: "bukkit particle read bind group layout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "read-only-storage",
+                    },
+                },
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "read-only-storage",
+                    },
+                },
+            ],
+        });
+
+        const createBukkitParticleReadBindGroup = (
+            label: string,
+            activeBlockDispatchArgsBuffer: GPUBuffer,
+        ) => device.createBindGroup({
+            label,
+            layout: bukkitParticleReadBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: {
+                        buffer: particleDataBuffer,
+                    },
+                },
+                {
+                    binding: 3,
+                    resource: {
+                        buffer: activeBlockDispatchArgsBuffer,
+                    },
+                },
+            ],
+        });
+        const bukkitParticleReadBindGroups = [
+            createBukkitParticleReadBindGroup(
+                "bukkit particle read bind group for primary active blocks",
+                activeBlockDispatchBuffer,
+            ),
+            createBukkitParticleReadBindGroup(
+                "bukkit particle read bind group for fused next active blocks",
+                nextActiveBlockDispatchBuffer,
+            ),
+        ];
+
 
         const sparseGridPipelineLayout = device.createPipelineLayout({
             label: "sparse grid pipeline layout",
@@ -250,13 +359,32 @@ export class GpuMpmPipelineManager {
             ],
         });
 
-        const activeBlockDispatchArgsReadBindGroup = device.createBindGroup({
-            label: "active block dispatch args read bind group",
+        const createActiveBlockDispatchArgsReadBindGroup = (
+            label: string,
+            activeBlockDispatchArgsBuffer: GPUBuffer,
+        ) => device.createBindGroup({
+            label,
             layout: activeBlockDispatchArgsReadBindGroupLayout,
             entries: [
-                { binding: 0, resource: { buffer: activeBlockDispatchBuffer } },
+                { binding: 0, resource: { buffer: activeBlockDispatchArgsBuffer } },
             ],
         });
+        const activeBlockDispatchArgsReadBindGroup = createActiveBlockDispatchArgsReadBindGroup(
+            "active block dispatch args read bind group",
+            activeBlockDispatchBuffer,
+        );
+        const nextActiveBlockDispatchArgsReadBindGroup = createActiveBlockDispatchArgsReadBindGroup(
+            "fused next active block dispatch args read bind group",
+            nextActiveBlockDispatchBuffer,
+        );
+        const fusedActiveBlockDispatchArgsReadBindGroups = [
+            activeBlockDispatchArgsReadBindGroup,
+            nextActiveBlockDispatchArgsReadBindGroup,
+        ];
+        const fusedActiveBlockDispatchBuffers = [
+            activeBlockDispatchBuffer,
+            nextActiveBlockDispatchBuffer,
+        ];
 
         const sparseGridIndirectPipelineLayout = device.createPipelineLayout({
             label: "sparse grid indirect pipeline layout",
@@ -264,6 +392,119 @@ export class GpuMpmPipelineManager {
                 uniformsManager.bindGroupLayout,
                 sparseGridBindGroupLayout,
                 activeBlockDispatchArgsReadBindGroupLayout,
+            ],
+        });
+
+        const fusedBukkitBindGroupLayout = device.createBindGroupLayout({
+            label: "MPM fused bukkit bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+            ],
+        });
+
+        const createFusedBukkitBindGroup = (
+            label: string,
+            nextSparseBuffer: GPUBuffer,
+            nextActiveBlockDispatchArgsBuffer: GPUBuffer,
+        ) => device.createBindGroup({
+            label,
+            layout: fusedBukkitBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: nextSparseBuffer } },
+                { binding: 1, resource: { buffer: nextActiveBlockDispatchArgsBuffer } },
+                { binding: 2, resource: { buffer: bukkitParticleCountsBuffer } },
+                { binding: 3, resource: { buffer: bukkitInsertCountersBuffer } },
+                { binding: 4, resource: { buffer: bukkitIndexStartBuffer } },
+                { binding: 5, resource: { buffer: bukkitThreadDataBuffer } },
+                { binding: 6, resource: { buffer: bukkitParticleDataBuffer } },
+                { binding: 7, resource: { buffer: bukkitDispatchBuffer } },
+                { binding: 8, resource: { buffer: bukkitParticleAllocatorBuffer } },
+                { binding: 9, resource: { buffer: bukkitThreadGroupCountBuffer } },
+            ],
+        });
+        const fusedBukkitBindGroups = [
+            createFusedBukkitBindGroup(
+                "MPM fused bukkit bind group writing primary sparse grid",
+                sparseGridBuffer,
+                activeBlockDispatchBuffer,
+            ),
+            createFusedBukkitBindGroup(
+                "MPM fused bukkit bind group writing next sparse grid",
+                nextSparseGridBuffer,
+                nextActiveBlockDispatchBuffer,
+            ),
+        ];
+
+        const fusedG2p2gBindGroupLayout = device.createBindGroupLayout({
+            label: "MPM fused G2P2G bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+            ],
+        });
+
+        const createFusedG2p2gBindGroup = (
+            label: string,
+            nextSparseBuffer: GPUBuffer,
+        ) => device.createBindGroup({
+            label,
+            layout: fusedG2p2gBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: nextSparseBuffer } },
+                { binding: 5, resource: { buffer: bukkitThreadDataBuffer } },
+                { binding: 6, resource: { buffer: bukkitParticleDataBuffer } },
+                { binding: 9, resource: { buffer: bukkitThreadGroupCountBuffer } },
+            ],
+        });
+        const fusedG2p2gBindGroups = [
+            createFusedG2p2gBindGroup(
+                "MPM fused G2P2G bind group writing primary sparse grid",
+                sparseGridBuffer,
+            ),
+            createFusedG2p2gBindGroup(
+                "MPM fused G2P2G bind group writing next sparse grid",
+                nextSparseGridBuffer,
+            ),
+        ];
+
+        const fusedPipelineLayout = device.createPipelineLayout({
+            label: "fused MLS MPM pipeline layout",
+            bindGroupLayouts: [
+                uniformsManager.bindGroupLayout,
+                sparseGridBindGroupLayout,
+                particleBindGroupLayout,
+                fusedG2p2gBindGroupLayout,
+            ],
+        });
+
+        const bukkitBuildPipelineLayout = device.createPipelineLayout({
+            label: "bukkit build pipeline layout",
+            bindGroupLayouts: [
+                uniformsManager.bindGroupLayout,
+                sparseGridBindGroupLayout,
+                bukkitParticleReadBindGroupLayout,
+                fusedBukkitBindGroupLayout,
+            ],
+        });
+
+        const finalizeNextActiveBlockDispatchPipelineLayout = device.createPipelineLayout({
+            label: "finalize fused next active block dispatch pipeline layout",
+            bindGroupLayouts: [
+                uniformsManager.bindGroupLayout,
+                sparseGridBindGroupLayout,
+                bukkitParticleReadBindGroupLayout,
+                fusedBukkitBindGroupLayout,
             ],
         });
 
@@ -513,15 +754,133 @@ export class GpuMpmPipelineManager {
             },
         });
 
+        const bukkitBuildModule = device.createShaderModule({
+            label: "bukkit build module",
+            code: attachPrelude(`${sparseGridPreludeSrc}\n${bukkitBuildSrc}`),
+        });
+        const bukkitBuildConstants = {
+            ...sparseGridConstants,
+            ...particleKernelConstants,
+        };
+
+        this.resetBukkitBuildBuffersPipeline = device.createComputePipeline({
+            label: "reset bukkit build buffers pipeline",
+            layout: bukkitBuildPipelineLayout,
+            compute: {
+                module: bukkitBuildModule,
+                entryPoint: "resetBukkitBuildBuffers",
+                constants: bukkitBuildConstants,
+            },
+        });
+
+        this.countParticlesPerBukkitPipeline = device.createComputePipeline({
+            label: "count particles per bukkit pipeline",
+            layout: bukkitBuildPipelineLayout,
+            compute: {
+                module: bukkitBuildModule,
+                entryPoint: "countParticlesPerBukkit",
+                constants: bukkitBuildConstants,
+            },
+        });
+
+        this.allocateBukkitThreadDataPipeline = device.createComputePipeline({
+            label: "allocate bukkit thread data pipeline",
+            layout: bukkitBuildPipelineLayout,
+            compute: {
+                module: bukkitBuildModule,
+                entryPoint: "allocateBukkitThreadData",
+                constants: bukkitBuildConstants,
+            },
+        });
+
+        this.insertParticlesIntoBukkitPipeline = device.createComputePipeline({
+            label: "insert particles into bukkit pipeline",
+            layout: bukkitBuildPipelineLayout,
+            compute: {
+                module: bukkitBuildModule,
+                entryPoint: "insertParticlesIntoBukkit",
+                constants: bukkitBuildConstants,
+            },
+        });
+
+        this.finalizeBukkitDispatchPipeline = device.createComputePipeline({
+            label: "finalize bukkit dispatch pipeline",
+            layout: bukkitBuildPipelineLayout,
+            compute: {
+                module: bukkitBuildModule,
+                entryPoint: "finalizeBukkitDispatch",
+                constants: bukkitBuildConstants,
+            },
+        });
+
+        const fusedMlsG2p2gModule = device.createShaderModule({
+            label: "fused MLS G2P2G module",
+            code: attachPrelude(`${colliderPreludeModuleSrc}\n${sparseGridPreludeSrc}\n${fusedMlsG2p2gSrc}`),
+        });
+
+        const createFusedMlsG2p2gPipeline = ({
+            label,
+            recordParticleSpeed,
+        }: {
+            label: string,
+            recordParticleSpeed: boolean,
+        }) => device.createComputePipeline({
+            label,
+            layout: fusedPipelineLayout,
+            compute: {
+                module: fusedMlsG2p2gModule,
+                entryPoint: "doFusedMlsG2p2g",
+                constants: {
+                    ...sparseGridConstants,
+                    ...particleKernelConstants,
+                    RECORD_PARTICLE_SPEED: recordParticleSpeed ? 1 : 0,
+                    PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE: PARTICLE_WORKGROUP_SIZE,
+                },
+            },
+        });
+
+        this.fusedMlsG2p2gPipeline = createFusedMlsG2p2gPipeline({
+            label: "fused MLS G2P2G pipeline",
+            recordParticleSpeed: false,
+        });
+        this.fusedMlsSpeedRecordingG2p2gPipeline = createFusedMlsG2p2gPipeline({
+            label: "fused MLS speed recording G2P2G pipeline",
+            recordParticleSpeed: true,
+        });
+
+        this.finalizeNextActiveBlockDispatchPipeline = device.createComputePipeline({
+            label: "finalize fused next active block dispatch pipeline",
+            layout: finalizeNextActiveBlockDispatchPipelineLayout,
+            compute: {
+                module: device.createShaderModule({
+                    label: "finalize fused next active block dispatch module",
+                    code: attachPrelude(`${sparseGridPreludeSrc}\n${finalizeNextActiveBlocksSrc}`),
+                }),
+                entryPoint: "finalizeNextActiveBlockDispatch",
+                constants: sparseGridConstants,
+            },
+        });
+
         this.particleBindGroupLayout = particleBindGroupLayout;
         this.particleDataBindGroup = particleBindGroup;
         this.particleReadBindGroupLayout = particleReadBindGroupLayout;
         this.particleReadBindGroup = particleReadBindGroup;
         this.sparseGridBindGroupLayout = sparseGridBindGroupLayout;
         this.sparseGridBindGroup = sparseGridBindGroup;
+        this.nextSparseGridBindGroup = nextSparseGridBindGroup;
         this.activeBlockDispatchArgsReadBindGroup = activeBlockDispatchArgsReadBindGroup;
+        this.nextActiveBlockDispatchArgsReadBindGroup = nextActiveBlockDispatchArgsReadBindGroup;
         this.uniformsManager = uniformsManager;
         this.nParticleWorkgroups = nParticleWorkgroups;
+        this.nBukkitWorkgroups = nBukkitWorkgroups;
+        this.nActiveBlockWorkgroups = nActiveBlockWorkgroups;
+        this.fusedSparseGridBindGroups = fusedSparseGridBindGroups;
+        this.fusedActiveBlockDispatchArgsReadBindGroups = fusedActiveBlockDispatchArgsReadBindGroups;
+        this.fusedBukkitBindGroups = fusedBukkitBindGroups;
+        this.fusedG2p2gBindGroups = fusedG2p2gBindGroups;
+        this.fusedActiveBlockDispatchBuffers = fusedActiveBlockDispatchBuffers;
+        this.bukkitDispatchBuffer = bukkitDispatchBuffer;
+        this.bukkitParticleReadBindGroups = bukkitParticleReadBindGroups;
     }
 
     addDispatch({
@@ -587,6 +946,24 @@ export class GpuMpmPipelineManager {
 
     invalidateActiveBlocks() {
         this.activeBlocksPrepared = false;
+        this.fusedActiveBlocksPrepared = false;
+        this.fusedSourceSparseGridIndex = 0;
+        this.dispatchMode = null;
+    }
+
+    private prepareClassicMode() {
+        if (this.dispatchMode === "classic") return;
+
+        this.dispatchMode = "classic";
+        this.activeBlocksPrepared = false;
+    }
+
+    private prepareFusedMode() {
+        if (this.dispatchMode === "fused") return;
+
+        this.dispatchMode = "fused";
+        this.fusedActiveBlocksPrepared = false;
+        this.fusedSourceSparseGridIndex = 0;
     }
 
     addBukkitResetDispatch({
@@ -624,6 +1001,159 @@ export class GpuMpmPipelineManager {
 
         this.currentBukkitGeneration += 1;
         computePassEncoder.setPipeline(this.clearBukkitPipeline);
+        computePassEncoder.dispatchWorkgroups(1);
+    }
+
+    private encodeFusedSparseGridResetDispatch(
+        computePassEncoder: GPUComputePassEncoder,
+        sparseGridIndex: number,
+    ) {
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[sparseGridIndex]);
+
+        if (this.fusedBukkitGenerations[sparseGridIndex] >= BUKKIT_GENERATION_RESERVED - 1) {
+            this.fusedBukkitGenerations[sparseGridIndex] = 1;
+            computePassEncoder.setPipeline(this.resetBukkitTablePipeline);
+            computePassEncoder.dispatchWorkgroups(this.nBukkitWorkgroups);
+            return;
+        }
+
+        this.fusedBukkitGenerations[sparseGridIndex] += 1;
+        computePassEncoder.setPipeline(this.clearBukkitPipeline);
+        computePassEncoder.dispatchWorkgroups(1);
+    }
+
+    private bindFusedBukkitBuildGroups(
+        computePassEncoder: GPUComputePassEncoder,
+        sourceSparseGridIndex: number,
+        bukkitBindGroupIndex: number,
+    ) {
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[sourceSparseGridIndex]);
+        computePassEncoder.setBindGroup(2, this.bukkitParticleReadBindGroups[sourceSparseGridIndex]);
+        computePassEncoder.setBindGroup(3, this.fusedBukkitBindGroups[bukkitBindGroupIndex]);
+    }
+
+    private encodeBukkitBuildDispatches(
+        computePassEncoder: GPUComputePassEncoder,
+        sourceSparseGridIndex: number,
+        bukkitBindGroupIndex: number,
+    ) {
+        this.bindFusedBukkitBuildGroups(computePassEncoder, sourceSparseGridIndex, bukkitBindGroupIndex);
+
+        computePassEncoder.setPipeline(this.resetBukkitBuildBuffersPipeline);
+        computePassEncoder.dispatchWorkgroups(this.nActiveBlockWorkgroups);
+
+        computePassEncoder.setPipeline(this.countParticlesPerBukkitPipeline);
+        computePassEncoder.dispatchWorkgroups(this.nParticleWorkgroups);
+
+        computePassEncoder.setPipeline(this.allocateBukkitThreadDataPipeline);
+        computePassEncoder.dispatchWorkgroups(this.nActiveBlockWorkgroups);
+
+        computePassEncoder.setPipeline(this.insertParticlesIntoBukkitPipeline);
+        computePassEncoder.dispatchWorkgroups(this.nParticleWorkgroups);
+
+        computePassEncoder.setPipeline(this.finalizeBukkitDispatchPipeline);
+        computePassEncoder.dispatchWorkgroups(1);
+    }
+
+    private encodeFusedBootstrapDispatches(
+        computePassEncoder: GPUComputePassEncoder,
+        enableInteraction: boolean,
+    ) {
+        const sourceSparseGridIndex = this.fusedSourceSparseGridIndex;
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[sourceSparseGridIndex]);
+
+        this.encodeFusedSparseGridResetDispatch(computePassEncoder, sourceSparseGridIndex);
+
+        computePassEncoder.setPipeline(this.mapAffectedBlocksPipeline);
+        computePassEncoder.setBindGroup(2, this.particleReadBindGroup);
+        computePassEncoder.dispatchWorkgroups(this.nParticleWorkgroups);
+
+        computePassEncoder.setPipeline(this.mlsP2gComputePipeline);
+        computePassEncoder.dispatchWorkgroups(this.nParticleWorkgroups);
+
+        computePassEncoder.setPipeline(enableInteraction
+            ? this.interactionGridComputePipeline
+            : this.gridComputePipeline);
+        computePassEncoder.setBindGroup(2, this.fusedActiveBlockDispatchArgsReadBindGroups[sourceSparseGridIndex]);
+        computePassEncoder.dispatchWorkgroupsIndirect(
+            this.fusedActiveBlockDispatchBuffers[sourceSparseGridIndex],
+            0,
+        );
+
+        this.fusedActiveBlocksPrepared = true;
+    }
+
+    private encodeFusedBootstrapMapAndP2gDispatches(
+        computePassEncoder: GPUComputePassEncoder,
+    ) {
+        const sourceSparseGridIndex = this.fusedSourceSparseGridIndex;
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[sourceSparseGridIndex]);
+
+        this.encodeFusedSparseGridResetDispatch(computePassEncoder, sourceSparseGridIndex);
+
+        computePassEncoder.setPipeline(this.mapAffectedBlocksPipeline);
+        computePassEncoder.setBindGroup(2, this.particleReadBindGroup);
+        computePassEncoder.dispatchWorkgroups(this.nParticleWorkgroups);
+
+        computePassEncoder.setPipeline(this.mlsP2gComputePipeline);
+        computePassEncoder.dispatchWorkgroups(this.nParticleWorkgroups);
+    }
+
+    private encodeFusedGridUpdateDispatch(
+        computePassEncoder: GPUComputePassEncoder,
+        sparseGridIndex: number,
+        enableInteraction: boolean,
+    ) {
+        computePassEncoder.setPipeline(enableInteraction
+            ? this.interactionGridComputePipeline
+            : this.gridComputePipeline);
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[sparseGridIndex]);
+        computePassEncoder.setBindGroup(2, this.fusedActiveBlockDispatchArgsReadBindGroups[sparseGridIndex]);
+        computePassEncoder.dispatchWorkgroupsIndirect(
+            this.fusedActiveBlockDispatchBuffers[sparseGridIndex],
+            0,
+        );
+    }
+
+    private encodeFusedMlsMpmBuildBukkitsPass(
+        computePassEncoder: GPUComputePassEncoder,
+        sourceSparseGridIndex: number,
+        nextSparseGridIndex: number,
+    ) {
+        this.encodeBukkitBuildDispatches(
+            computePassEncoder,
+            sourceSparseGridIndex,
+            nextSparseGridIndex,
+        );
+    }
+
+    private encodeFusedMlsMpmG2p2gPass(
+        computePassEncoder: GPUComputePassEncoder,
+        sourceSparseGridIndex: number,
+        nextSparseGridIndex: number,
+        recordParticleSpeed: boolean,
+    ) {
+        this.encodeFusedSparseGridResetDispatch(computePassEncoder, nextSparseGridIndex);
+
+        computePassEncoder.setPipeline(recordParticleSpeed
+            ? this.fusedMlsSpeedRecordingG2p2gPipeline
+            : this.fusedMlsG2p2gPipeline);
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[sourceSparseGridIndex]);
+        computePassEncoder.setBindGroup(2, this.particleDataBindGroup);
+        computePassEncoder.setBindGroup(3, this.fusedG2p2gBindGroups[nextSparseGridIndex]);
+        computePassEncoder.dispatchWorkgroupsIndirect(this.bukkitDispatchBuffer, 0);
+
+        computePassEncoder.setPipeline(this.finalizeNextActiveBlockDispatchPipeline);
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[sourceSparseGridIndex]);
+        computePassEncoder.setBindGroup(2, this.bukkitParticleReadBindGroups[sourceSparseGridIndex]);
+        computePassEncoder.setBindGroup(3, this.fusedBukkitBindGroups[nextSparseGridIndex]);
         computePassEncoder.dispatchWorkgroups(1);
     }
 
@@ -737,6 +1267,8 @@ export class GpuMpmPipelineManager {
         integratePipeline: GPUComputePipeline,
         bindCommonGroups?: boolean,
     }) {
+        this.prepareClassicMode();
+
         if (bindCommonGroups) {
             this.bindCommonComputeGroups(computePassEncoder);
         }
@@ -775,6 +1307,7 @@ export class GpuMpmPipelineManager {
         bindCommonGroups?: boolean,
     }) {
         if (nSimulationSteps <= 0) return;
+        this.prepareClassicMode();
 
         if (bindCommonGroups) {
             this.bindCommonComputeGroups(computePassEncoder);
@@ -926,5 +1459,215 @@ export class GpuMpmPipelineManager {
             recordParticleSpeed,
             bindCommonGroups,
         });
+    }
+
+    addFusedMlsMpmDispatchesBatch({
+        computePassEncoder,
+        enableInteraction,
+        nSimulationSteps,
+        recordParticleSpeed,
+        bindCommonGroups = true,
+    }: {
+        computePassEncoder: GPUComputePassEncoder,
+        enableInteraction: boolean,
+        nSimulationSteps: number,
+        recordParticleSpeed: boolean,
+        bindCommonGroups?: boolean,
+    }) {
+        if (nSimulationSteps <= 0) return;
+        this.prepareFusedMode();
+
+        if (bindCommonGroups) {
+            computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        }
+
+        if (!this.fusedActiveBlocksPrepared) {
+            this.encodeFusedBootstrapDispatches(computePassEncoder, enableInteraction);
+        }
+
+        const normalStepCount = recordParticleSpeed
+            ? nSimulationSteps - 1
+            : nSimulationSteps;
+
+        for (let i = 0; i < normalStepCount; i++) {
+            this.encodeFusedMlsMpmDispatch(computePassEncoder, enableInteraction, false);
+        }
+
+        if (recordParticleSpeed) {
+            this.encodeFusedMlsMpmDispatch(computePassEncoder, enableInteraction, true);
+        }
+    }
+
+    addFusedMlsMpmDispatchPassesBatch({
+        commandEncoder,
+        enableInteraction,
+        nSimulationSteps,
+        recordParticleSpeed,
+        timestampWrites,
+    }: {
+        commandEncoder: GPUCommandEncoder,
+        enableInteraction: boolean,
+        nSimulationSteps: number,
+        recordParticleSpeed: boolean,
+        timestampWrites?: {
+            querySet: GPUQuerySet,
+            beginningOfPassWriteIndex: number,
+            endOfPassWriteIndex: number,
+        },
+    }) {
+        if (nSimulationSteps <= 0) return;
+        this.prepareFusedMode();
+
+        if (timestampWrites !== undefined) {
+            const computePassEncoder = commandEncoder.beginComputePass({
+                label: "fused MLS timestamp begin compute pass",
+                timestampWrites: {
+                    querySet: timestampWrites.querySet,
+                    beginningOfPassWriteIndex: timestampWrites.beginningOfPassWriteIndex,
+                },
+            });
+            computePassEncoder.end();
+        }
+
+        if (!this.fusedActiveBlocksPrepared) {
+            {
+                const computePassEncoder = commandEncoder.beginComputePass({
+                    label: "fused MLS bootstrap map/P2G compute pass",
+                });
+                this.encodeFusedBootstrapMapAndP2gDispatches(computePassEncoder);
+                computePassEncoder.end();
+            }
+
+            {
+                const computePassEncoder = commandEncoder.beginComputePass({
+                    label: "fused MLS bootstrap grid update compute pass",
+                });
+                this.encodeFusedGridUpdateDispatch(
+                    computePassEncoder,
+                    this.fusedSourceSparseGridIndex,
+                    enableInteraction,
+                );
+                computePassEncoder.end();
+            }
+
+            this.fusedActiveBlocksPrepared = true;
+        }
+
+        const normalStepCount = recordParticleSpeed
+            ? nSimulationSteps - 1
+            : nSimulationSteps;
+
+        for (let i = 0; i < normalStepCount; i++) {
+            this.encodeFusedMlsMpmDispatchPasses(commandEncoder, enableInteraction, false);
+        }
+
+        if (recordParticleSpeed) {
+            this.encodeFusedMlsMpmDispatchPasses(commandEncoder, enableInteraction, true);
+        }
+
+        if (timestampWrites !== undefined) {
+            const computePassEncoder = commandEncoder.beginComputePass({
+                label: "fused MLS timestamp end compute pass",
+                timestampWrites: {
+                    querySet: timestampWrites.querySet,
+                    endOfPassWriteIndex: timestampWrites.endOfPassWriteIndex,
+                },
+            });
+            computePassEncoder.end();
+        }
+    }
+
+    private encodeFusedMlsMpmDispatchPasses(
+        commandEncoder: GPUCommandEncoder,
+        enableInteraction: boolean,
+        recordParticleSpeed: boolean,
+    ) {
+        const sourceSparseGridIndex = this.fusedSourceSparseGridIndex;
+        const nextSparseGridIndex = 1 - sourceSparseGridIndex;
+
+        {
+            const computePassEncoder = commandEncoder.beginComputePass({
+                label: "fused MLS bukkit build compute pass",
+            });
+            this.encodeFusedMlsMpmBuildBukkitsPass(
+                computePassEncoder,
+                sourceSparseGridIndex,
+                nextSparseGridIndex,
+            );
+            computePassEncoder.end();
+        }
+
+        {
+            const computePassEncoder = commandEncoder.beginComputePass({
+                label: "fused MLS G2P2G compute pass",
+            });
+            this.encodeFusedMlsMpmG2p2gPass(
+                computePassEncoder,
+                sourceSparseGridIndex,
+                nextSparseGridIndex,
+                recordParticleSpeed,
+            );
+            computePassEncoder.end();
+        }
+
+        {
+            const computePassEncoder = commandEncoder.beginComputePass({
+                label: "fused MLS grid update compute pass",
+            });
+            this.encodeFusedGridUpdateDispatch(
+                computePassEncoder,
+                nextSparseGridIndex,
+                enableInteraction,
+            );
+            computePassEncoder.end();
+        }
+
+        this.fusedSourceSparseGridIndex = nextSparseGridIndex;
+    }
+
+    private encodeFusedMlsMpmDispatch(
+        computePassEncoder: GPUComputePassEncoder,
+        enableInteraction: boolean,
+        recordParticleSpeed: boolean,
+    ) {
+        const sourceSparseGridIndex = this.fusedSourceSparseGridIndex;
+        const nextSparseGridIndex = 1 - sourceSparseGridIndex;
+
+        this.encodeBukkitBuildDispatches(
+            computePassEncoder,
+            sourceSparseGridIndex,
+            nextSparseGridIndex,
+        );
+
+        this.encodeFusedSparseGridResetDispatch(computePassEncoder, nextSparseGridIndex);
+
+        computePassEncoder.setPipeline(recordParticleSpeed
+            ? this.fusedMlsSpeedRecordingG2p2gPipeline
+            : this.fusedMlsG2p2gPipeline);
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[sourceSparseGridIndex]);
+        computePassEncoder.setBindGroup(2, this.particleDataBindGroup);
+        computePassEncoder.setBindGroup(3, this.fusedBukkitBindGroups[nextSparseGridIndex]);
+        computePassEncoder.dispatchWorkgroupsIndirect(this.bukkitDispatchBuffer, 0);
+
+        computePassEncoder.setPipeline(this.finalizeNextActiveBlockDispatchPipeline);
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[sourceSparseGridIndex]);
+        computePassEncoder.setBindGroup(2, this.bukkitParticleReadBindGroups[sourceSparseGridIndex]);
+        computePassEncoder.setBindGroup(3, this.fusedBukkitBindGroups[nextSparseGridIndex]);
+        computePassEncoder.dispatchWorkgroups(1);
+
+        computePassEncoder.setPipeline(enableInteraction
+            ? this.interactionGridComputePipeline
+            : this.gridComputePipeline);
+        computePassEncoder.setBindGroup(0, this.uniformsManager.bindGroup);
+        computePassEncoder.setBindGroup(1, this.fusedSparseGridBindGroups[nextSparseGridIndex]);
+        computePassEncoder.setBindGroup(2, this.fusedActiveBlockDispatchArgsReadBindGroups[nextSparseGridIndex]);
+        computePassEncoder.dispatchWorkgroupsIndirect(
+            this.fusedActiveBlockDispatchBuffers[nextSparseGridIndex],
+            0,
+        );
+
+        this.fusedSourceSparseGridIndex = nextSparseGridIndex;
     }
 }

@@ -30,7 +30,7 @@ export const requestGpuDeviceAndContext = async ({
         requiredFeatures,
         requiredLimits: {
             maxStorageBufferBindingSize: Math.min(536_870_912, adapter.limits.maxStorageBufferBindingSize),
-            maxStorageBuffersPerShaderStage: 10,
+            maxStorageBuffersPerShaderStage: Math.min(16, adapter.limits.maxStorageBuffersPerShaderStage),
         },
     });
     if (device === null) {

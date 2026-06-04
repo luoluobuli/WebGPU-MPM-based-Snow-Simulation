@@ -6,7 +6,7 @@ import Hotkey from "$lib/components/headless/Hotkey.svelte";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 import OverlayPanel from "./OverlayPanel.svelte";
-    import { ParticleControlMode } from "./ParticleControlMode";
+import { ParticleControlMode } from "./ParticleControlMode";
 
 let {
     simulationState,
@@ -29,6 +29,7 @@ let timestepProgress = $derived.by(() => {
             return progressFromTimestep(simulationState.explicitMpmMaxSimulationTimestepS);
 
         case GpuSimulationMethodType.MlsMpm:
+        case GpuSimulationMethodType.FusedMlsMpm:
             return progressFromTimestep(simulationState.mlsMpmMaxSimulationTimestepS);
     }
 });
@@ -46,6 +47,7 @@ const updateTimestep = (progress: number) => {
             break;
 
         case GpuSimulationMethodType.MlsMpm:
+        case GpuSimulationMethodType.FusedMlsMpm:
             simulationState.mlsMpmMaxSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
             break;
     }
@@ -205,6 +207,16 @@ const updateTimestep = (progress: number) => {
             value={GpuSimulationMethodType.MlsMpm}
         />
         MLS-MPM
+    </label>
+
+    <label>
+        <input
+            type="radio"
+            name="simulation-method-type"
+            bind:group={simulationState.simulationMethodType}
+            value={GpuSimulationMethodType.FusedMlsMpm}
+        />
+        Fused MLS-MPM
     </label>
 
     <h4>Max timestep</h4>
