@@ -24,13 +24,10 @@ describe("mpmOps material damping", () => {
         expect(mpmOpsSrc).toContain("uniforms.simulationTimestep / MATERIAL_DAMPING_REFERENCE_TIMESTEP_S");
     });
 
-    it("keeps procedural support particles anchored without adding scene colliders", () => {
-        expect(mpmOpsSrc).toContain("PARTICLE_FLAG_ANCHORED = 4u");
-        expect(mpmOpsSrc).toContain("PARTICLE_SPAWN_ANCHORED_OFFSET = 8.0");
+    it("keeps spawn material values as direct material ids", () => {
         expect(mpmOpsSrc).toContain("fn particleFlagsFromSpawnPoint");
-        expect(mpmOpsSrc).toContain("fn particleIsAnchored");
-        expect(mpmOpsSrc).toContain("fn resetAnchoredParticleMotion");
-        expect(mpmOpsSrc).toContain("| PARTICLE_FLAG_ANCHORED");
+        expect(mpmOpsSrc).toContain("return u32(clamp(round(encodedMaterial), 0.0, 3.0));");
+        expect(mpmOpsSrc).toContain("return materialFlagFromId(material);");
     });
 
     it("keeps environment soil from becoming nearly suspended by per-substep damping", () => {

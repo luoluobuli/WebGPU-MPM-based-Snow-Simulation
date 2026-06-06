@@ -472,12 +472,6 @@ fn integrateFusedParticle(
     var speed_squared = 0.0;
     let material = particleMaterial(*flags);
 
-    if particleIsAnchored(*flags) {
-        resetAnchoredParticleMotion(particle);
-        *flags = particlePersistentFlags(*flags) & ~PARTICLE_FLAG_ELASTIC_NON_IDENTITY;
-        return speed_squared;
-    }
-
     applyMaterialVelocityDamping(particle, material);
     let unclamped_velocity = sanitizeVec3((*particle).vel, vec3f(0.0));
     let unclamped_speed_squared = dot(unclamped_velocity, unclamped_velocity);

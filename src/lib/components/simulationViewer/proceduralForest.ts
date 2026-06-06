@@ -28,7 +28,6 @@ const GROUND_PARTICLE_FRACTION = 0.24;
 const TRUNK_PARTICLE_FRACTION = 0.3;
 const ROOT_PARTICLE_FRACTION = 0.13;
 const BRANCH_PARTICLE_FRACTION = 0.18;
-const ANCHORED_PARTICLE_MATERIAL_OFFSET = 8;
 
 const clamp = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
@@ -65,13 +64,12 @@ const writePoint = (
     index: number,
     pos: Vec3,
     material: ParticleAppearanceMaterial,
-    anchored = false,
 ) => {
     const offset = index * 4;
     points[offset] = clamp(pos[0], DOMAIN_MIN + 0.08, DOMAIN_MAX - 0.08);
     points[offset + 1] = clamp(pos[1], DOMAIN_MIN + 0.08, DOMAIN_MAX - 0.08);
     points[offset + 2] = clamp(pos[2], DOMAIN_MIN + 0.08, DOMAIN_MAX - 0.08);
-    points[offset + 3] = material + (anchored ? ANCHORED_PARTICLE_MATERIAL_OFFSET : 0);
+    points[offset + 3] = material;
 };
 
 const colorVariation = (
@@ -155,9 +153,9 @@ const writeGroundParticle = (
     const top = terrainHeight(x, y);
     const z = top - GROUND_THICKNESS * hash01(seed, index, 203);
     const moss = hash01(seed, index, 204) > 0.74;
-    const baseColor: Vec3 = moss ? [0.16, 0.23, 0.12] : [0.25, 0.17, 0.1];
+    const baseColor: Vec3 = moss ? [0.27, 0.38, 0.2] : [0.42, 0.31, 0.2];
 
-    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Soil, true);
+    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Soil);
     appearances[index] = packParticleAppearance({
         color: colorVariation(baseColor, 0.28, seed, index),
         material: ParticleAppearanceMaterial.Soil,
@@ -182,9 +180,9 @@ const writeTrunkParticle = (
     const x = tree.base[0] + bendX + Math.cos(angle) * (radius + barkRidge);
     const y = tree.base[1] + bendY + Math.sin(angle) * (radius + barkRidge);
     const z = tree.base[2] + tree.height * t;
-    const barkBase: Vec3 = [0.31, 0.19, 0.1];
+    const barkBase: Vec3 = [0.48, 0.31, 0.17];
 
-    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Bark, true);
+    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Bark);
     appearances[index] = packParticleAppearance({
         color: colorVariation(barkBase, 0.34, seed, index),
         material: ParticleAppearanceMaterial.Bark,
@@ -229,9 +227,9 @@ const writeBranchParticle = (
     trees: TreeSpec[],
 ) => {
     const tree = chooseTree(trees, seed, index);
-    const barkBase: Vec3 = [0.28, 0.17, 0.09];
+    const barkBase: Vec3 = [0.43, 0.28, 0.15];
 
-    writePoint(points, index, branchPoint(tree, seed, index), ParticleAppearanceMaterial.Bark, true);
+    writePoint(points, index, branchPoint(tree, seed, index), ParticleAppearanceMaterial.Bark);
     appearances[index] = packParticleAppearance({
         color: colorVariation(barkBase, 0.32, seed, index),
         material: ParticleAppearanceMaterial.Bark,
@@ -265,7 +263,7 @@ const writeLeafParticle = (
     const x = tree.canopyCenter[0] + localX * tree.canopyRadius[0];
     const y = tree.canopyCenter[1] + localY * tree.canopyRadius[1];
     const z = tree.canopyCenter[2] + localZ * tree.canopyRadius[2];
-    const baseColor: Vec3 = tree.conifer ? [0.1, 0.28, 0.15] : [0.18, 0.38, 0.15];
+    const baseColor: Vec3 = tree.conifer ? [0.19, 0.42, 0.24] : [0.31, 0.55, 0.24];
 
     writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Leaf);
     appearances[index] = packParticleAppearance({
@@ -296,9 +294,9 @@ const writeRootParticle = (
     const x = tree.base[0] + dirX * rootLength * along + sideX * Math.cos(radialAngle) * radius;
     const y = tree.base[1] + dirY * rootLength * along + sideY * Math.cos(radialAngle) * radius;
     const z = terrainHeight(tree.base[0], tree.base[1]) - sink + Math.sin(radialAngle) * radius * 0.42;
-    const barkBase: Vec3 = [0.24, 0.14, 0.07];
+    const barkBase: Vec3 = [0.38, 0.23, 0.12];
 
-    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Bark, true);
+    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Bark);
     appearances[index] = packParticleAppearance({
         color: colorVariation(barkBase, 0.3, seed, index),
         material: ParticleAppearanceMaterial.Bark,

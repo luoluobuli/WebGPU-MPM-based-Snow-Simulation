@@ -188,5 +188,5 @@ fn frag(input: FragmentInput) -> @location(0) vec4f {
     
     let finalOcc = saturate(pow(occlusion / f32(N_SSAO_SAMPLES), 1.15) * SSAO_STRENGTH * projected_radius_fade * grazing_fade);
     
-    return vec4f(0.1, 0.2, 0.3, 1) * finalOcc;
+    return vec4f(0.0, 0.0, 0.0, 1.0) * finalOcc;
 }

@@ -3,9 +3,7 @@ import { ParticleAppearanceMaterial } from "$lib/gpu/particleAppearance/GpuParti
 import { buildProceduralForest } from "./proceduralForest";
 
 const materialFromPackedAppearance = (appearance: number) => appearance >>> 24;
-const materialFromSpawnPoint = (material: number) =>
-    material >= 8 ? material - 8 : material;
-const spawnPointIsAnchored = (material: number) => material >= 8;
+const materialFromSpawnPoint = (material: number) => material;
 
 describe("buildProceduralForest", () => {
     it("builds deterministic particle positions and appearances", () => {
@@ -58,18 +56,12 @@ describe("buildProceduralForest", () => {
         let soilCount = 0;
         let barkCount = 0;
         let lowBarkCount = 0;
-        let anchoredCount = 0;
         let leafCount = 0;
         let minSoilZ = Infinity;
 
         for (let i = 0; i < forest.particleAppearances.length; i++) {
             const material = materialFromPackedAppearance(forest.particleAppearances[i]);
-            const spawnMaterial = forest.spawnPoints[i * 4 + 3];
             const z = forest.spawnPoints[i * 4 + 2];
-
-            if (spawnPointIsAnchored(spawnMaterial)) {
-                anchoredCount++;
-            }
 
             if (material === ParticleAppearanceMaterial.Soil) {
                 soilCount++;
@@ -93,7 +85,6 @@ describe("buildProceduralForest", () => {
         expect(soilCount).toBeGreaterThan(2048 * 0.2);
         expect(barkCount).toBeGreaterThan(2048 * 0.55);
         expect(lowBarkCount).toBeGreaterThan(2048 * 0.08);
-        expect(anchoredCount).toBeGreaterThan(2048 * 0.8);
         expect(leafCount).toBeLessThan(2048 * 0.18);
         expect(minSoilZ).toBeLessThan(-4.85);
     });

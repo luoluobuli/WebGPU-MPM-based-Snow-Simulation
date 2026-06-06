@@ -25,17 +25,6 @@ fn doGridToParticle(
 
     let flags = particle_flags[thread_index];
     let persistent_flags = particlePersistentFlags(flags);
-    if particleIsAnchored(flags) {
-        var particle = particle_data[thread_index];
-        resetAnchoredParticleMotion(&particle);
-        particle_data[thread_index].vel = particle.vel;
-        particle_data[thread_index].pos_displacement = particle.pos_displacement;
-        particle_data[thread_index].deformation_displacement = particle.deformation_displacement;
-        particle_data[thread_index].deformationElastic = particle.deformationElastic;
-        particle_data[thread_index].deformationPlastic = particle.deformationPlastic;
-        particle_flags[thread_index] = persistent_flags & ~PARTICLE_FLAG_ELASTIC_NON_IDENTITY;
-        return;
-    }
 
     let particle_pos = particle_data[thread_index].pos;
     let particle_grid_coord = calculateGridCoordinate(particle_pos);
