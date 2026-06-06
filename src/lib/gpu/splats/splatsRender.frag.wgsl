@@ -9,6 +9,7 @@ struct FragmentInput {
     @location(4) elastic_volume_fac: f32,
     @location(5) shape_params: vec4f,
     @location(6) grain_params: vec4f,
+    @location(7) appearance: vec4f,
 }
 
 struct FragmentOutput {
@@ -73,6 +74,42 @@ fn shadeSnow(pos_world: vec3f, local_pos: vec3f, normal_world: vec3f, loose_fact
     return diffuse_color + ambient + vec3f(specular + glint * 0.18) + fresnel * vec3f(0.025, 0.035, 0.05);
 }
 
+fn shadeForestParticle(
+    pos_world: vec3f,
+    local_pos: vec3f,
+    normal_world: vec3f,
+    appearance: vec4f,
+    seed: vec4f,
+) -> vec3f {
+    let grain_gradient = noiseGradient3(local_pos * 20.0 + seed.xyz * 13.0);
+    let tangent_gradient = grain_gradient - dot(grain_gradient, normal_world) * normal_world;
+    let normal = normalize(normal_world + tangent_gradient * 0.14);
+    let view_dir = normalize(uniforms.cameraPos - pos_world);
+    let half_dir = normalize(LIGHT_DIR + view_dir);
+    let diffuse = max(dot(normal, LIGHT_DIR), 0.0);
+    let sky = max(normal.z * 0.5 + 0.5, 0.0);
+    let material = appearance.w;
+    var albedo = appearance.rgb;
+
+    if material > 2.5 {
+        let leaf_mottle = noise3(pos_world * 6.0 + seed.zxy * 23.0);
+        albedo *= mix(0.72, 1.22, leaf_mottle);
+    } else if material > 1.5 {
+        let bark_ridge = noise3(vec3f(local_pos.xy * 10.0, pos_world.z * 4.0) + seed.xyz * 17.0);
+        albedo *= mix(0.62, 1.18, bark_ridge);
+    } else {
+        let soil_grain = noise3(pos_world * 8.0 + seed.yzx * 19.0);
+        albedo *= mix(0.74, 1.12, soil_grain);
+    }
+
+    let wrap = diffuse * 0.7 + 0.3;
+    let ambient = AMBIENT_COLOR * 0.74 + SKY_FILL * sky * 0.52;
+    let specular = pow(max(dot(normal, half_dir), 0.0), 18.0) * select(0.025, 0.006, material > 2.5);
+    let fresnel = pow(1.0 - saturate(dot(normal, view_dir)), 4.0) * select(0.03, 0.055, material > 2.5);
+
+    return albedo * (ambient + wrap * 0.92) + vec3f(specular + fresnel);
+}
+
 @fragment
 fn frag(in: FragmentInput) -> FragmentOutput {
     let seed = in.shape_params.w;
@@ -112,7 +149,10 @@ fn frag(in: FragmentInput) -> FragmentOutput {
     let plastic_volume = clamp(in.compression_volume_fac, 0.25, 1.5);
     let elastic_volume = clamp(in.elastic_volume_fac, 0.25, 1.5);
     let loose_factor = saturate((plastic_volume + elastic_volume) * 0.5);
-    let color = shadeSnow(surface_pos_world, local_pos, facet_normal, loose_factor, grain_seed);
+    var color = shadeSnow(surface_pos_world, local_pos, facet_normal, loose_factor, grain_seed);
+    if in.appearance.w > 0.5 {
+        color = shadeForestParticle(surface_pos_world, local_pos, facet_normal, in.appearance, grain_seed);
+    }
 
     var out: FragmentOutput;
     out.color = vec4f(color, 1.0);

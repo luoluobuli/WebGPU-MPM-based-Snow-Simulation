@@ -6,8 +6,7 @@ import { GpuUniformsBufferManager } from "./uniforms/GpuUniformsBufferManager";
 import { GpuMpmBufferManager } from "./mpm/GpuMpmBufferManager";
 import { GpuRenderMethodType, type GpuRenderMethod } from "./GpuRenderMethod";
 import { GpuPerformanceMeasurementBufferManager } from "./performanceMeasurement/GpuPerformanceMeasurementBufferManager";
-import { GpuMeshBufferManager } from "./particleInitialize/GpuMeshBufferManager";
-import { GpuSpawnVolumeBufferManager } from "./particleInitialize/GpuSpawnVolumeBufferManager";
+import { GpuSpawnVolumeBufferManager, type SpawnPointSource } from "./particleInitialize/GpuSpawnVolumeBufferManager";
 import { GpuColliderBufferManager } from "./collider/GpuColliderBufferManager";
 import { GpuParticleInitializePipelineManager } from "./particleInitialize/GpuParticleInitializePipelineManager";
 import { GpuRasterizeRenderPipelineManager } from "./collider/GpuRasterizeRenderPipelineManager";
@@ -27,6 +26,8 @@ import { PrerenderPassElapsedTime } from "$lib/components/simulationViewer/Prere
 import { GpuSsaoPipelineManager } from "./ssao/GpuSsaoPipelineManager";
 import { GpuDepthPicker } from "./GpuDepthPicker";
 import { GpuParticleSpeedReductionPipelineManager } from "./mpm/GpuParticleSpeedReductionPipelineManager";
+import { GpuParticleAppearanceBufferManager } from "./particleAppearance/GpuParticleAppearanceBufferManager";
+import { GRAVITATIONAL_ACCELERATION_M_PER_S2 } from "./gravity";
 import {
     CFL_NUMBER,
     calculateCflLimitedSimulationTimestepS,
@@ -39,7 +40,6 @@ import {
 const MAX_SIMULATION_DRIFT_MS = 250;
 const MAX_SIMULATION_STEPS_PER_FRAME = 128;
 const MAX_SIMULATION_SUBSTEPS_PER_FRAME = 512;
-const GRAVITATIONAL_ACCELERATION_M_PER_S2 = 9.81;
 const FP_SCALE = 65536;
 const MAX_FIXED_POINT_I32 = 2_147_483_000;
 const MAX_FIXED_POINT_GRID_SPEED = MAX_FIXED_POINT_I32 / FP_SCALE;
@@ -71,11 +71,54 @@ const mat4IsIdentity = (matrix: Mat4) => {
     return true;
 };
 
-type SpawnMeshObject = {
-    min: [number, number, number];
-    max: [number, number, number];
-    startVertex: number;
-    countVertices: number;
+const emptyColliderGeometry = (): ColliderGeometry => ({
+    positions: [],
+    normals: [],
+    uvs: [],
+    materialIndices: [],
+    textures: [],
+    indices: [],
+    objects: [],
+});
+
+const boundsFromSpawnSource = (source: SpawnPointSource): {
+    min: [number, number, number],
+    max: [number, number, number],
+} => {
+    const min: [number, number, number] = [Infinity, Infinity, Infinity];
+    const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+
+    if (source.type === "mesh") {
+        for (const vertex of source.vertices) {
+            min[0] = Math.min(min[0], vertex[0]);
+            min[1] = Math.min(min[1], vertex[1]);
+            min[2] = Math.min(min[2], vertex[2]);
+            max[0] = Math.max(max[0], vertex[0]);
+            max[1] = Math.max(max[1], vertex[1]);
+            max[2] = Math.max(max[2], vertex[2]);
+        }
+    } else {
+        for (let i = 0; i < source.points.length; i += 4) {
+            min[0] = Math.min(min[0], source.points[i]);
+            min[1] = Math.min(min[1], source.points[i + 1]);
+            min[2] = Math.min(min[2], source.points[i + 2]);
+            max[0] = Math.max(max[0], source.points[i]);
+            max[1] = Math.max(max[1], source.points[i + 1]);
+            max[2] = Math.max(max[2], source.points[i + 2]);
+        }
+    }
+
+    if (
+        !min.every(Number.isFinite)
+        || !max.every(Number.isFinite)
+    ) {
+        return {
+            min: [-5, -5, -5],
+            max: [5, 5, 5],
+        };
+    }
+
+    return { min, max };
 };
 
 export class GpuSnowPipelineRunner {
@@ -98,7 +141,7 @@ export class GpuSnowPipelineRunner {
     private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
     private readonly mpmPipelineManager: GpuMpmPipelineManager;
     private readonly particleSpeedReductionPipelineManager: GpuParticleSpeedReductionPipelineManager;
-    private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager;
+    private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager | null;
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
     private readonly environmentRenderPipelineManager: GpuEnvironmentRenderPipelineManager;
@@ -147,9 +190,9 @@ export class GpuSnowPipelineRunner {
         explicitMpmMaxSimulationTimestepS,
         mlsMpmMaxSimulationTimestepS,
         camera,
-        meshVertices,
-        meshObjects,
+        spawnSource,
         collider,
+        particleAppearances,
         getSimulationMethodType,
         getRenderMethodType,
         oneSimulationStepPerFrame,
@@ -174,9 +217,9 @@ export class GpuSnowPipelineRunner {
         explicitMpmMaxSimulationTimestepS: () => number,
         mlsMpmMaxSimulationTimestepS: () => number,
         camera: Camera,
-        meshVertices: number[][],
-        meshObjects?: SpawnMeshObject[],
-        collider: ColliderGeometry,
+        spawnSource: SpawnPointSource,
+        collider?: ColliderGeometry | null,
+        particleAppearances?: Uint32Array | null,
         getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
         oneSimulationStepPerFrame: () => boolean,
@@ -266,25 +309,31 @@ export class GpuSnowPipelineRunner {
             device,
         });
 
-        const meshManager = new GpuMeshBufferManager({device, vertices: meshVertices});
-        uniformsManager.writeMeshMinCoords(meshManager.minCoords);
-        uniformsManager.writeMeshMaxCoords(meshManager.maxCoords);
+        const spawnBounds = boundsFromSpawnSource(spawnSource);
+        uniformsManager.writeMeshMinCoords(spawnBounds.min);
+        uniformsManager.writeMeshMaxCoords(spawnBounds.max);
 
         const spawnVolumeManager = new GpuSpawnVolumeBufferManager({
             device,
-            vertices: meshVertices,
             nParticles,
-            objects: meshObjects,
+            source: spawnSource,
         });
 
+        const particleAppearanceManager = new GpuParticleAppearanceBufferManager({
+            device,
+            nParticles,
+            appearances: particleAppearances,
+        });
+
+        const colliderGeometry = collider ?? emptyColliderGeometry();
         const colliderManager = new GpuColliderBufferManager({
             device, 
-            vertices: collider.positions, 
-            normals: collider.normals, 
-            uvs: collider.uvs,
-            materialIndices: collider.materialIndices,
-            textures: collider.textures,
-            indices: collider.indices,
+            vertices: colliderGeometry.positions,
+            normals: colliderGeometry.normals,
+            uvs: colliderGeometry.uvs,
+            materialIndices: colliderGeometry.materialIndices,
+            textures: colliderGeometry.textures,
+            indices: colliderGeometry.indices,
         });
         this.colliderMinCoords = colliderManager.minCoords;
         this.colliderMaxCoords = colliderManager.maxCoords;
@@ -341,13 +390,15 @@ export class GpuSnowPipelineRunner {
         this.mpmPipelineManager = mpmPipelineManager;
 
         // Render
-        const rasterizeRenderPipeline = new GpuRasterizeRenderPipelineManager({
-            device, 
-            format,
-            depthFormat: "depth32float",
-            uniformsManager: uniformsManager,
-            colliderManager: colliderManager
-        });
+        const rasterizeRenderPipeline = colliderGeometry.indices.length > 0
+            ? new GpuRasterizeRenderPipelineManager({
+                device,
+                format,
+                depthFormat: "depth32float",
+                uniformsManager: uniformsManager,
+                colliderManager: colliderManager,
+            })
+            : null;
         this.rasterizeRenderPipelineManager = rasterizeRenderPipeline;
 
         const mpmGridRenderPipelineManager = new GpuMpmGridRenderPipelineManager({
@@ -416,6 +467,7 @@ export class GpuSnowPipelineRunner {
                             depthFormat: "depth32float",
                             uniformsManager,
                             mpmManager,
+                            particleAppearanceManager,
                         });
                         break;
 
@@ -426,6 +478,7 @@ export class GpuSnowPipelineRunner {
                             depthFormat: "depth32float",
                             uniformsManager,
                             mpmManager,
+                            particleAppearanceManager,
                         });
                         break;
 
@@ -545,7 +598,7 @@ export class GpuSnowPipelineRunner {
         });
     }
 
-    scatterParticlesInMeshVolume() {
+    scatterParticles() {
         this.latestMaxParticleSpeed = 0;
         this.writeSimulationTimingUniforms(this.selectedSimulationTimestepS);
         this.mpmPipelineManager.invalidateActiveBlocks();
@@ -560,6 +613,10 @@ export class GpuSnowPipelineRunner {
         });
 
         this.device.queue.submit([commandEncoder.finish()]);
+    }
+
+    scatterParticlesInMeshVolume() {
+        this.scatterParticles();
     }
 
     updateColliderTransformMat(transformMat: Mat4) {
@@ -802,7 +859,7 @@ export class GpuSnowPipelineRunner {
         });
 
 
-        this.rasterizeRenderPipelineManager.addDraw(renderPassEncoder);
+        this.rasterizeRenderPipelineManager?.addDraw(renderPassEncoder);
         //this.mpmGridRenderPipelineManager.addDraw(renderPassEncoder);
         this.environmentRenderPipelineManager.addDraw(renderPassEncoder);
         renderMethod.addCompositeDraw(renderPassEncoder);

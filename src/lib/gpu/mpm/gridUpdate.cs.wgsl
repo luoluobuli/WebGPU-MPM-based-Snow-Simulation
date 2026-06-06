@@ -96,14 +96,12 @@ fn applyDomainBoundaryVelocity(
     return bounded_velocity;
 }
 
-fn limitVelocityToCfl(velocity: vec3f) -> vec3f {
-    let len_squared = dot(velocity, velocity);
-    let max_len_squared = uniforms.maxStableParticleSpeedSquared;
-    if len_squared > max_len_squared {
-        return velocity * (uniforms.maxStableParticleSpeed * inverseSqrt(len_squared));
-    }
-
-    return velocity;
+fn clampVelocityToFixedPointRange(velocity: vec3f) -> vec3f {
+    return clampVec3LengthWithMaxSquared(
+        velocity,
+        maxFixedPointGridSpeed(),
+        maxFixedPointGridSpeedSquared(),
+    );
 }
 
 @compute
@@ -170,7 +168,7 @@ fn doGridUpdate(
         let cell_offset = cellOffsetWithinBlock(cell_index_within_block);
         cell_velocity = applyDomainBoundaryVelocity(cell_velocity, cell_offset);
     }
-    cell_velocity = limitVelocityToCfl(cell_velocity);
+    cell_velocity = clampVelocityToFixedPointRange(cell_velocity);
 
     grid_velocity[cell_index].velocity = cell_velocity;
 }

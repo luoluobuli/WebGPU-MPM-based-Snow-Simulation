@@ -137,7 +137,7 @@ const updateTimestep = (progress: number) => {
 
     <h4>Control</h4>
 
-    <div>Right-click the snow to:</div>
+    <div>Right-click particles to:</div>
 
     <label>
         <input

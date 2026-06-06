@@ -171,14 +171,12 @@ fn applyDomainBoundaryVelocity(
     return bounded_velocity;
 }
 
-fn limitVelocityToCfl(velocity: vec3f) -> vec3f {
-    let len_squared = dot(velocity, velocity);
-    let max_len_squared = uniforms.maxStableParticleSpeedSquared;
-    if len_squared > max_len_squared {
-        return velocity * (uniforms.maxStableParticleSpeed * inverseSqrt(len_squared));
-    }
-
-    return velocity;
+fn clampVelocityToFixedPointRange(velocity: vec3f) -> vec3f {
+    return clampVec3LengthWithMaxSquared(
+        velocity,
+        maxFixedPointGridSpeed(),
+        maxFixedPointGridSpeedSquared(),
+    );
 }
 
 fn loadTileVelocity(cell_number: vec3i) -> vec3f {
@@ -224,7 +222,7 @@ fn loadTileVelocity(cell_number: vec3i) -> vec3f {
         );
     }
 
-    return limitVelocityToCfl(cell_velocity);
+    return clampVelocityToFixedPointRange(cell_velocity);
 }
 
 fn velocityFromTile(cell_number: vec3i, local_grid_origin: vec3i) -> vec3f {
@@ -403,14 +401,14 @@ fn gatherMlsFromTile(particle_pos: vec3f, local_grid_origin: vec3i) -> FusedGath
         }
     }
 
-    let clamped_velocity = clampVec3LengthNoSanitizeWithMaxSquared(
+    let clamped_velocity = clampVec3LengthWithMaxSquared(
         new_particle_velocity,
-        maxStableParticleSpeed(),
-        maxStableParticleSpeedSquared(),
+        maxFixedPointGridSpeed(),
+        maxFixedPointGridSpeedSquared(),
     );
     var deformation_displacement = mat3x3f();
     if has_velocity_contribution {
-        deformation_displacement = sanitizeNonZeroDeformationDelta(scaleMatrixColumns(
+        deformation_displacement = sanitizeVelocityGradient(scaleMatrixColumns(
             b_matrix,
             uniforms.mlsDeformationGradientScale,
         ));
@@ -419,7 +417,10 @@ fn gatherMlsFromTile(particle_pos: vec3f, local_grid_origin: vec3i) -> FusedGath
     return FusedGatherResult(clamped_velocity, deformation_displacement, has_velocity_contribution);
 }
 
-fn applySimulationDomainBoundary(particle: ptr<function, ParticleData>) {
+fn applySimulationDomainBoundary(
+    particle: ptr<function, ParticleData>,
+    material: u32,
+) {
     let domain_min = uniforms.gridMinCoords;
     let domain_max = uniforms.gridMaxCoords;
     if all((*particle).pos >= domain_min) && all((*particle).pos < domain_max) {
@@ -427,6 +428,7 @@ fn applySimulationDomainBoundary(particle: ptr<function, ParticleData>) {
     }
 
     let domain_max_inside = simulationDomainMaxInside();
+    let tangential_scale = 1.0 - materialBoundaryFriction(material);
     if (*particle).pos.x < domain_min.x {
         (*particle).pos_displacement.x *= -0.5;
         (*particle).pos.x = domain_min.x;
@@ -453,6 +455,8 @@ fn applySimulationDomainBoundary(particle: ptr<function, ParticleData>) {
         (*particle).pos_displacement.z *= -0.5;
         (*particle).pos.z = domain_min.z;
         (*particle).vel.z *= -0.5;
+        (*particle).vel.x *= tangential_scale;
+        (*particle).vel.y *= tangential_scale;
     }
     if (*particle).pos.z >= domain_max.z {
         (*particle).pos_displacement.z *= -0.5;
@@ -466,6 +470,16 @@ fn integrateFusedParticle(
     flags: ptr<function, u32>,
 ) -> f32 {
     var speed_squared = 0.0;
+    let material = particleMaterial(*flags);
+
+    applyMaterialVelocityDamping(particle, material);
+    let unclamped_velocity = sanitizeVec3((*particle).vel, vec3f(0.0));
+    let unclamped_speed_squared = dot(unclamped_velocity, unclamped_velocity);
+    (*particle).vel = clampVec3LengthNoSanitizeWithMaxSquared(
+        unclamped_velocity,
+        uniforms.maxStableParticleSpeed,
+        uniforms.maxStableParticleSpeedSquared,
+    );
 
     (*particle).pos_displacement = (*particle).vel * uniforms.simulationTimestep;
     (*particle).pos += (*particle).pos_displacement;
@@ -474,8 +488,14 @@ fn integrateFusedParticle(
     var deformation_delta_remains_valid = deformation_matrices_changed;
     var deformation_plastic_changed = false;
     if deformation_matrices_changed {
-        (*particle).deformationElastic = (IDENTITY_MAT3 + (*particle).deformation_displacement)
+        let deformation_delta = deformationDeltaFromVelocityGradient((*particle).deformation_displacement);
+        if mat3x3IsZero(deformation_delta) {
+            (*particle).deformation_displacement = mat3x3f();
+            deformation_delta_remains_valid = false;
+        } else {
+            (*particle).deformationElastic = (IDENTITY_MAT3 + deformation_delta)
             * (*particle).deformationElastic;
+        }
 
         let deformation_det = determinant((*particle).deformationElastic);
         if deformation_det != deformation_det || deformation_det < 0.05 || deformation_det > 20.0 {
@@ -485,11 +505,11 @@ fn integrateFusedParticle(
             deformation_delta_remains_valid = false;
             deformation_plastic_changed = true;
         } else {
-            deformation_plastic_changed = applyPlasticity(particle);
+            deformation_plastic_changed = applyPlasticity(particle, material);
         }
     }
 
-    applySimulationDomainBoundary(particle);
+    applySimulationDomainBoundary(particle, material);
     resolveParticleCollision(particle);
     sanitizeParticleKinematicsWithoutDeformationDeltaWithKnownScalarRepairs(
         particle,
@@ -498,7 +518,7 @@ fn integrateFusedParticle(
     );
 
     if deformation_matrices_changed {
-        (*particle).deformation_displacement = sanitizeNonZeroDeformationDelta(
+        (*particle).deformation_displacement = sanitizeVelocityGradient(
             (*particle).deformation_displacement,
         );
         let matrix_sanitize_flags = sanitizeParticleMatricesAndGetChangedFlags(particle);
@@ -517,7 +537,7 @@ fn integrateFusedParticle(
     }
 
     if RECORD_PARTICLE_SPEED != 0u {
-        speed_squared = dot((*particle).vel, (*particle).vel);
+        speed_squared = unclamped_speed_squared;
     }
     return speed_squared;
 }
@@ -539,9 +559,10 @@ fn scatterMlsParticleToGrid(
     let stencil_weight_z = cell_weights.z;
     let particle_mass_fixed_units = (*particle).mass * FIXED_POINT_SCALE;
     let particle_momentum_fixed_units = particle_mass_fixed_units * (*particle).vel;
-    let max_particle_momentum_fixed_units = particle_mass_fixed_units * maxStableParticleSpeed();
+    let max_particle_momentum_fixed_units = particle_mass_fixed_units * maxFixedPointGridSpeed();
     let has_deformation_delta = (flags & PARTICLE_FLAG_DEFORMATION_DELTA_VALID) != 0u;
     let elastic_is_identity = (flags & PARTICLE_FLAG_ELASTIC_NON_IDENTITY) == 0u;
+    let material = particleMaterial(flags);
 
     if elastic_is_identity && !has_deformation_delta {
         for (var offset_z = -1i; offset_z <= 1i; offset_z = offset_z + 1i) {
@@ -569,14 +590,15 @@ fn scatterMlsParticleToGrid(
 
     var deformation_displacement = mat3x3f();
     if has_deformation_delta {
-        deformation_displacement = (*particle).deformation_displacement;
+        deformation_displacement = sanitizeVelocityGradient((*particle).deformation_displacement);
     }
 
     var stress_force_matrix = mat3x3f();
     if !elastic_is_identity {
         var shear_resistance = SHEAR_RESISTANCE;
         var volumetric_resistance = VOLUME_RESISTANCE;
-        hardenLameParameters((*particle).deformationPlastic, &shear_resistance, &volumetric_resistance);
+        applyMaterialLameParameters(material, &shear_resistance, &volumetric_resistance);
+        hardenLameParameters(material, (*particle).deformationPlastic, &shear_resistance, &volumetric_resistance);
         let stress = calculateStressFirstPiolaKirchhoffNonIdentity(
             (*particle).deformationElastic,
             shear_resistance,
@@ -585,7 +607,7 @@ fn scatterMlsParticleToGrid(
         stress_force_matrix = stress * transpose((*particle).deformationElastic);
     }
 
-    let affine_velocity = deformation_displacement * uniforms.invSimulationTimestep;
+    let affine_velocity = deformation_displacement;
     var mls_affine_fixed_units = particle_mass_fixed_units * affine_velocity;
     let grid_cell_dims = uniforms.gridCellDims;
     let stencil_offset_x = (vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.x)) * grid_cell_dims.x;
@@ -718,7 +740,7 @@ fn doFusedMlsG2p2g(
             let particle_index = bukkit_particle_data[thread_data.range_start + local_index];
             if particle_index < N_PARTICLES {
                 var particle = particle_data[particle_index];
-                var flags = particle_flags[particle_index] & PARTICLE_FLAG_ELASTIC_NON_IDENTITY;
+                var flags = particlePersistentFlags(particle_flags[particle_index]);
 
                 let gather_result = gatherMlsFromTile(particle.pos, local_grid_origin);
                 if gather_result.has_velocity_contribution {

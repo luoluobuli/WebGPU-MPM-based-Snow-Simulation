@@ -4,6 +4,16 @@ import { SimulationState } from "./SimulationState.svelte";
 import { onMount } from "svelte";
 import SimulationStatusPanel from "./SimulationStatusPanel.svelte";
 import SimulationControlPanel from "./SimulationControlPanel.svelte";
+import {
+    defaultSimulationScene,
+    type SimulationSceneConfig,
+} from "./SimulationScene";
+
+let {
+    scene = defaultSimulationScene,
+}: {
+    scene?: SimulationSceneConfig,
+} = $props();
 
 let status = $state("loading javascript");
 let err = $state<string | null>(null);
@@ -12,6 +22,7 @@ let canvas = $state<HTMLCanvasElement | null>(null);
 let canvasPromise = Promise.withResolvers<HTMLCanvasElement>();
 
 const simulationState = SimulationState.loadOntoCanvas({
+    getScene: () => scene,
     canvasPromise: canvasPromise.promise,
     onStatusChange: text => status = text,
     onErr: text => err = text,

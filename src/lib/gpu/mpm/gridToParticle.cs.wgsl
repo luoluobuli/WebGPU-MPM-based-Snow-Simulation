@@ -24,7 +24,7 @@ fn doGridToParticle(
     if thread_index >= N_PARTICLES { return; }
 
     let flags = particle_flags[thread_index];
-    let persistent_flags = flags & PARTICLE_FLAG_ELASTIC_NON_IDENTITY;
+    let persistent_flags = particlePersistentFlags(flags);
     let particle_pos = particle_data[thread_index].pos;
     let particle_grid_coord = calculateGridCoordinate(particle_pos);
     if !gridCoordinateCanTouchGrid(particle_grid_coord) {
@@ -149,17 +149,17 @@ fn doGridToParticle(
             }
         }
 
-        let new_particle_velocity = clampVec3LengthNoSanitizeWithMaxSquared(
+        let new_particle_velocity = clampVec3LengthWithMaxSquared(
             new_particle_velocity_in,
-            maxStableParticleSpeed(),
-            maxStableParticleSpeedSquared(),
+            maxFixedPointGridSpeed(),
+            maxFixedPointGridSpeedSquared(),
         );
         
         // Defer position and deformation update to integrateParticles
         particle_data[thread_index].vel = new_particle_velocity;
         var deformation_displacement = mat3x3f();
         if has_velocity_contribution {
-            deformation_displacement = sanitizeNonZeroDeformationDelta(
+            deformation_displacement = sanitizeVelocityGradient(
                 total_velocity_gradient * uniforms.explicitDeformationGradientScale
             );
         }
@@ -263,14 +263,14 @@ fn doGridToParticle(
             }
         }
 
-        let new_particle_velocity = clampVec3LengthNoSanitizeWithMaxSquared(
+        let new_particle_velocity = clampVec3LengthWithMaxSquared(
             new_particle_velocity_in,
-            maxStableParticleSpeed(),
-            maxStableParticleSpeedSquared(),
+            maxFixedPointGridSpeed(),
+            maxFixedPointGridSpeedSquared(),
         );
         var deformation_displacement = mat3x3f();
         if has_velocity_contribution {
-            deformation_displacement = sanitizeNonZeroDeformationDelta(scaleMatrixColumns(
+            deformation_displacement = sanitizeVelocityGradient(scaleMatrixColumns(
                 B,
                 uniforms.mlsDeformationGradientScale,
             ));

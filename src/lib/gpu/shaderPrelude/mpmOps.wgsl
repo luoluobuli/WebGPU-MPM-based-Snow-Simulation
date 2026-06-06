@@ -13,16 +13,98 @@ struct ParticleData {
 
 const FIXED_POINT_SCALE = 65536.0;
 const INV_FIXED_POINT_SCALE = 1.0 / FIXED_POINT_SCALE;
+const MAX_FIXED_POINT_I32 = 2147483000.0;
+const MAX_FIXED_POINT_GRID_SPEED = MAX_FIXED_POINT_I32 * INV_FIXED_POINT_SCALE;
 const DEFAULT_PARTICLE_MASS = 1.0 / 3.0;
 const PARTICLE_FLAG_DEFORMATION_DELTA_VALID = 1u;
 const PARTICLE_FLAG_ELASTIC_NON_IDENTITY = 2u;
+const PARTICLE_MATERIAL_SHIFT = 8u;
+const PARTICLE_MATERIAL_MASK = 3u << PARTICLE_MATERIAL_SHIFT;
+const PARTICLE_MATERIAL_DEFAULT = 0u;
+const PARTICLE_MATERIAL_SOIL = 1u;
+const PARTICLE_MATERIAL_BARK = 2u;
+const PARTICLE_MATERIAL_LEAF = 3u;
 const PARTICLE_MATRIX_ELASTIC_CHANGED = 1u;
 const PARTICLE_MATRIX_PLASTIC_CHANGED = 2u;
+const MATERIAL_DAMPING_REFERENCE_TIMESTEP_S = 1.0 / 60.0;
 
 struct QuadraticBSplineStencilVectors {
     x: vec3f,
     y: vec3f,
     z: vec3f,
+}
+
+fn materialFlagFromId(material: u32) -> u32 {
+    return (material & 3u) << PARTICLE_MATERIAL_SHIFT;
+}
+
+fn particleMaterial(flags: u32) -> u32 {
+    return (flags & PARTICLE_MATERIAL_MASK) >> PARTICLE_MATERIAL_SHIFT;
+}
+
+fn particlePersistentFlags(flags: u32) -> u32 {
+    return flags & (PARTICLE_FLAG_ELASTIC_NON_IDENTITY | PARTICLE_MATERIAL_MASK);
+}
+
+fn particleMassForMaterial(material: u32) -> f32 {
+    if material == PARTICLE_MATERIAL_SOIL {
+        return 0.82;
+    }
+    if material == PARTICLE_MATERIAL_BARK {
+        return 0.48;
+    }
+    if material == PARTICLE_MATERIAL_LEAF {
+        return 0.18;
+    }
+
+    return DEFAULT_PARTICLE_MASS;
+}
+
+fn materialVelocityDampingPerReferenceStep(material: u32) -> vec3f {
+    if material == PARTICLE_MATERIAL_SOIL {
+        return vec3f(0.72, 0.72, 0.82);
+    }
+    if material == PARTICLE_MATERIAL_BARK {
+        return vec3f(0.985, 0.985, 0.99);
+    }
+    if material == PARTICLE_MATERIAL_LEAF {
+        return vec3f(0.965, 0.965, 0.975);
+    }
+
+    return vec3f(1.0);
+}
+
+fn materialVelocityDamping(material: u32) -> vec3f {
+    // Damping values are authored as 60 Hz frame retention. Scale them to the
+    // current substep so CFL subdivision does not make gravity look weaker.
+    return pow(
+        materialVelocityDampingPerReferenceStep(material),
+        vec3f(uniforms.simulationTimestep / MATERIAL_DAMPING_REFERENCE_TIMESTEP_S),
+    );
+}
+
+fn materialBoundaryFriction(material: u32) -> f32 {
+    if material == PARTICLE_MATERIAL_SOIL {
+        return 0.92;
+    }
+    if material == PARTICLE_MATERIAL_BARK {
+        return 0.58;
+    }
+    if material == PARTICLE_MATERIAL_LEAF {
+        return 0.48;
+    }
+
+    return 0.35;
+}
+
+fn applyMaterialVelocityDamping(
+    particle: ptr<function, ParticleData>,
+    material: u32,
+) {
+    let gravity_delta = uniforms.gravityDeltaVelocity;
+    (*particle).vel = ((*particle).vel - gravity_delta)
+        * materialVelocityDamping(material)
+        + gravity_delta;
 }
 
 fn calculateGridCoordinate(pos: vec3f) -> vec3f {
@@ -66,12 +148,12 @@ fn sanitizeVec3(value: vec3f, fallback: vec3f) -> vec3f {
     );
 }
 
-fn maxStableParticleSpeed() -> f32 {
-    return uniforms.maxStableParticleSpeed;
+fn maxFixedPointGridSpeed() -> f32 {
+    return MAX_FIXED_POINT_GRID_SPEED;
 }
 
-fn maxStableParticleSpeedSquared() -> f32 {
-    return uniforms.maxStableParticleSpeedSquared;
+fn maxFixedPointGridSpeedSquared() -> f32 {
+    return MAX_FIXED_POINT_GRID_SPEED * MAX_FIXED_POINT_GRID_SPEED;
 }
 
 fn maxStableParticleDisplacement() -> f32 {
@@ -141,6 +223,26 @@ fn sanitizeDeformationDelta(value: mat3x3f) -> mat3x3f {
     return sanitizeNonZeroDeformationDelta(value);
 }
 
+fn sanitizeNonZeroVelocityGradient(value: mat3x3f) -> mat3x3f {
+    if !isFiniteMat3(value) {
+        return mat3x3f();
+    }
+
+    return clampMatrixComponents(value, 0.35 * max(uniforms.invSimulationTimestep, 1.0));
+}
+
+fn sanitizeVelocityGradient(value: mat3x3f) -> mat3x3f {
+    if mat3x3IsZero(value) {
+        return value;
+    }
+
+    return sanitizeNonZeroVelocityGradient(value);
+}
+
+fn deformationDeltaFromVelocityGradient(velocity_gradient: mat3x3f) -> mat3x3f {
+    return sanitizeDeformationDelta(velocity_gradient * uniforms.simulationTimestep);
+}
+
 fn simulationDomainMaxInside() -> vec3f {
     return uniforms.simulationDomainMaxInside;
 }
@@ -168,8 +270,8 @@ fn sanitizeParticleKinematicsWithoutDeformationDelta(particle: ptr<function, Par
 
     (*particle).vel = clampVec3LengthWithMaxSquared(
         (*particle).vel,
-        maxStableParticleSpeed(),
-        maxStableParticleSpeedSquared(),
+        maxFixedPointGridSpeed(),
+        maxFixedPointGridSpeedSquared(),
     );
     (*particle).pos_displacement = clampVec3LengthWithMaxSquared(
         (*particle).pos_displacement,
@@ -194,8 +296,8 @@ fn sanitizeParticleKinematicsWithoutDeformationDeltaWithKnownScalarRepairs(
 
     (*particle).vel = clampVec3LengthWithMaxSquared(
         (*particle).vel,
-        maxStableParticleSpeed(),
-        maxStableParticleSpeedSquared(),
+        maxFixedPointGridSpeed(),
+        maxFixedPointGridSpeedSquared(),
     );
     (*particle).pos_displacement = clampVec3LengthWithMaxSquared(
         (*particle).pos_displacement,
@@ -206,7 +308,7 @@ fn sanitizeParticleKinematicsWithoutDeformationDeltaWithKnownScalarRepairs(
 
 fn sanitizeParticleKinematics(particle: ptr<function, ParticleData>) {
     sanitizeParticleKinematicsWithoutDeformationDelta(particle);
-    (*particle).deformation_displacement = sanitizeDeformationDelta((*particle).deformation_displacement);
+    (*particle).deformation_displacement = sanitizeVelocityGradient((*particle).deformation_displacement);
 }
 
 fn sanitizeParticleMatricesAndGetChangedFlags(particle: ptr<function, ParticleData>) -> u32 {

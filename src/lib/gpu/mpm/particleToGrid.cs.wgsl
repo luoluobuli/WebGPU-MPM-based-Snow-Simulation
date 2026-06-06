@@ -65,6 +65,7 @@ fn doParticleToGrid(
     if thread_index >= N_PARTICLES { return; }
 
     let flags = particle_flags[thread_index];
+    let material = particleMaterial(flags);
     var particle_pos = particleDataIn[thread_index].pos;
     var particle_mass = DEFAULT_PARTICLE_MASS;
     var particle_vel = vec3f(0.0);
@@ -116,7 +117,9 @@ fn doParticleToGrid(
         if SANITIZE_PARTICLES_IN_P2G == 0u {
             has_deformation_delta = (flags & PARTICLE_FLAG_DEFORMATION_DELTA_VALID) != 0u;
             if has_deformation_delta {
-                deformation_displacement = particleDataIn[thread_index].deformation_displacement;
+                deformation_displacement = sanitizeVelocityGradient(
+                    particleDataIn[thread_index].deformation_displacement,
+                );
             }
         } else {
             has_deformation_delta = !mat3x3IsZero(deformation_displacement);
@@ -170,7 +173,8 @@ fn doParticleToGrid(
         }
         var shear_resistance = SHEAR_RESISTANCE;
         var volumetric_resistance = VOLUME_RESISTANCE;
-        hardenLameParameters(deformation_plastic, &shear_resistance, &volumetric_resistance);
+        applyMaterialLameParameters(material, &shear_resistance, &volumetric_resistance);
+        hardenLameParameters(material, deformation_plastic, &shear_resistance, &volumetric_resistance);
         let stress = calculateStressFirstPiolaKirchhoffNonIdentity(
             deformation_elastic,
             shear_resistance,
@@ -179,10 +183,10 @@ fn doParticleToGrid(
         stress_force_matrix = stress * transpose(deformation_elastic);
     }
 
-    let max_particle_momentum_fixed_units = particle_mass_fixed_units * maxStableParticleSpeed();
+    let max_particle_momentum_fixed_units = particle_mass_fixed_units * maxFixedPointGridSpeed();
 
     if USE_MLS_MPM != 0u {
-        let affine_velocity = deformation_displacement * uniforms.invSimulationTimestep;
+        let affine_velocity = deformation_displacement;
         var mls_affine_fixed_units = particle_mass_fixed_units * affine_velocity;
         let grid_cell_dims = uniforms.gridCellDims;
         let stencil_offset_x = (vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.x)) * grid_cell_dims.x;

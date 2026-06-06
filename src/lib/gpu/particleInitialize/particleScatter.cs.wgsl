@@ -13,22 +13,24 @@ fn scatterParticles(
     if threadIndex >= arrayLength(&particles) { return; }
 
     let spawnPointIndex = min(threadIndex, arrayLength(&spawnPoints) - 1u);
+    let spawnPoint = spawnPoints[spawnPointIndex];
     let candidatePos = clamp(
-        spawnPoints[spawnPointIndex].xyz,
+        spawnPoint.xyz,
         uniforms.gridMinCoords + uniforms.gridCellDims,
         uniforms.gridMaxCoords - uniforms.gridCellDims,
     );
+    let material = u32(clamp(round(spawnPoint.w), 0.0, 3.0));
 
     let particle = &particles[threadIndex];
 
     (*particle).pos = candidatePos;
     (*particle)._hom = 1;
     (*particle).vel = vec3f();
-    (*particle).mass = DEFAULT_PARTICLE_MASS;
+    (*particle).mass = particleMassForMaterial(material);
     (*particle).deformationElastic = IDENTITY_MAT3;
     (*particle).deformationPlastic = IDENTITY_MAT3;
 
     (*particle).pos_displacement = vec3f();
     (*particle).deformation_displacement = mat3x3f();
-    particle_flags[threadIndex] = 0u;
+    particle_flags[threadIndex] = materialFlagFromId(material);
 }

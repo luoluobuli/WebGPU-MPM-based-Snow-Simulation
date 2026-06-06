@@ -72,6 +72,58 @@ export class GpuColliderBufferManager {
         textures: ImageBitmap[],
         indices: number[],
     }) {
+        if (vertices.length === 0 || indices.length === 0) {
+            this.minCoords = [0, 0, 0];
+            this.maxCoords = [0, 0, 0];
+            this.numIndices = 0;
+            this.numTextures = 0;
+            this.indicesOffset = 0;
+            this.verticesOffset = 0;
+            this.normalsOffset = 0;
+            this.uvsOffset = 0;
+            this.materialIndicesOffset = 0;
+
+            this.colliderDataBuffer = device.createBuffer({
+                label: "disabled collider data buffer",
+                size: 4,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX,
+            });
+
+            this.sampler = device.createSampler({
+                magFilter: "linear",
+                minFilter: "linear",
+                mipmapFilter: "linear",
+                addressModeU: "repeat",
+                addressModeV: "repeat",
+            });
+
+            this.textureArray = device.createTexture({
+                label: "disabled collider dummy texture",
+                size: [1, 1, 1],
+                format: "rgba8unorm",
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            });
+            device.queue.writeTexture(
+                { texture: this.textureArray },
+                new Uint8Array([255, 255, 255, 255]),
+                { bytesPerRow: 4 },
+                [1, 1, 1],
+            );
+            this.textureArrayView = this.textureArray.createView({
+                dimension: "2d-array",
+            });
+
+            const disabledSdf = new Float32Array([1e6]);
+            this.colliderSdfBuffer = device.createBuffer({
+                label: "disabled collider SDF buffer",
+                size: disabledSdf.byteLength,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+            device.queue.writeBuffer(this.colliderSdfBuffer, 0, disabledSdf);
+
+            return;
+        }
+
         const meshMin: Vec3 = [Infinity, Infinity, Infinity];
         const meshMax: Vec3 = [-Infinity, -Infinity, -Infinity];
         for (let i = 0; i < vertices.length; i+=3) {

@@ -7,10 +7,14 @@ fn frag(
     let blend_elastic_fac = log(in.deformation_elastic_volume) * 240 + 0.85;
     let blend_plastic_fac = log(in.deformation_plastic_volume) * 24 + 0.85;
 
-    return vec4f(
+    let deformation_color = vec3f(
         mix(0, 1, blend_elastic_fac),
         mix(0, 1, blend_plastic_fac),
-        0.85,
+        0.85
+    );
+
+    return vec4f(
+        particleAppearanceColor(in.appearance, deformation_color),
         1,
     );
 }

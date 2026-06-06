@@ -1,5 +1,6 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> particle_data: array<ParticleData>;
+@group(0) @binding(2) var<storage, read> particle_appearance: array<u32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -10,6 +11,7 @@ struct VertexOutput {
     @location(4) elastic_volume_fac: f32,
     @location(5) shape_params: vec4f,
     @location(6) grain_params: vec4f,
+    @location(7) appearance: vec4f,
 }
 
 const BASE_PARTICLE_RADIUS = 0.1;
@@ -73,6 +75,7 @@ fn vert(
     out.elastic_volume_fac = determinant(particle.deformationElastic);
     out.shape_params = vec4f(axis_scale, depth_scale, seed.x);
     out.grain_params = grain_params;
+    out.appearance = decodeParticleAppearance(particle_appearance[instance_index]);
 
     return out;
 }

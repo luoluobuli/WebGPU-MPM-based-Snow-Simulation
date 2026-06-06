@@ -42,7 +42,10 @@ fn recordWorkgroupMaxParticleSpeed(local_index: u32, speed_squared: f32) {
     }
 }
 
-fn applySimulationDomainBoundary(particle: ptr<function, ParticleData>) {
+fn applySimulationDomainBoundary(
+    particle: ptr<function, ParticleData>,
+    material: u32,
+) {
     let domain_min = uniforms.gridMinCoords;
     let domain_max = uniforms.gridMaxCoords;
     if all((*particle).pos >= domain_min) && all((*particle).pos < domain_max) {
@@ -50,6 +53,7 @@ fn applySimulationDomainBoundary(particle: ptr<function, ParticleData>) {
     }
 
     let domain_max_inside = simulationDomainMaxInside();
+    let tangential_scale = 1.0 - materialBoundaryFriction(material);
     if (*particle).pos.x < domain_min.x {
         (*particle).pos_displacement.x *= -0.5;
         (*particle).pos.x = domain_min.x;
@@ -76,6 +80,8 @@ fn applySimulationDomainBoundary(particle: ptr<function, ParticleData>) {
         (*particle).pos_displacement.z *= -0.5;
         (*particle).pos.z = domain_min.z;
         (*particle).vel.z *= -0.5;
+        (*particle).vel.x *= tangential_scale;
+        (*particle).vel.y *= tangential_scale;
     }
     if (*particle).pos.z >= domain_max.z {
         (*particle).pos_displacement.z *= -0.5;
@@ -98,6 +104,16 @@ fn integrateParticles(
         let sparse_grid_generation = sparse_grid.current_generation;
         var particle = particle_data[particle_index];
         var flags = particle_flags[particle_index];
+        let material = particleMaterial(flags);
+
+        applyMaterialVelocityDamping(&particle, material);
+        let unclamped_velocity = sanitizeVec3(particle.vel, vec3f(0.0));
+        let unclamped_speed_squared = dot(unclamped_velocity, unclamped_velocity);
+        particle.vel = clampVec3LengthNoSanitizeWithMaxSquared(
+            unclamped_velocity,
+            uniforms.maxStableParticleSpeed,
+            uniforms.maxStableParticleSpeedSquared,
+        );
 
         // let gravitational_acceleration = vec3f(0, 0, -9.81);
         // particle.pos_displacement += gravitational_acceleration * uniforms.simulationTimestep * uniforms.simulationTimestep;
@@ -109,7 +125,13 @@ fn integrateParticles(
         var deformation_delta_remains_valid = deformation_matrices_changed;
         var deformation_plastic_changed = false;
         if deformation_matrices_changed {
-            particle.deformationElastic = (IDENTITY_MAT3 + particle.deformation_displacement) * particle.deformationElastic;
+            let deformation_delta = deformationDeltaFromVelocityGradient(particle.deformation_displacement);
+            if mat3x3IsZero(deformation_delta) {
+                particle.deformation_displacement = mat3x3f();
+                deformation_delta_remains_valid = false;
+            } else {
+                particle.deformationElastic = (IDENTITY_MAT3 + deformation_delta) * particle.deformationElastic;
+            }
 
             let deformation_det = determinant(particle.deformationElastic);
             if deformation_det != deformation_det || deformation_det < 0.05 || deformation_det > 20.0 {
@@ -119,11 +141,11 @@ fn integrateParticles(
                 deformation_delta_remains_valid = false;
                 deformation_plastic_changed = true;
             } else {
-                deformation_plastic_changed = applyPlasticity(&particle);
+                deformation_plastic_changed = applyPlasticity(&particle, material);
             }
         }
 
-        applySimulationDomainBoundary(&particle);
+        applySimulationDomainBoundary(&particle, material);
 
         // SDF collision
         resolveParticleCollision(&particle);
@@ -133,14 +155,14 @@ fn integrateParticles(
             false,
         );
         if deformation_matrices_changed {
-            particle.deformation_displacement = sanitizeNonZeroDeformationDelta(particle.deformation_displacement);
+            particle.deformation_displacement = sanitizeVelocityGradient(particle.deformation_displacement);
             let matrix_sanitize_flags = sanitizeParticleMatricesAndGetChangedFlags(&particle);
             deformation_plastic_changed = deformation_plastic_changed
                 || (matrix_sanitize_flags & PARTICLE_MATRIX_PLASTIC_CHANGED) != 0u;
             deformation_delta_remains_valid = !mat3x3IsZero(particle.deformation_displacement);
         }
         if RECORD_PARTICLE_SPEED != 0u {
-            speed_squared = dot(particle.vel, particle.vel);
+            speed_squared = unclamped_speed_squared;
         }
 
         mapParticleAffectedBlocksInGrid(particle.pos, sparse_grid_generation);

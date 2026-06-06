@@ -5,6 +5,23 @@ const POISSONS_RATIO = 0.2;
 const SHEAR_RESISTANCE = YOUNGS_MODULUS_PA / (2 * (1 + POISSONS_RATIO));
 const VOLUME_RESISTANCE = YOUNGS_MODULUS_PA * POISSONS_RATIO / ((1 + POISSONS_RATIO) * (1 - 2 * POISSONS_RATIO));
 
+fn applyMaterialLameParameters(
+    material: u32,
+    shearResistance: ptr<function, f32>,
+    volumetricResistance: ptr<function, f32>,
+) {
+    if material == PARTICLE_MATERIAL_SOIL {
+        *shearResistance = SHEAR_RESISTANCE * 0.035;
+        *volumetricResistance = VOLUME_RESISTANCE * 0.045;
+    } else if material == PARTICLE_MATERIAL_BARK {
+        *shearResistance = SHEAR_RESISTANCE * 0.055;
+        *volumetricResistance = VOLUME_RESISTANCE * 0.065;
+    } else if material == PARTICLE_MATERIAL_LEAF {
+        *shearResistance = SHEAR_RESISTANCE * 0.008;
+        *volumetricResistance = VOLUME_RESISTANCE * 0.01;
+    }
+}
+
 fn calculateStressFirstPiolaKirchhoff(
     deformation: mat3x3f,
     shearResistance: f32,
@@ -61,11 +78,16 @@ fn calculateStressNeoHookean(
 }
 
 fn hardenLameParameters(
+    material: u32,
     deformationPlastic: mat3x3f,
     baseShearResistance: ptr<function, f32>,
     baseVolumetricResistance: ptr<function, f32>,
 ) {
     const HARDENING_COEFFICIENT = 5.;
+
+    if material == PARTICLE_MATERIAL_BARK || material == PARTICLE_MATERIAL_LEAF {
+        return;
+    }
 
     if mat3x3IsIdentity(deformationPlastic) {
         return;

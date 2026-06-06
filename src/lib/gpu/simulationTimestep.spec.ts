@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    CFL_NUMBER,
     canRelaxParticleSpeedSampling,
     calculateCflLimitedSimulationTimestepS,
     calculateSimulationSubstepTimestepS,
@@ -47,6 +48,31 @@ describe("simulation timestep CFL subdivision", () => {
 
         expect(cflLimitedSimulationTimestepS).toBe(maxSimulationTimestepS);
         expect(substepsPerMaxStep).toBe(1);
+    });
+
+    it("subdivides a 256 Hz max step when measured speed exceeds the max-step CFL speed", () => {
+        const maxSimulationTimestepS = 1 / 256;
+        const maxStepCflSpeed = CFL_NUMBER * gridCellDim / maxSimulationTimestepS;
+        const measuredSpeed = maxStepCflSpeed * 1.01;
+        const cflLimitedSimulationTimestepS = calculateCflLimitedSimulationTimestepS({
+            maxSimulationTimestepS,
+            minGridCellDim: gridCellDim,
+            maxCflSpeed: measuredSpeed,
+            externalAcceleration: 9.81,
+        });
+        const substepsPerMaxStep = calculateSimulationSubstepsPerMaxStep({
+            maxSimulationTimestepS,
+            cflLimitedSimulationTimestepS,
+        });
+        const simulationSubstepTimestepS = calculateSimulationSubstepTimestepS({
+            maxSimulationTimestepS,
+            substepsPerMaxStep,
+        });
+
+        expect(substepsPerMaxStep).toBeGreaterThan(1);
+        expect(measuredSpeed * simulationSubstepTimestepS).toBeLessThanOrEqual(
+            CFL_NUMBER * gridCellDim,
+        );
     });
 
     it("relaxes speed sampling when acceleration cannot consume CFL headroom", () => {

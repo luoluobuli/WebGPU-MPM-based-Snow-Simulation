@@ -1,4 +1,5 @@
 import type { Mat4 } from "wgpu-matrix";
+import { GRAVITATIONAL_ACCELERATION_M_PER_S2 } from "$lib/gpu/gravity";
 
 const FIXED_POINT_SCALE = 65536;
 const INVERSE_PARTICLE_DENSITY = 1 / 400;
@@ -269,12 +270,12 @@ export class GpuUniformsBufferManager {
 
         upload[0] = 0;
         upload[1] = 0;
-        upload[2] = -9.81 * timestep;
+        upload[2] = -GRAVITATIONAL_ACCELERATION_M_PER_S2 * timestep;
         upload[3] = this.interactionStrength * timestep;
-        upload[4] = 4 * timestep * this.invGridCellDims[0];
-        upload[5] = 4 * timestep * this.invGridCellDims[1];
-        upload[6] = 4 * timestep * this.invGridCellDims[2];
-        upload[7] = timestep;
+        upload[4] = 4 * this.invGridCellDims[0];
+        upload[5] = 4 * this.invGridCellDims[1];
+        upload[6] = 4 * this.invGridCellDims[2];
+        upload[7] = 1;
         upload[8] = -4 * timestep * this.invGridCellDimsSquared[0] * FIXED_POINT_SCALE * INVERSE_PARTICLE_DENSITY;
         upload[9] = -4 * timestep * this.invGridCellDimsSquared[1] * FIXED_POINT_SCALE * INVERSE_PARTICLE_DENSITY;
         upload[10] = -4 * timestep * this.invGridCellDimsSquared[2] * FIXED_POINT_SCALE * INVERSE_PARTICLE_DENSITY;

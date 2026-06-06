@@ -1,40 +1,57 @@
 import { buildUniformSpawnPoints, type SpawnMeshObject } from "./buildUniformSpawnPoints";
 
+export type SpawnPointSource =
+    | {
+        type: "mesh",
+        vertices: number[][],
+        objects?: SpawnMeshObject[],
+    }
+    | {
+        type: "points",
+        points: Float32Array,
+    };
+
 export class GpuSpawnVolumeBufferManager {
     readonly spawnPointsBuffer: GPUBuffer;
     readonly nSpawnPoints: number;
 
     constructor({
         device,
-        vertices,
         nParticles,
-        objects,
+        source,
     }: {
         device: GPUDevice,
-        vertices: number[][],
         nParticles: number,
-        objects?: SpawnMeshObject[],
+        source: SpawnPointSource,
     }) {
-        const spawnVolume = buildUniformSpawnPoints(vertices, {
-            nPoints: nParticles,
-            objects,
-        });
+        const spawnPoints = source.type === "mesh"
+            ? buildUniformSpawnPoints(source.vertices, {
+                nPoints: nParticles,
+                objects: source.objects,
+            }).points
+            : source.points;
+
+        if (spawnPoints.length !== nParticles * 4) {
+            throw new Error("spawn point buffer must contain one vec4 per particle");
+        }
 
         const spawnPointsBuffer = device.createBuffer({
             label: "uniform spawn points buffer",
-            size: spawnVolume.points.byteLength,
+            size: Math.max(spawnPoints.byteLength, 4),
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        device.queue.writeBuffer(
-            spawnPointsBuffer,
-            0,
-            spawnVolume.points.buffer as ArrayBuffer,
-            spawnVolume.points.byteOffset,
-            spawnVolume.points.byteLength,
-        );
+        if (spawnPoints.byteLength > 0) {
+            device.queue.writeBuffer(
+                spawnPointsBuffer,
+                0,
+                spawnPoints.buffer as ArrayBuffer,
+                spawnPoints.byteOffset,
+                spawnPoints.byteLength,
+            );
+        }
 
         this.spawnPointsBuffer = spawnPointsBuffer;
-        this.nSpawnPoints = spawnVolume.pointCount;
+        this.nSpawnPoints = nParticles;
     }
 }

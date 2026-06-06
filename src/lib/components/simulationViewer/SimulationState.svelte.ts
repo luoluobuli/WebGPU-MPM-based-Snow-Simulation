@@ -2,8 +2,6 @@ import { onDestroy, onMount } from "svelte";
 import { GpuSnowPipelineRunner } from "../../gpu/GpuSnowPipelineRunner.svelte";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
-import modelUrl from "$lib/assets/models/snow3.glb?url";
-import colliderUrl from "$lib/assets/models/forest_scaled.glb?url";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
@@ -12,6 +10,13 @@ import type { ColliderGeometry } from "../../gpu/collider/GpuColliderBufferManag
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 import { loadEnvironmentMap } from "$lib/gpu/environmentMap/loadEnvironmentMap";
 import { ParticleControlMode } from "./ParticleControlMode";
+import {
+    defaultSimulationScene,
+    type SimulationSceneConfig,
+} from "./SimulationScene";
+import { buildProceduralForest } from "./proceduralForest";
+import type { SpawnPointSource } from "$lib/gpu/particleInitialize/GpuSpawnVolumeBufferManager";
+import { vec3 } from "wgpu-matrix";
 
 const waitForBrowserPaint = () => new Promise<void>((resolve) => {
     if (typeof requestAnimationFrame === "undefined") {
@@ -24,6 +29,64 @@ const waitForBrowserPaint = () => new Promise<void>((resolve) => {
 
 const errorToString = (error: unknown) => error instanceof Error ? error.message : String(error);
 
+const loadSpawnSource = async (
+    scene: SimulationSceneConfig,
+    nParticles: number,
+): Promise<{
+    spawnSource: SpawnPointSource,
+    particleAppearances: Uint32Array | null,
+}> => {
+    switch (scene.spawnSource.type) {
+        case "mesh": {
+            const { vertices, objects } = await loadGltfScene(scene.spawnSource.url);
+
+            return {
+                spawnSource: {
+                    type: "mesh",
+                    vertices,
+                    objects,
+                },
+                particleAppearances: null,
+            };
+        }
+
+        case "proceduralForest": {
+            const forest = buildProceduralForest({
+                nParticles,
+                seed: scene.spawnSource.seed,
+            });
+
+            return {
+                spawnSource: {
+                    type: "points",
+                    points: forest.spawnPoints,
+                },
+                particleAppearances: forest.particleAppearances,
+            };
+        }
+    }
+};
+
+const loadCollider = async (
+    scene: SimulationSceneConfig,
+): Promise<ColliderGeometry | null> => {
+    if (scene.colliderSource === null) {
+        return null;
+    }
+
+    const { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(scene.colliderSource.url);
+
+    return {
+        positions,
+        normals,
+        uvs,
+        materialIndices,
+        textures,
+        indices,
+        objects,
+    };
+};
+
 export class SimulationState {
     width = $state(300);
     height = $state(150);
@@ -35,7 +98,7 @@ export class SimulationState {
     explicitMpmMaxSimulationTimestepS = $state(1 / 192);
     mlsMpmMaxSimulationTimestepS = $state(1 / 1024);
 
-    oneSimulationStepPerFrame = $state(true);
+    oneSimulationStepPerFrame = $state(false);
 
     simulationMethodType = $state(GpuSimulationMethodType.MlsMpm);
     renderMethodType = $state(GpuRenderMethodType.Points);
@@ -62,17 +125,49 @@ export class SimulationState {
 
     private onStatusChange: ((status: string) => void) | null = null;
     private onErr: ((err: string) => void) | null = null;
+    private readonly scene: SimulationSceneConfig;
 
 
     constructor({
+        scene = defaultSimulationScene,
         onStatusChange = null,
         onErr = null,
     }: {
+        scene?: SimulationSceneConfig,
         onStatusChange?: ((status: string) => void) | null,
         onErr?: ((err: string) => void) | null,
     }) {
+        this.scene = scene;
         this.onStatusChange = onStatusChange;
         this.onErr = onErr;
+        this.nParticles = scene.nParticles;
+        this.gridResolutionX = scene.gridResolution[0];
+        this.gridResolutionY = scene.gridResolution[1];
+        this.gridResolutionZ = scene.gridResolution[2];
+        this.simulationMethodType = scene.simulationMethodType;
+        this.renderMethodType = scene.renderMethodType;
+        if (scene.timing?.explicitMpmMaxSimulationTimestepS !== undefined) {
+            this.explicitMpmMaxSimulationTimestepS = scene.timing.explicitMpmMaxSimulationTimestepS;
+        }
+        if (scene.timing?.mlsMpmMaxSimulationTimestepS !== undefined) {
+            this.mlsMpmMaxSimulationTimestepS = scene.timing.mlsMpmMaxSimulationTimestepS;
+        }
+        if (scene.timing?.oneSimulationStepPerFrame !== undefined) {
+            this.oneSimulationStepPerFrame = scene.timing.oneSimulationStepPerFrame;
+        }
+
+        if (scene.camera?.radius !== undefined) {
+            this.orbit.radius = scene.camera.radius;
+        }
+        if (scene.camera?.lat !== undefined) {
+            this.orbit.lat = scene.camera.lat;
+        }
+        if (scene.camera?.long !== undefined) {
+            this.orbit.long = scene.camera.long;
+        }
+        if (scene.camera?.offset !== undefined) {
+            this.orbit.offset = vec3.fromValues(...scene.camera.offset);
+        }
     }
 
 
@@ -89,7 +184,7 @@ export class SimulationState {
         if (restartEpoch !== this.restartEpoch) return;
         
         try {
-            this.runner.scatterParticlesInMeshVolume();
+            this.runner.scatterParticles();
 
             await this.device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
         } catch (error) {
@@ -233,15 +328,19 @@ export class SimulationState {
     }
 
     static loadOntoCanvas({
+        getScene = () => defaultSimulationScene,
         canvasPromise,
         onStatusChange,
         onErr,
     }: {
+        getScene?: () => SimulationSceneConfig,
         canvasPromise: Promise<HTMLCanvasElement>,
         onStatusChange?: (status: string) => void,
         onErr?: (err: string) => void,
     }) {
+        const scene = getScene();
         const state = new SimulationState({
+            scene,
             onStatusChange,
             onErr,
         });
@@ -260,21 +359,11 @@ export class SimulationState {
                     const { device, context, format, supportsTimestamp } = response;
                     state.device = device;
 
-                    onStatusChange?.("loading geometry...");
-                    const { vertices, objects: meshObjects } = await loadGltfScene(modelUrl);
+                    onStatusChange?.("loading particles...");
+                    const { spawnSource, particleAppearances } = await loadSpawnSource(scene, state.nParticles);
 
-                    const { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(colliderUrl);
-
-                    const collider: ColliderGeometry = {
-                        positions,
-                        normals,
-                        uvs,
-                        materialIndices,
-                        textures,
-                        indices,
-                        objects,
-                        //transform: state.transformMat,
-                    };
+                    onStatusChange?.("loading collider...");
+                    const collider = await loadCollider(scene);
 
                     onStatusChange?.("loading environment...");
                     const environmentImageBitmap = await loadEnvironmentMap();
@@ -296,9 +385,9 @@ export class SimulationState {
                         explicitMpmMaxSimulationTimestepS: () => state.explicitMpmMaxSimulationTimestepS,
                         mlsMpmMaxSimulationTimestepS: () => state.mlsMpmMaxSimulationTimestepS,
                         camera: state.camera,
-                        meshVertices: vertices,
-                        meshObjects,
-                        collider: collider,
+                        spawnSource,
+                        collider,
+                        particleAppearances,
                         getSimulationMethodType: () => state.simulationMethodType,
                         getRenderMethodType: () => state.renderMethodType,
                         oneSimulationStepPerFrame: () => state.oneSimulationStepPerFrame,

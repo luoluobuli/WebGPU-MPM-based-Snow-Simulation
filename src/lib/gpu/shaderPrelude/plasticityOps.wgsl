@@ -5,11 +5,16 @@
  * deformation matrices are updated to use a clamped amount of stretching in that direction.
  */
 fn applyPlasticity(
-    particle: ptr<function, ParticleData>
+    particle: ptr<function, ParticleData>,
+    material: u32,
 ) -> bool {
     var dE = (*particle).deformationElastic; // F_e
     var dP = (*particle).deformationPlastic; // F_p
     if mat3x3IsIdentity(dE) {
+        return false;
+    }
+
+    if material == PARTICLE_MATERIAL_BARK || material == PARTICLE_MATERIAL_LEAF {
         return false;
     }
 
@@ -30,19 +35,23 @@ fn applyPlasticity(
     let scale = transpose(rotation) * (dE); // S
     
     // thresholds of compression/stretching until yielding
-    const MIN_STRETCH_FAC = 1 - 2.5e-2; // θ_c
-    const MAX_STRETCH_FAC = 1 + 7.5e-3; // θ_s
+    var min_stretch_fac = 1 - 2.5e-2; // θ_c
+    var max_stretch_fac = 1 + 7.5e-3; // θ_s
+    if material == PARTICLE_MATERIAL_SOIL {
+        min_stretch_fac = 0.88;
+        max_stretch_fac = 1.08;
+    }
 
     // singulars = individual scale factors extracted from the scale matrix (approximate)
     let singulars = vec3f(scale[0][0], scale[1][1], scale[2][2]); // σ_0, σ_1, σ_2
 
 
     // compare the singulars to the range to know whether the material yields
-    if all(vec3f(MIN_STRETCH_FAC) <= singulars) && all(singulars <= vec3f(MAX_STRETCH_FAC)) { return false; }
+    if all(vec3f(min_stretch_fac) <= singulars) && all(singulars <= vec3f(max_stretch_fac)) { return false; }
 
 
     // clamped scale factors represent how much of the compression or stretching can actually be restored later
-    let singularsClamped = clamp(singulars, vec3f(MIN_STRETCH_FAC), vec3f(MAX_STRETCH_FAC));
+    let singularsClamped = clamp(singulars, vec3f(min_stretch_fac), vec3f(max_stretch_fac));
 
     // construct a new scale matrix from the clamped values
     let newScale = mat3x3f(
