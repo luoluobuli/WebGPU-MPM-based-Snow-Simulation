@@ -18,6 +18,7 @@ const MAX_FIXED_POINT_GRID_SPEED = MAX_FIXED_POINT_I32 * INV_FIXED_POINT_SCALE;
 const DEFAULT_PARTICLE_MASS = 1.0 / 3.0;
 const PARTICLE_FLAG_DEFORMATION_DELTA_VALID = 1u;
 const PARTICLE_FLAG_ELASTIC_NON_IDENTITY = 2u;
+const PARTICLE_FLAG_ANCHORED = 4u;
 const PARTICLE_MATERIAL_SHIFT = 8u;
 const PARTICLE_MATERIAL_MASK = 3u << PARTICLE_MATERIAL_SHIFT;
 const PARTICLE_MATERIAL_DEFAULT = 0u;
@@ -27,6 +28,7 @@ const PARTICLE_MATERIAL_LEAF = 3u;
 const PARTICLE_MATRIX_ELASTIC_CHANGED = 1u;
 const PARTICLE_MATRIX_PLASTIC_CHANGED = 2u;
 const MATERIAL_DAMPING_REFERENCE_TIMESTEP_S = 1.0 / 60.0;
+const PARTICLE_SPAWN_ANCHORED_OFFSET = 8.0;
 
 struct QuadraticBSplineStencilVectors {
     x: vec3f,
@@ -38,12 +40,44 @@ fn materialFlagFromId(material: u32) -> u32 {
     return (material & 3u) << PARTICLE_MATERIAL_SHIFT;
 }
 
+fn spawnPointMaterialIsAnchored(encodedMaterial: f32) -> bool {
+    return encodedMaterial >= PARTICLE_SPAWN_ANCHORED_OFFSET;
+}
+
+fn particleMaterialFromSpawnPoint(encodedMaterial: f32) -> u32 {
+    let material = select(
+        encodedMaterial,
+        encodedMaterial - PARTICLE_SPAWN_ANCHORED_OFFSET,
+        spawnPointMaterialIsAnchored(encodedMaterial),
+    );
+
+    return u32(clamp(round(material), 0.0, 3.0));
+}
+
+fn particleFlagsFromSpawnPoint(encodedMaterial: f32) -> u32 {
+    let material = particleMaterialFromSpawnPoint(encodedMaterial);
+    var flags = materialFlagFromId(material);
+    if spawnPointMaterialIsAnchored(encodedMaterial) {
+        flags = flags | PARTICLE_FLAG_ANCHORED;
+    }
+
+    return flags;
+}
+
 fn particleMaterial(flags: u32) -> u32 {
     return (flags & PARTICLE_MATERIAL_MASK) >> PARTICLE_MATERIAL_SHIFT;
 }
 
+fn particleIsAnchored(flags: u32) -> bool {
+    return (flags & PARTICLE_FLAG_ANCHORED) != 0u;
+}
+
 fn particlePersistentFlags(flags: u32) -> u32 {
-    return flags & (PARTICLE_FLAG_ELASTIC_NON_IDENTITY | PARTICLE_MATERIAL_MASK);
+    return flags & (
+        PARTICLE_FLAG_ELASTIC_NON_IDENTITY
+        | PARTICLE_FLAG_ANCHORED
+        | PARTICLE_MATERIAL_MASK
+    );
 }
 
 fn particleMassForMaterial(material: u32) -> f32 {
@@ -65,10 +99,10 @@ fn materialVelocityDampingPerReferenceStep(material: u32) -> vec3f {
         return vec3f(0.72, 0.72, 0.82);
     }
     if material == PARTICLE_MATERIAL_BARK {
-        return vec3f(0.985, 0.985, 0.99);
+        return vec3f(0.93, 0.93, 0.96);
     }
     if material == PARTICLE_MATERIAL_LEAF {
-        return vec3f(0.965, 0.965, 0.975);
+        return vec3f(0.86, 0.86, 0.9);
     }
 
     return vec3f(1.0);
@@ -85,13 +119,13 @@ fn materialVelocityDamping(material: u32) -> vec3f {
 
 fn materialBoundaryFriction(material: u32) -> f32 {
     if material == PARTICLE_MATERIAL_SOIL {
-        return 0.92;
+        return 0.96;
     }
     if material == PARTICLE_MATERIAL_BARK {
-        return 0.58;
+        return 0.91;
     }
     if material == PARTICLE_MATERIAL_LEAF {
-        return 0.48;
+        return 0.86;
     }
 
     return 0.35;
@@ -105,6 +139,14 @@ fn applyMaterialVelocityDamping(
     (*particle).vel = ((*particle).vel - gravity_delta)
         * materialVelocityDamping(material)
         + gravity_delta;
+}
+
+fn resetAnchoredParticleMotion(particle: ptr<function, ParticleData>) {
+    (*particle).vel = vec3f();
+    (*particle).pos_displacement = vec3f();
+    (*particle).deformation_displacement = mat3x3f();
+    (*particle).deformationElastic = IDENTITY_MAT3;
+    (*particle).deformationPlastic = IDENTITY_MAT3;
 }
 
 fn calculateGridCoordinate(pos: vec3f) -> vec3f {

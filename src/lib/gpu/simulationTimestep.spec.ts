@@ -1,18 +1,74 @@
 import { describe, expect, it } from "vitest";
 import {
     CFL_NUMBER,
+    ELASTIC_CFL_NUMBER,
     MAX_CFL_SUBSTEPS_PER_MAX_STEP,
     MAX_SIMULATION_SUBSTEPS_PER_FRAME,
+    MPM_ELASTIC_MATERIALS,
+    MPM_MAX_ELASTIC_WAVE_SPEED,
     canRelaxParticleSpeedSampling,
     calculateCflLimitedSimulationTimestepS,
+    calculateElasticWaveCflLimitedTimestepS,
+    calculateElasticWaveSpeed,
     calculateSimulationFrameSchedule,
     calculateSimulationSubstepTimestepS,
     calculateSimulationSubstepsPerMaxStep,
 } from "./simulationTimestep";
+import stressTensorOpsSrc from "./shaderPrelude/stressTensorOps.wgsl?raw";
+import uniformsManagerSrc from "./uniforms/GpuUniformsBufferManager.ts?raw";
 
 const gridCellDim = 10 / 384;
 
 describe("simulation timestep CFL subdivision", () => {
+    it("computes elastic wave speed from Lame stiffness and particle density", () => {
+        expect(calculateElasticWaveSpeed({
+            shearResistance: 3,
+            volumetricResistance: 5,
+            density: 2,
+        })).toBeCloseTo(Math.sqrt((5 + 2 * 3) / 2));
+
+        expect(calculateElasticWaveSpeed({
+            shearResistance: 3,
+            volumetricResistance: 5,
+            density: 0,
+        })).toBe(0);
+    });
+
+    it("keeps timestep material constants synchronized with shader stiffness and density", () => {
+        expect(stressTensorOpsSrc).toContain("YOUNGS_MODULUS_PA = 1.4e5");
+        expect(stressTensorOpsSrc).toContain("POISSONS_RATIO = 0.2");
+        expect(stressTensorOpsSrc).toContain("SOIL_SHEAR_RESISTANCE_SCALE = 0.1");
+        expect(stressTensorOpsSrc).toContain("SOIL_VOLUME_RESISTANCE_SCALE = 0.14");
+        expect(stressTensorOpsSrc).toContain("BARK_SHEAR_RESISTANCE_SCALE = 0.5");
+        expect(stressTensorOpsSrc).toContain("BARK_VOLUME_RESISTANCE_SCALE = 0.62");
+        expect(stressTensorOpsSrc).toContain("LEAF_SHEAR_RESISTANCE_SCALE = 0.14");
+        expect(stressTensorOpsSrc).toContain("LEAF_VOLUME_RESISTANCE_SCALE = 0.18");
+        expect(uniformsManagerSrc).toContain("INVERSE_PARTICLE_DENSITY = 1 / 400");
+
+        const [snow, soil, bark, leaf] = MPM_ELASTIC_MATERIALS;
+
+        expect(soil.shearResistance / snow.shearResistance).toBeCloseTo(0.1);
+        expect(soil.volumetricResistance / snow.volumetricResistance).toBeCloseTo(0.14);
+        expect(bark.shearResistance / snow.shearResistance).toBeCloseTo(0.5);
+        expect(bark.volumetricResistance / snow.volumetricResistance).toBeCloseTo(0.62);
+        expect(leaf.shearResistance / snow.shearResistance).toBeCloseTo(0.14);
+        expect(leaf.volumetricResistance / snow.volumetricResistance).toBeCloseTo(0.18);
+        expect(MPM_MAX_ELASTIC_WAVE_SPEED).toBeCloseTo(calculateElasticWaveSpeed(snow));
+    });
+
+    it("derives elastic CFL timestep from material wave speed and grid spacing", () => {
+        const elasticLimitedTimestepS = calculateElasticWaveCflLimitedTimestepS({
+            minGridCellDim: gridCellDim,
+            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+        });
+
+        expect(elasticLimitedTimestepS).toBeCloseTo(
+            ELASTIC_CFL_NUMBER * gridCellDim / MPM_MAX_ELASTIC_WAVE_SPEED,
+        );
+        expect(elasticLimitedTimestepS).toBeGreaterThan(1 / 1024);
+        expect(elasticLimitedTimestepS).toBeLessThan(1 / 384);
+    });
+
     it("keeps a high max timestep as total simulated time when CFL requires smaller substeps", () => {
         const maxSimulationTimestepS = 1 / 50;
         const cflLimitedSimulationTimestepS = calculateCflLimitedSimulationTimestepS({
@@ -76,6 +132,57 @@ describe("simulation timestep CFL subdivision", () => {
         expect(measuredSpeed * simulationSubstepTimestepS).toBeLessThanOrEqual(
             CFL_NUMBER * gridCellDim,
         );
+    });
+
+    it("subdivides large authored MLS-MPM timesteps by elastic-wave CFL", () => {
+        const maxSimulationTimestepS = 1 / 384;
+        const elasticLimitedTimestepS = calculateElasticWaveCflLimitedTimestepS({
+            minGridCellDim: gridCellDim,
+            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+        });
+        const cflLimitedSimulationTimestepS = calculateCflLimitedSimulationTimestepS({
+            maxSimulationTimestepS,
+            minGridCellDim: gridCellDim,
+            maxCflSpeed: 0,
+            externalAcceleration: 9.81,
+            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+        });
+        const substepsPerMaxStep = calculateSimulationSubstepsPerMaxStep({
+            maxSimulationTimestepS,
+            cflLimitedSimulationTimestepS,
+        });
+        const simulationSubstepTimestepS = calculateSimulationSubstepTimestepS({
+            maxSimulationTimestepS,
+            substepsPerMaxStep,
+        });
+
+        expect(cflLimitedSimulationTimestepS).toBeCloseTo(elasticLimitedTimestepS);
+        expect(substepsPerMaxStep).toBe(3);
+        expect(simulationSubstepTimestepS).toBeLessThanOrEqual(elasticLimitedTimestepS);
+        expect(simulationSubstepTimestepS * substepsPerMaxStep).toBeCloseTo(maxSimulationTimestepS);
+    });
+
+    it("leaves the authored 1024 Hz MLS-MPM step unsubdivided by elastic-wave CFL", () => {
+        const maxSimulationTimestepS = 1 / 1024;
+        const elasticLimitedTimestepS = calculateElasticWaveCflLimitedTimestepS({
+            minGridCellDim: gridCellDim,
+            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+        });
+        const cflLimitedSimulationTimestepS = calculateCflLimitedSimulationTimestepS({
+            maxSimulationTimestepS,
+            minGridCellDim: gridCellDim,
+            maxCflSpeed: 0,
+            externalAcceleration: 9.81,
+            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+        });
+        const substepsPerMaxStep = calculateSimulationSubstepsPerMaxStep({
+            maxSimulationTimestepS,
+            cflLimitedSimulationTimestepS,
+        });
+
+        expect(elasticLimitedTimestepS).toBeGreaterThan(maxSimulationTimestepS);
+        expect(cflLimitedSimulationTimestepS).toBe(maxSimulationTimestepS);
+        expect(substepsPerMaxStep).toBe(1);
     });
 
     it("caps pathological CFL subdivision before it can dominate frame work", () => {

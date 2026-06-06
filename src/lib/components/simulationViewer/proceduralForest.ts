@@ -23,7 +23,12 @@ type TreeSpec = {
 const DOMAIN_MIN = -5;
 const DOMAIN_MAX = 5;
 const GROUND_BASE_Z = -4.36;
-const GROUND_THICKNESS = 0.96;
+const GROUND_THICKNESS = 1.08;
+const GROUND_PARTICLE_FRACTION = 0.24;
+const TRUNK_PARTICLE_FRACTION = 0.3;
+const ROOT_PARTICLE_FRACTION = 0.13;
+const BRANCH_PARTICLE_FRACTION = 0.18;
+const ANCHORED_PARTICLE_MATERIAL_OFFSET = 8;
 
 const clamp = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
@@ -60,12 +65,13 @@ const writePoint = (
     index: number,
     pos: Vec3,
     material: ParticleAppearanceMaterial,
+    anchored = false,
 ) => {
     const offset = index * 4;
     points[offset] = clamp(pos[0], DOMAIN_MIN + 0.08, DOMAIN_MAX - 0.08);
     points[offset + 1] = clamp(pos[1], DOMAIN_MIN + 0.08, DOMAIN_MAX - 0.08);
     points[offset + 2] = clamp(pos[2], DOMAIN_MIN + 0.08, DOMAIN_MAX - 0.08);
-    points[offset + 3] = material;
+    points[offset + 3] = material + (anchored ? ANCHORED_PARTICLE_MATERIAL_OFFSET : 0);
 };
 
 const colorVariation = (
@@ -85,38 +91,34 @@ const colorVariation = (
 
 const buildTreeSpecs = (seed: number): TreeSpec[] => {
     const bases: [number, number][] = [
-        [-3.4, -2.6],
-        [-1.4, -3.25],
-        [1.0, -2.75],
-        [3.2, -2.1],
-        [-3.15, 0.2],
-        [-0.75, -0.2],
-        [1.85, 0.1],
-        [-2.0, 2.6],
-        [0.6, 2.25],
-        [3.05, 2.5],
+        [-2.75, -2.2],
+        [0.05, -2.55],
+        [2.55, -1.75],
+        [-2.45, 0.8],
+        [0.55, 0.35],
+        [2.35, 1.8],
     ];
 
     return bases.map(([x, y], index) => {
-        const jitterX = mix(-0.28, 0.28, hash01(seed, index, 1));
-        const jitterY = mix(-0.28, 0.28, hash01(seed, index, 2));
+        const jitterX = mix(-0.2, 0.2, hash01(seed, index, 1));
+        const jitterY = mix(-0.2, 0.2, hash01(seed, index, 2));
         const baseX = x + jitterX;
         const baseY = y + jitterY;
         const baseZ = terrainHeight(baseX, baseY) + 0.1;
-        const height = mix(3.3, 5.25, hash01(seed, index, 3));
-        const radius = mix(0.16, 0.31, hash01(seed, index, 4));
-        const canopyZ = baseZ + height * mix(0.68, 0.82, hash01(seed, index, 5));
+        const height = mix(2.85, 4.15, hash01(seed, index, 3));
+        const radius = mix(0.24, 0.4, hash01(seed, index, 4));
+        const canopyZ = baseZ + height * mix(0.58, 0.72, hash01(seed, index, 5));
         const conifer = hash01(seed, index, 6) > 0.58;
         const canopyRadius: Vec3 = conifer
             ? [
-                mix(0.68, 0.96, hash01(seed, index, 7)),
-                mix(0.68, 0.96, hash01(seed, index, 8)),
-                mix(1.12, 1.52, hash01(seed, index, 9)),
+                mix(0.52, 0.76, hash01(seed, index, 7)),
+                mix(0.52, 0.76, hash01(seed, index, 8)),
+                mix(0.85, 1.15, hash01(seed, index, 9)),
             ]
             : [
-                mix(0.85, 1.32, hash01(seed, index, 7)),
-                mix(0.78, 1.22, hash01(seed, index, 8)),
-                mix(0.58, 0.92, hash01(seed, index, 9)),
+                mix(0.62, 0.96, hash01(seed, index, 7)),
+                mix(0.58, 0.9, hash01(seed, index, 8)),
+                mix(0.46, 0.68, hash01(seed, index, 9)),
             ];
 
         return {
@@ -131,8 +133,8 @@ const buildTreeSpecs = (seed: number): TreeSpec[] => {
             ],
             conifer,
             lean: [
-                mix(-0.28, 0.28, hash01(seed, index, 13)),
-                mix(-0.28, 0.28, hash01(seed, index, 14)),
+                mix(-0.12, 0.12, hash01(seed, index, 13)),
+                mix(-0.12, 0.12, hash01(seed, index, 14)),
                 0,
             ],
         };
@@ -155,7 +157,7 @@ const writeGroundParticle = (
     const moss = hash01(seed, index, 204) > 0.74;
     const baseColor: Vec3 = moss ? [0.16, 0.23, 0.12] : [0.25, 0.17, 0.1];
 
-    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Soil);
+    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Soil, true);
     appearances[index] = packParticleAppearance({
         color: colorVariation(baseColor, 0.28, seed, index),
         material: ParticleAppearanceMaterial.Soil,
@@ -173,16 +175,16 @@ const writeTrunkParticle = (
     const t = hash01(seed, index, 301);
     const angle = hash01(seed, index, 302) * Math.PI * 2;
     const radial = Math.sqrt(hash01(seed, index, 303));
-    const radius = tree.radius * mix(1, 0.42, t) * radial;
+    const radius = tree.radius * mix(1.08, 0.58, t) * radial;
     const bendX = tree.lean[0] * t * t;
     const bendY = tree.lean[1] * t * t;
-    const barkRidge = Math.sin(angle * 7 + t * 18) * 0.022;
+    const barkRidge = Math.sin(angle * 7 + t * 18) * 0.018;
     const x = tree.base[0] + bendX + Math.cos(angle) * (radius + barkRidge);
     const y = tree.base[1] + bendY + Math.sin(angle) * (radius + barkRidge);
     const z = tree.base[2] + tree.height * t;
     const barkBase: Vec3 = [0.31, 0.19, 0.1];
 
-    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Bark);
+    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Bark, true);
     appearances[index] = packParticleAppearance({
         color: colorVariation(barkBase, 0.34, seed, index),
         material: ParticleAppearanceMaterial.Bark,
@@ -194,13 +196,13 @@ const branchPoint = (
     seed: number,
     index: number,
 ): Vec3 => {
-    const branchIndex = Math.floor(hash01(seed, index, 401) * 7);
-    const startT = mix(0.34, 0.82, hash01(seed, branchIndex, 402));
+    const branchIndex = Math.floor(hash01(seed, index, 401) * 6);
+    const startT = mix(0.32, 0.72, hash01(seed, branchIndex, 402));
     const along = hash01(seed, index, 403);
     const azimuth = branchIndex * 2.39996 + mix(-0.35, 0.35, hash01(seed, branchIndex, 404));
-    const length = tree.radius * mix(3.7, 6.8, hash01(seed, branchIndex, 405));
-    const lift = mix(0.16, 0.48, hash01(seed, branchIndex, 406));
-    const radius = tree.radius * mix(0.45, 0.18, along) * Math.sqrt(hash01(seed, index, 407));
+    const length = tree.radius * mix(2.5, 4.4, hash01(seed, branchIndex, 405));
+    const lift = mix(0.08, 0.28, hash01(seed, branchIndex, 406));
+    const radius = tree.radius * mix(0.56, 0.24, along) * Math.sqrt(hash01(seed, index, 407));
     const radialAngle = hash01(seed, index, 408) * Math.PI * 2;
     const dirX = Math.cos(azimuth);
     const dirY = Math.sin(azimuth);
@@ -229,7 +231,7 @@ const writeBranchParticle = (
     const tree = chooseTree(trees, seed, index);
     const barkBase: Vec3 = [0.28, 0.17, 0.09];
 
-    writePoint(points, index, branchPoint(tree, seed, index), ParticleAppearanceMaterial.Bark);
+    writePoint(points, index, branchPoint(tree, seed, index), ParticleAppearanceMaterial.Bark, true);
     appearances[index] = packParticleAppearance({
         color: colorVariation(barkBase, 0.32, seed, index),
         material: ParticleAppearanceMaterial.Bark,
@@ -283,20 +285,20 @@ const writeRootParticle = (
     const rootIndex = Math.floor(hash01(seed, index, 601) * 9);
     const angle = rootIndex * 2.39996 + mix(-0.24, 0.24, hash01(seed, rootIndex, 602));
     const along = hash01(seed, index, 603);
-    const radius = tree.radius * mix(0.52, 0.16, along) * Math.sqrt(hash01(seed, index, 604));
+    const radius = tree.radius * mix(0.72, 0.24, along) * Math.sqrt(hash01(seed, index, 604));
     const radialAngle = hash01(seed, index, 605) * Math.PI * 2;
-    const rootLength = tree.radius * mix(4.3, 7.4, hash01(seed, rootIndex, 606));
+    const rootLength = tree.radius * mix(3.6, 5.8, hash01(seed, rootIndex, 606));
     const dirX = Math.cos(angle);
     const dirY = Math.sin(angle);
     const sideX = -dirY;
     const sideY = dirX;
-    const sink = mix(0.02, 0.26, along);
+    const sink = mix(0.1, 0.42, along);
     const x = tree.base[0] + dirX * rootLength * along + sideX * Math.cos(radialAngle) * radius;
     const y = tree.base[1] + dirY * rootLength * along + sideY * Math.cos(radialAngle) * radius;
     const z = terrainHeight(tree.base[0], tree.base[1]) - sink + Math.sin(radialAngle) * radius * 0.42;
     const barkBase: Vec3 = [0.24, 0.14, 0.07];
 
-    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Bark);
+    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Bark, true);
     appearances[index] = packParticleAppearance({
         color: colorVariation(barkBase, 0.3, seed, index),
         material: ParticleAppearanceMaterial.Bark,
@@ -317,10 +319,10 @@ export const buildProceduralForest = ({
     const points = new Float32Array(nParticles * 4);
     const appearances = new Uint32Array(nParticles);
     const trees = buildTreeSpecs(seed);
-    const groundCount = Math.floor(nParticles * 0.34);
-    const trunkCount = Math.floor(nParticles * 0.22);
-    const rootCount = Math.floor(nParticles * 0.08);
-    const branchCount = Math.floor(nParticles * 0.14);
+    const groundCount = Math.floor(nParticles * GROUND_PARTICLE_FRACTION);
+    const trunkCount = Math.floor(nParticles * TRUNK_PARTICLE_FRACTION);
+    const rootCount = Math.floor(nParticles * ROOT_PARTICLE_FRACTION);
+    const branchCount = Math.floor(nParticles * BRANCH_PARTICLE_FRACTION);
     const rootStart = groundCount + trunkCount;
     const branchStart = rootStart + rootCount;
     const leafStart = branchStart + branchCount;

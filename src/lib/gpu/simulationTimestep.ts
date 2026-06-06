@@ -1,4 +1,5 @@
 export const CFL_NUMBER = 0.5;
+export const ELASTIC_CFL_NUMBER = 0.75;
 export const MIN_SIMULATION_TIMESTEP_S = 1e-6;
 
 // CFL subdivision improves accuracy, but the shader displacement clamp is the
@@ -6,18 +7,110 @@ export const MIN_SIMULATION_TIMESTEP_S = 1e-6;
 export const MAX_SIMULATION_DRIFT_MS = 250;
 export const MAX_SIMULATION_STEPS_PER_FRAME = 128;
 export const MAX_SIMULATION_SUBSTEPS_PER_FRAME = 64;
-export const MAX_CFL_SUBSTEPS_PER_MAX_STEP = 4;
+export const MAX_CFL_SUBSTEPS_PER_MAX_STEP = 128;
+
+export type ElasticMaterial = {
+    shearResistance: number,
+    volumetricResistance: number,
+    density: number,
+};
+
+const MPM_YOUNGS_MODULUS_PA = 1.4e5;
+const MPM_POISSONS_RATIO = 0.2;
+const MPM_SHEAR_RESISTANCE = MPM_YOUNGS_MODULUS_PA / (2 * (1 + MPM_POISSONS_RATIO));
+const MPM_VOLUME_RESISTANCE = MPM_YOUNGS_MODULUS_PA
+    * MPM_POISSONS_RATIO
+    / ((1 + MPM_POISSONS_RATIO) * (1 - 2 * MPM_POISSONS_RATIO));
+const MPM_PARTICLE_DENSITY = 400;
+
+export const MPM_ELASTIC_MATERIALS: ElasticMaterial[] = [
+    {
+        shearResistance: MPM_SHEAR_RESISTANCE,
+        volumetricResistance: MPM_VOLUME_RESISTANCE,
+        density: MPM_PARTICLE_DENSITY,
+    },
+    {
+        shearResistance: MPM_SHEAR_RESISTANCE * 0.1,
+        volumetricResistance: MPM_VOLUME_RESISTANCE * 0.14,
+        density: MPM_PARTICLE_DENSITY,
+    },
+    {
+        shearResistance: MPM_SHEAR_RESISTANCE * 0.5,
+        volumetricResistance: MPM_VOLUME_RESISTANCE * 0.62,
+        density: MPM_PARTICLE_DENSITY,
+    },
+    {
+        shearResistance: MPM_SHEAR_RESISTANCE * 0.14,
+        volumetricResistance: MPM_VOLUME_RESISTANCE * 0.18,
+        density: MPM_PARTICLE_DENSITY,
+    },
+];
+
+export const calculateElasticWaveSpeed = ({
+    shearResistance,
+    volumetricResistance,
+    density,
+}: ElasticMaterial) => {
+    if (
+        !Number.isFinite(shearResistance)
+        || !Number.isFinite(volumetricResistance)
+        || !Number.isFinite(density)
+        || shearResistance < 0
+        || volumetricResistance < 0
+        || density <= 0
+    ) {
+        return 0;
+    }
+
+    return Math.sqrt((volumetricResistance + 2 * shearResistance) / density);
+};
+
+export const calculateMaxElasticWaveSpeed = (materials: ElasticMaterial[]) => {
+    return materials.reduce(
+        (maxSpeed, material) => Math.max(maxSpeed, calculateElasticWaveSpeed(material)),
+        0,
+    );
+};
+
+export const MPM_MAX_ELASTIC_WAVE_SPEED = calculateMaxElasticWaveSpeed(MPM_ELASTIC_MATERIALS);
+
+export const calculateElasticWaveCflLimitedTimestepS = ({
+    minGridCellDim,
+    elasticWaveSpeed,
+    elasticCflNumber = ELASTIC_CFL_NUMBER,
+}: {
+    minGridCellDim: number,
+    elasticWaveSpeed: number,
+    elasticCflNumber?: number,
+}) => {
+    if (
+        !Number.isFinite(minGridCellDim)
+        || !Number.isFinite(elasticWaveSpeed)
+        || !Number.isFinite(elasticCflNumber)
+        || minGridCellDim <= 0
+        || elasticWaveSpeed <= 0
+        || elasticCflNumber <= 0
+    ) {
+        return Number.POSITIVE_INFINITY;
+    }
+
+    return elasticCflNumber * minGridCellDim / elasticWaveSpeed;
+};
 
 export const calculateCflLimitedSimulationTimestepS = ({
     maxSimulationTimestepS,
     minGridCellDim,
     maxCflSpeed,
     externalAcceleration,
+    elasticWaveSpeed = 0,
+    elasticCflNumber = ELASTIC_CFL_NUMBER,
 }: {
     maxSimulationTimestepS: number,
     minGridCellDim: number,
     maxCflSpeed: number,
     externalAcceleration: number,
+    elasticWaveSpeed?: number,
+    elasticCflNumber?: number,
 }) => {
     const safeMaxSimulationTimestepS = Number.isFinite(maxSimulationTimestepS)
         ? Math.max(maxSimulationTimestepS, MIN_SIMULATION_TIMESTEP_S)
@@ -31,12 +124,19 @@ export const calculateCflLimitedSimulationTimestepS = ({
         ? Math.sqrt(CFL_NUMBER * minGridCellDim / externalAcceleration)
         : Number.POSITIVE_INFINITY;
 
+    const elasticLimitedTimestepS = calculateElasticWaveCflLimitedTimestepS({
+        minGridCellDim,
+        elasticWaveSpeed,
+        elasticCflNumber,
+    });
+
     return Math.max(
         MIN_SIMULATION_TIMESTEP_S,
         Math.min(
             safeMaxSimulationTimestepS,
             speedLimitedTimestepS,
             accelerationLimitedTimestepS,
+            elasticLimitedTimestepS,
         ),
     );
 };

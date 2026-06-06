@@ -58,6 +58,7 @@ export const defaultSimulationScene: SimulationSceneConfig = {
     renderMethodType: GpuRenderMethodType.Splats,
     simulationMethodType: GpuSimulationMethodType.MlsMpm,
     timing: {
+        mlsMpmMaxSimulationTimestepS: 1 / 1024,
         oneSimulationStepPerFrame: true,
     },
 };
@@ -68,8 +69,8 @@ export const environmentScene: SimulationSceneConfig = {
         seed: 0x5650f017,
     },
     colliderSource: null,
-    nParticles: 300_000,
-    gridResolution: [384, 384, 384],
+    nParticles: 220_000,
+    gridResolution: [128, 128, 128],
     renderMethodType: GpuRenderMethodType.Splats,
     simulationMethodType: GpuSimulationMethodType.MlsMpm,
     camera: {
@@ -79,6 +80,6 @@ export const environmentScene: SimulationSceneConfig = {
         offset: [0, 0, -2.1],
     },
     timing: {
-        mlsMpmMaxSimulationTimestepS: 1 / 256,
+        mlsMpmMaxSimulationTimestepS: 1 / 1024,
     },
 };

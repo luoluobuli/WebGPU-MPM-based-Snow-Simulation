@@ -4,6 +4,12 @@ const POISSONS_RATIO = 0.2;
 // Lame parameters
 const SHEAR_RESISTANCE = YOUNGS_MODULUS_PA / (2 * (1 + POISSONS_RATIO));
 const VOLUME_RESISTANCE = YOUNGS_MODULUS_PA * POISSONS_RATIO / ((1 + POISSONS_RATIO) * (1 - 2 * POISSONS_RATIO));
+const SOIL_SHEAR_RESISTANCE_SCALE = 0.1;
+const SOIL_VOLUME_RESISTANCE_SCALE = 0.14;
+const BARK_SHEAR_RESISTANCE_SCALE = 0.5;
+const BARK_VOLUME_RESISTANCE_SCALE = 0.62;
+const LEAF_SHEAR_RESISTANCE_SCALE = 0.14;
+const LEAF_VOLUME_RESISTANCE_SCALE = 0.18;
 
 fn applyMaterialLameParameters(
     material: u32,
@@ -11,14 +17,14 @@ fn applyMaterialLameParameters(
     volumetricResistance: ptr<function, f32>,
 ) {
     if material == PARTICLE_MATERIAL_SOIL {
-        *shearResistance = SHEAR_RESISTANCE * 0.035;
-        *volumetricResistance = VOLUME_RESISTANCE * 0.045;
+        *shearResistance = SHEAR_RESISTANCE * SOIL_SHEAR_RESISTANCE_SCALE;
+        *volumetricResistance = VOLUME_RESISTANCE * SOIL_VOLUME_RESISTANCE_SCALE;
     } else if material == PARTICLE_MATERIAL_BARK {
-        *shearResistance = SHEAR_RESISTANCE * 0.055;
-        *volumetricResistance = VOLUME_RESISTANCE * 0.065;
+        *shearResistance = SHEAR_RESISTANCE * BARK_SHEAR_RESISTANCE_SCALE;
+        *volumetricResistance = VOLUME_RESISTANCE * BARK_VOLUME_RESISTANCE_SCALE;
     } else if material == PARTICLE_MATERIAL_LEAF {
-        *shearResistance = SHEAR_RESISTANCE * 0.008;
-        *volumetricResistance = VOLUME_RESISTANCE * 0.01;
+        *shearResistance = SHEAR_RESISTANCE * LEAF_SHEAR_RESISTANCE_SCALE;
+        *volumetricResistance = VOLUME_RESISTANCE * LEAF_VOLUME_RESISTANCE_SCALE;
     }
 }
 

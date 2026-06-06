@@ -15,7 +15,10 @@ struct VertexOutput {
 }
 
 const BASE_PARTICLE_RADIUS = 0.1;
-const SPLAT_RADIUS_SCALE = 0.88;
+const DEFAULT_SPLAT_RADIUS_SCALE = 0.88;
+const SOIL_SPLAT_RADIUS_SCALE = 0.76;
+const BARK_SPLAT_RADIUS_SCALE = 0.72;
+const LEAF_SPLAT_RADIUS_SCALE = 0.62;
 const VERT_POSITIONS: array<vec2f, 6> = array(
     vec2f(-1, -1),
     vec2f(1, -1),
@@ -38,12 +41,27 @@ fn randomFromIndex(index: u32, salt: u32) -> f32 {
     return f32(hash1(index ^ salt)) / f32(0xffffffffu);
 }
 
+fn splatRadiusScaleForMaterial(material: f32) -> f32 {
+    if material > 2.5 {
+        return LEAF_SPLAT_RADIUS_SCALE;
+    }
+    if material > 1.5 {
+        return BARK_SPLAT_RADIUS_SCALE;
+    }
+    if material > 0.5 {
+        return SOIL_SPLAT_RADIUS_SCALE;
+    }
+
+    return DEFAULT_SPLAT_RADIUS_SCALE;
+}
+
 @vertex
 fn vert(
     @builtin(vertex_index) vertex_index: u32,
     @builtin(instance_index) instance_index: u32,
 ) -> VertexOutput {
     let particle = particle_data[instance_index];
+    let appearance = decodeParticleAppearance(particle_appearance[instance_index]);
     let uv = VERT_POSITIONS[vertex_index];
     let seed = vec3f(
         randomFromIndex(instance_index, 0x9e3779b9u),
@@ -51,7 +69,10 @@ fn vert(
         randomFromIndex(instance_index, 0xc2b2ae35u),
     );
     let radius_jitter = mix(0.72, 1.08, seed.x);
-    let radius = BASE_PARTICLE_RADIUS * particle.mass * SPLAT_RADIUS_SCALE * radius_jitter;
+    let radius = BASE_PARTICLE_RADIUS
+        * particle.mass
+        * splatRadiusScaleForMaterial(appearance.w)
+        * radius_jitter;
     let axis_scale = vec2f(
         mix(0.72, 1.18, seed.y),
         mix(0.68, 1.12, seed.z),
@@ -75,7 +96,7 @@ fn vert(
     out.elastic_volume_fac = determinant(particle.deformationElastic);
     out.shape_params = vec4f(axis_scale, depth_scale, seed.x);
     out.grain_params = grain_params;
-    out.appearance = decodeParticleAppearance(particle_appearance[instance_index]);
+    out.appearance = appearance;
 
     return out;
 }

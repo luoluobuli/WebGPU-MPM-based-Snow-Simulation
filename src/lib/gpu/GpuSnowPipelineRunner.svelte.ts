@@ -35,6 +35,7 @@ import {
     calculateSimulationSubstepTimestepS,
     calculateSimulationSubstepsPerMaxStep,
     canRelaxParticleSpeedSampling,
+    MPM_MAX_ELASTIC_WAVE_SPEED,
     MAX_SIMULATION_DRIFT_MS,
     MAX_SIMULATION_STEPS_PER_FRAME,
     MAX_SIMULATION_SUBSTEPS_PER_FRAME,
@@ -1118,6 +1119,7 @@ export class GpuSnowPipelineRunner {
             minGridCellDim: this.minGridCellDim,
             maxCflSpeed,
             externalAcceleration: this.cflExternalAcceleration(this.isInteracting()),
+            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
         });
     });
 

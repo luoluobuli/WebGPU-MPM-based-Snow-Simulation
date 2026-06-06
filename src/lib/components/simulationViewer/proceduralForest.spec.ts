@@ -3,6 +3,9 @@ import { ParticleAppearanceMaterial } from "$lib/gpu/particleAppearance/GpuParti
 import { buildProceduralForest } from "./proceduralForest";
 
 const materialFromPackedAppearance = (appearance: number) => appearance >>> 24;
+const materialFromSpawnPoint = (material: number) =>
+    material >= 8 ? material - 8 : material;
+const spawnPointIsAnchored = (material: number) => material >= 8;
 
 describe("buildProceduralForest", () => {
     it("builds deterministic particle positions and appearances", () => {
@@ -39,7 +42,7 @@ describe("buildProceduralForest", () => {
         const spawnMaterials = new Set<number>();
 
         for (let i = 3; i < forest.spawnPoints.length; i += 4) {
-            spawnMaterials.add(forest.spawnPoints[i]);
+            spawnMaterials.add(materialFromSpawnPoint(forest.spawnPoints[i]));
         }
 
         expect(materials.has(ParticleAppearanceMaterial.Soil)).toBe(true);
@@ -50,21 +53,48 @@ describe("buildProceduralForest", () => {
         expect(spawnMaterials.has(ParticleAppearanceMaterial.Leaf)).toBe(true);
     });
 
-    it("builds a deeper fuller ground layer", () => {
+    it("builds a deep ground layer with dense root support", () => {
         const forest = buildProceduralForest({ nParticles: 2048, seed: 3456 });
         let soilCount = 0;
+        let barkCount = 0;
+        let lowBarkCount = 0;
+        let anchoredCount = 0;
+        let leafCount = 0;
         let minSoilZ = Infinity;
 
         for (let i = 0; i < forest.particleAppearances.length; i++) {
-            if (materialFromPackedAppearance(forest.particleAppearances[i]) !== ParticleAppearanceMaterial.Soil) {
+            const material = materialFromPackedAppearance(forest.particleAppearances[i]);
+            const spawnMaterial = forest.spawnPoints[i * 4 + 3];
+            const z = forest.spawnPoints[i * 4 + 2];
+
+            if (spawnPointIsAnchored(spawnMaterial)) {
+                anchoredCount++;
+            }
+
+            if (material === ParticleAppearanceMaterial.Soil) {
+                soilCount++;
+                minSoilZ = Math.min(minSoilZ, z);
                 continue;
             }
 
-            soilCount++;
-            minSoilZ = Math.min(minSoilZ, forest.spawnPoints[i * 4 + 2]);
+            if (material === ParticleAppearanceMaterial.Bark) {
+                barkCount++;
+                if (z < -4.25) {
+                    lowBarkCount++;
+                }
+                continue;
+            }
+
+            if (material === ParticleAppearanceMaterial.Leaf) {
+                leafCount++;
+            }
         }
 
-        expect(soilCount).toBeGreaterThan(2048 * 0.3);
+        expect(soilCount).toBeGreaterThan(2048 * 0.2);
+        expect(barkCount).toBeGreaterThan(2048 * 0.55);
+        expect(lowBarkCount).toBeGreaterThan(2048 * 0.08);
+        expect(anchoredCount).toBeGreaterThan(2048 * 0.8);
+        expect(leafCount).toBeLessThan(2048 * 0.18);
         expect(minSoilZ).toBeLessThan(-4.85);
     });
 });
