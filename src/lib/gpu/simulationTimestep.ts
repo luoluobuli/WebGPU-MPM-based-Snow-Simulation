@@ -1,3 +1,5 @@
+import type { SpawnPointSource } from "./particleInitialize/GpuSpawnVolumeBufferManager";
+
 export const CFL_NUMBER = 0.5;
 export const ELASTIC_CFL_NUMBER = 0.75;
 export const MIN_SIMULATION_TIMESTEP_S = 1e-6;
@@ -22,6 +24,16 @@ const MPM_VOLUME_RESISTANCE = MPM_YOUNGS_MODULUS_PA
     * MPM_POISSONS_RATIO
     / ((1 + MPM_POISSONS_RATIO) * (1 - 2 * MPM_POISSONS_RATIO));
 const MPM_PARTICLE_DENSITY = 400;
+const MPM_PARTICLE_MATERIAL_DEFAULT = 0;
+const MPM_PARTICLE_MATERIAL_SOIL = 1;
+const MPM_PARTICLE_MATERIAL_BARK = 2;
+const MPM_PARTICLE_MATERIAL_LEAF = 3;
+const MPM_SOIL_SHEAR_RESISTANCE_SCALE = 0.1;
+const MPM_SOIL_VOLUME_RESISTANCE_SCALE = 0.14;
+const MPM_BARK_SHEAR_RESISTANCE_SCALE = 6.0;
+const MPM_BARK_VOLUME_RESISTANCE_SCALE = 8.0;
+const MPM_LEAF_SHEAR_RESISTANCE_SCALE = 0.14;
+const MPM_LEAF_VOLUME_RESISTANCE_SCALE = 0.18;
 
 export const MPM_ELASTIC_MATERIALS: ElasticMaterial[] = [
     {
@@ -30,18 +42,18 @@ export const MPM_ELASTIC_MATERIALS: ElasticMaterial[] = [
         density: MPM_PARTICLE_DENSITY,
     },
     {
-        shearResistance: MPM_SHEAR_RESISTANCE * 0.1,
-        volumetricResistance: MPM_VOLUME_RESISTANCE * 0.14,
+        shearResistance: MPM_SHEAR_RESISTANCE * MPM_SOIL_SHEAR_RESISTANCE_SCALE,
+        volumetricResistance: MPM_VOLUME_RESISTANCE * MPM_SOIL_VOLUME_RESISTANCE_SCALE,
         density: MPM_PARTICLE_DENSITY,
     },
     {
-        shearResistance: MPM_SHEAR_RESISTANCE * 0.5,
-        volumetricResistance: MPM_VOLUME_RESISTANCE * 0.62,
+        shearResistance: MPM_SHEAR_RESISTANCE * MPM_BARK_SHEAR_RESISTANCE_SCALE,
+        volumetricResistance: MPM_VOLUME_RESISTANCE * MPM_BARK_VOLUME_RESISTANCE_SCALE,
         density: MPM_PARTICLE_DENSITY,
     },
     {
-        shearResistance: MPM_SHEAR_RESISTANCE * 0.14,
-        volumetricResistance: MPM_VOLUME_RESISTANCE * 0.18,
+        shearResistance: MPM_SHEAR_RESISTANCE * MPM_LEAF_SHEAR_RESISTANCE_SCALE,
+        volumetricResistance: MPM_VOLUME_RESISTANCE * MPM_LEAF_VOLUME_RESISTANCE_SCALE,
         density: MPM_PARTICLE_DENSITY,
     },
 ];
@@ -73,6 +85,56 @@ export const calculateMaxElasticWaveSpeed = (materials: ElasticMaterial[]) => {
 };
 
 export const MPM_MAX_ELASTIC_WAVE_SPEED = calculateMaxElasticWaveSpeed(MPM_ELASTIC_MATERIALS);
+
+export const particleMaterialFromSpawnValue = (encodedMaterial: number) => {
+    if (!Number.isFinite(encodedMaterial)) {
+        return MPM_PARTICLE_MATERIAL_DEFAULT;
+    }
+
+    return Math.max(
+        MPM_PARTICLE_MATERIAL_DEFAULT,
+        Math.min(
+            MPM_PARTICLE_MATERIAL_LEAF,
+            Math.round(encodedMaterial),
+        ),
+    );
+};
+
+export const calculateMaxElasticWaveSpeedForMaterialIds = (materialIds: Iterable<number>) => {
+    let maxSpeed = 0;
+    let sawMaterial = false;
+
+    for (const materialId of materialIds) {
+        const material = MPM_ELASTIC_MATERIALS[
+            particleMaterialFromSpawnValue(materialId)
+        ];
+        if (material === undefined) {
+            continue;
+        }
+
+        sawMaterial = true;
+        maxSpeed = Math.max(maxSpeed, calculateElasticWaveSpeed(material));
+    }
+
+    return sawMaterial
+        ? maxSpeed
+        : calculateElasticWaveSpeed(MPM_ELASTIC_MATERIALS[MPM_PARTICLE_MATERIAL_DEFAULT]);
+};
+
+export const calculateSpawnSourceMaxElasticWaveSpeed = (source: SpawnPointSource) => {
+    if (source.type === "mesh") {
+        return calculateMaxElasticWaveSpeedForMaterialIds([
+            MPM_PARTICLE_MATERIAL_DEFAULT,
+        ]);
+    }
+
+    const materialIds = new Set<number>();
+    for (let i = 3; i < source.points.length; i += 4) {
+        materialIds.add(particleMaterialFromSpawnValue(source.points[i]));
+    }
+
+    return calculateMaxElasticWaveSpeedForMaterialIds(materialIds);
+};
 
 export const calculateElasticWaveCflLimitedTimestepS = ({
     minGridCellDim,

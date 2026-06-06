@@ -35,7 +35,7 @@ import {
     calculateSimulationSubstepTimestepS,
     calculateSimulationSubstepsPerMaxStep,
     canRelaxParticleSpeedSampling,
-    MPM_MAX_ELASTIC_WAVE_SPEED,
+    calculateSpawnSourceMaxElasticWaveSpeed,
     MAX_SIMULATION_DRIFT_MS,
     MAX_SIMULATION_STEPS_PER_FRAME,
     MAX_SIMULATION_SUBSTEPS_PER_FRAME,
@@ -134,6 +134,7 @@ export class GpuSnowPipelineRunner {
     private readonly isInteracting: () => boolean;
     private readonly interactionStrength: () => number;
     private readonly minGridCellDim: number;
+    private readonly elasticWaveSpeed: number;
     private readonly colliderMinCoords: [number, number, number];
     private readonly colliderMaxCoords: [number, number, number];
     private colliderSdfMaxCellSize = 1;
@@ -241,6 +242,7 @@ export class GpuSnowPipelineRunner {
         this.colliderFriction = colliderFriction;
         this.isInteracting = isInteracting;
         this.interactionStrength = interactionStrength;
+        this.elasticWaveSpeed = calculateSpawnSourceMaxElasticWaveSpeed(spawnSource);
 
         this.camera = camera;
 
@@ -1119,7 +1121,7 @@ export class GpuSnowPipelineRunner {
             minGridCellDim: this.minGridCellDim,
             maxCflSpeed,
             externalAcceleration: this.cflExternalAcceleration(this.isInteracting()),
-            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+            elasticWaveSpeed: this.elasticWaveSpeed,
         });
     });
 

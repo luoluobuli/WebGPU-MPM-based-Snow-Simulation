@@ -48,9 +48,9 @@ describe("mpmOps material damping", () => {
     });
 
     it("keeps generated forest materials damped and frictional at the domain floor", () => {
-        expect(mpmOpsSrc).toContain("return vec3f(0.93, 0.93, 0.96)");
+        expect(mpmOpsSrc).toContain("return vec3f(0.78, 0.78, 0.84)");
         expect(mpmOpsSrc).toContain("return vec3f(0.86, 0.86, 0.9)");
-        expect(mpmOpsSrc).toContain("return 0.91");
+        expect(mpmOpsSrc).toContain("return 0.97");
         expect(mpmOpsSrc).toContain("return 0.86");
     });
 });

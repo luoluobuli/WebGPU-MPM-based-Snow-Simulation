@@ -10,6 +10,7 @@ import {
     calculateCflLimitedSimulationTimestepS,
     calculateElasticWaveCflLimitedTimestepS,
     calculateElasticWaveSpeed,
+    calculateSpawnSourceMaxElasticWaveSpeed,
     calculateSimulationFrameSchedule,
     calculateSimulationSubstepTimestepS,
     calculateSimulationSubstepsPerMaxStep,
@@ -39,8 +40,8 @@ describe("simulation timestep CFL subdivision", () => {
         expect(stressTensorOpsSrc).toContain("POISSONS_RATIO = 0.2");
         expect(stressTensorOpsSrc).toContain("SOIL_SHEAR_RESISTANCE_SCALE = 0.1");
         expect(stressTensorOpsSrc).toContain("SOIL_VOLUME_RESISTANCE_SCALE = 0.14");
-        expect(stressTensorOpsSrc).toContain("BARK_SHEAR_RESISTANCE_SCALE = 0.5");
-        expect(stressTensorOpsSrc).toContain("BARK_VOLUME_RESISTANCE_SCALE = 0.62");
+        expect(stressTensorOpsSrc).toContain("BARK_SHEAR_RESISTANCE_SCALE = 6.0");
+        expect(stressTensorOpsSrc).toContain("BARK_VOLUME_RESISTANCE_SCALE = 8.0");
         expect(stressTensorOpsSrc).toContain("LEAF_SHEAR_RESISTANCE_SCALE = 0.14");
         expect(stressTensorOpsSrc).toContain("LEAF_VOLUME_RESISTANCE_SCALE = 0.18");
         expect(uniformsManagerSrc).toContain("INVERSE_PARTICLE_DENSITY = 1 / 400");
@@ -49,21 +50,49 @@ describe("simulation timestep CFL subdivision", () => {
 
         expect(soil.shearResistance / snow.shearResistance).toBeCloseTo(0.1);
         expect(soil.volumetricResistance / snow.volumetricResistance).toBeCloseTo(0.14);
-        expect(bark.shearResistance / snow.shearResistance).toBeCloseTo(0.5);
-        expect(bark.volumetricResistance / snow.volumetricResistance).toBeCloseTo(0.62);
+        expect(bark.shearResistance / snow.shearResistance).toBeCloseTo(6.0);
+        expect(bark.volumetricResistance / snow.volumetricResistance).toBeCloseTo(8.0);
         expect(leaf.shearResistance / snow.shearResistance).toBeCloseTo(0.14);
         expect(leaf.volumetricResistance / snow.volumetricResistance).toBeCloseTo(0.18);
-        expect(MPM_MAX_ELASTIC_WAVE_SPEED).toBeCloseTo(calculateElasticWaveSpeed(snow));
+        expect(calculateElasticWaveSpeed(bark)).toBeGreaterThan(calculateElasticWaveSpeed(snow));
+        expect(MPM_MAX_ELASTIC_WAVE_SPEED).toBeCloseTo(calculateElasticWaveSpeed(bark));
+    });
+
+    it("limits elastic CFL to materials actually present in the spawn source", () => {
+        const [snow, , bark, leaf] = MPM_ELASTIC_MATERIALS;
+        const meshWaveSpeed = calculateSpawnSourceMaxElasticWaveSpeed({
+            type: "mesh",
+            vertices: [
+                [0, 0, 0],
+                [1, 0, 0],
+                [0, 1, 0],
+            ],
+        });
+        const barkWaveSpeed = calculateSpawnSourceMaxElasticWaveSpeed({
+            type: "points",
+            points: new Float32Array([
+                0, 0, 0, 2,
+                0, 0, 0, 3,
+            ]),
+        });
+
+        expect(meshWaveSpeed).toBeCloseTo(calculateElasticWaveSpeed(snow));
+        expect(barkWaveSpeed).toBeCloseTo(
+            Math.max(
+                calculateElasticWaveSpeed(bark),
+                calculateElasticWaveSpeed(leaf),
+            ),
+        );
     });
 
     it("derives elastic CFL timestep from material wave speed and grid spacing", () => {
         const elasticLimitedTimestepS = calculateElasticWaveCflLimitedTimestepS({
             minGridCellDim: gridCellDim,
-            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+            elasticWaveSpeed: calculateElasticWaveSpeed(MPM_ELASTIC_MATERIALS[0]),
         });
 
         expect(elasticLimitedTimestepS).toBeCloseTo(
-            ELASTIC_CFL_NUMBER * gridCellDim / MPM_MAX_ELASTIC_WAVE_SPEED,
+            ELASTIC_CFL_NUMBER * gridCellDim / calculateElasticWaveSpeed(MPM_ELASTIC_MATERIALS[0]),
         );
         expect(elasticLimitedTimestepS).toBeGreaterThan(1 / 1024);
         expect(elasticLimitedTimestepS).toBeLessThan(1 / 384);
@@ -136,16 +165,17 @@ describe("simulation timestep CFL subdivision", () => {
 
     it("subdivides large authored MLS-MPM timesteps by elastic-wave CFL", () => {
         const maxSimulationTimestepS = 1 / 384;
+        const snowWaveSpeed = calculateElasticWaveSpeed(MPM_ELASTIC_MATERIALS[0]);
         const elasticLimitedTimestepS = calculateElasticWaveCflLimitedTimestepS({
             minGridCellDim: gridCellDim,
-            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+            elasticWaveSpeed: snowWaveSpeed,
         });
         const cflLimitedSimulationTimestepS = calculateCflLimitedSimulationTimestepS({
             maxSimulationTimestepS,
             minGridCellDim: gridCellDim,
             maxCflSpeed: 0,
             externalAcceleration: 9.81,
-            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+            elasticWaveSpeed: snowWaveSpeed,
         });
         const substepsPerMaxStep = calculateSimulationSubstepsPerMaxStep({
             maxSimulationTimestepS,
@@ -164,16 +194,17 @@ describe("simulation timestep CFL subdivision", () => {
 
     it("leaves the authored 1024 Hz MLS-MPM step unsubdivided by elastic-wave CFL", () => {
         const maxSimulationTimestepS = 1 / 1024;
+        const snowWaveSpeed = calculateElasticWaveSpeed(MPM_ELASTIC_MATERIALS[0]);
         const elasticLimitedTimestepS = calculateElasticWaveCflLimitedTimestepS({
             minGridCellDim: gridCellDim,
-            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+            elasticWaveSpeed: snowWaveSpeed,
         });
         const cflLimitedSimulationTimestepS = calculateCflLimitedSimulationTimestepS({
             maxSimulationTimestepS,
             minGridCellDim: gridCellDim,
             maxCflSpeed: 0,
             externalAcceleration: 9.81,
-            elasticWaveSpeed: MPM_MAX_ELASTIC_WAVE_SPEED,
+            elasticWaveSpeed: snowWaveSpeed,
         });
         const substepsPerMaxStep = calculateSimulationSubstepsPerMaxStep({
             maxSimulationTimestepS,
@@ -181,6 +212,25 @@ describe("simulation timestep CFL subdivision", () => {
         });
 
         expect(elasticLimitedTimestepS).toBeGreaterThan(maxSimulationTimestepS);
+        expect(cflLimitedSimulationTimestepS).toBe(maxSimulationTimestepS);
+        expect(substepsPerMaxStep).toBe(1);
+    });
+
+    it("keeps the 128 grid environment step stable with rigid bark stiffness", () => {
+        const environmentGridCellDim = 10 / 128;
+        const maxSimulationTimestepS = 1 / 1024;
+        const cflLimitedSimulationTimestepS = calculateCflLimitedSimulationTimestepS({
+            maxSimulationTimestepS,
+            minGridCellDim: environmentGridCellDim,
+            maxCflSpeed: 0,
+            externalAcceleration: 9.81,
+            elasticWaveSpeed: calculateElasticWaveSpeed(MPM_ELASTIC_MATERIALS[2]),
+        });
+        const substepsPerMaxStep = calculateSimulationSubstepsPerMaxStep({
+            maxSimulationTimestepS,
+            cflLimitedSimulationTimestepS,
+        });
+
         expect(cflLimitedSimulationTimestepS).toBe(maxSimulationTimestepS);
         expect(substepsPerMaxStep).toBe(1);
     });

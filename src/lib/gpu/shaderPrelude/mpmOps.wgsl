@@ -77,7 +77,7 @@ fn materialVelocityDampingPerReferenceStep(material: u32) -> vec3f {
         return vec3f(0.72, 0.72, 0.82);
     }
     if material == PARTICLE_MATERIAL_BARK {
-        return vec3f(0.93, 0.93, 0.96);
+        return vec3f(0.78, 0.78, 0.84);
     }
     if material == PARTICLE_MATERIAL_LEAF {
         return vec3f(0.86, 0.86, 0.9);
@@ -100,7 +100,7 @@ fn materialBoundaryFriction(material: u32) -> f32 {
         return 0.96;
     }
     if material == PARTICLE_MATERIAL_BARK {
-        return 0.91;
+        return 0.97;
     }
     if material == PARTICLE_MATERIAL_LEAF {
         return 0.86;
