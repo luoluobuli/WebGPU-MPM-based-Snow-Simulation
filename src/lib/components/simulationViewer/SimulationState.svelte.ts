@@ -98,10 +98,10 @@ export class SimulationState {
     explicitMpmMaxSimulationTimestepS = $state(1 / 192);
     mlsMpmMaxSimulationTimestepS = $state(1 / 1024);
 
-    oneSimulationStepPerFrame = $state(false);
+    oneSimulationStepPerFrame = $state(true);
 
     simulationMethodType = $state(GpuSimulationMethodType.MlsMpm);
-    renderMethodType = $state(GpuRenderMethodType.Points);
+    renderMethodType = $state(GpuRenderMethodType.Splats);
     particleControlMode = $state(ParticleControlMode.Repel);
 
 

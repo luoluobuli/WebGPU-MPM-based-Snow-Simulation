@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
     CFL_NUMBER,
+    MAX_CFL_SUBSTEPS_PER_MAX_STEP,
+    MAX_SIMULATION_SUBSTEPS_PER_FRAME,
     canRelaxParticleSpeedSampling,
     calculateCflLimitedSimulationTimestepS,
+    calculateSimulationFrameSchedule,
     calculateSimulationSubstepTimestepS,
     calculateSimulationSubstepsPerMaxStep,
 } from "./simulationTimestep";
@@ -15,7 +18,7 @@ describe("simulation timestep CFL subdivision", () => {
         const cflLimitedSimulationTimestepS = calculateCflLimitedSimulationTimestepS({
             maxSimulationTimestepS,
             minGridCellDim: gridCellDim,
-            maxCflSpeed: 4,
+            maxCflSpeed: 2,
             externalAcceleration: 9.81,
         });
         const substepsPerMaxStep = calculateSimulationSubstepsPerMaxStep({
@@ -73,6 +76,57 @@ describe("simulation timestep CFL subdivision", () => {
         expect(measuredSpeed * simulationSubstepTimestepS).toBeLessThanOrEqual(
             CFL_NUMBER * gridCellDim,
         );
+    });
+
+    it("caps pathological CFL subdivision before it can dominate frame work", () => {
+        const maxSimulationTimestepS = 1 / 1024;
+        const cflLimitedSimulationTimestepS = calculateCflLimitedSimulationTimestepS({
+            maxSimulationTimestepS,
+            minGridCellDim: gridCellDim,
+            maxCflSpeed: 1_000_000,
+            externalAcceleration: 9.81,
+        });
+        const substepsPerMaxStep = calculateSimulationSubstepsPerMaxStep({
+            maxSimulationTimestepS,
+            cflLimitedSimulationTimestepS,
+        });
+        const simulationSubstepTimestepS = calculateSimulationSubstepTimestepS({
+            maxSimulationTimestepS,
+            substepsPerMaxStep,
+        });
+
+        expect(substepsPerMaxStep).toBe(MAX_CFL_SUBSTEPS_PER_MAX_STEP);
+        expect(simulationSubstepTimestepS).toBeCloseTo(
+            maxSimulationTimestepS / MAX_CFL_SUBSTEPS_PER_MAX_STEP,
+        );
+    });
+
+    it("drops backlog when CFL substeps hit the per-frame work cap", () => {
+        const schedule = calculateSimulationFrameSchedule({
+            timeToSimulateMs: 1_000 / 60,
+            maxSimulationTimestepS: 1 / 1024,
+            substepsPerMaxStep: MAX_CFL_SUBSTEPS_PER_MAX_STEP,
+            oneSimulationStepPerFrame: false,
+        });
+
+        expect(schedule.nSubsteps).toBe(MAX_SIMULATION_SUBSTEPS_PER_FRAME);
+        expect(schedule.completedMaxSteps).toBe(
+            MAX_SIMULATION_SUBSTEPS_PER_FRAME / MAX_CFL_SUBSTEPS_PER_MAX_STEP,
+        );
+        expect(schedule.shouldDropSimulationBacklog).toBe(true);
+    });
+
+    it("keeps normal frame catch-up when CFL does not add substeps", () => {
+        const schedule = calculateSimulationFrameSchedule({
+            timeToSimulateMs: 1_000 / 60,
+            maxSimulationTimestepS: 1 / 1024,
+            substepsPerMaxStep: 1,
+            oneSimulationStepPerFrame: false,
+        });
+
+        expect(schedule.nSubsteps).toBe(18);
+        expect(schedule.completedMaxSteps).toBe(18);
+        expect(schedule.shouldDropSimulationBacklog).toBe(false);
     });
 
     it("relaxes speed sampling when acceleration cannot consume CFL headroom", () => {

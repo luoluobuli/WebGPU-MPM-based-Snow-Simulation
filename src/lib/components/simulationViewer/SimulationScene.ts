@@ -55,8 +55,11 @@ export const defaultSimulationScene: SimulationSceneConfig = {
     },
     nParticles: 300_000,
     gridResolution: [384, 384, 384],
-    renderMethodType: GpuRenderMethodType.Points,
+    renderMethodType: GpuRenderMethodType.Splats,
     simulationMethodType: GpuSimulationMethodType.MlsMpm,
+    timing: {
+        oneSimulationStepPerFrame: true,
+    },
 };
 
 export const environmentScene: SimulationSceneConfig = {

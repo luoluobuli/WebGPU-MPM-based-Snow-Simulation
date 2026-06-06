@@ -30,16 +30,17 @@ import { GpuParticleAppearanceBufferManager } from "./particleAppearance/GpuPart
 import { GRAVITATIONAL_ACCELERATION_M_PER_S2 } from "./gravity";
 import {
     CFL_NUMBER,
+    calculateSimulationFrameSchedule,
     calculateCflLimitedSimulationTimestepS,
     calculateSimulationSubstepTimestepS,
     calculateSimulationSubstepsPerMaxStep,
     canRelaxParticleSpeedSampling,
+    MAX_SIMULATION_DRIFT_MS,
+    MAX_SIMULATION_STEPS_PER_FRAME,
+    MAX_SIMULATION_SUBSTEPS_PER_FRAME,
     MIN_SIMULATION_TIMESTEP_S,
 } from "./simulationTimestep";
 
-const MAX_SIMULATION_DRIFT_MS = 250;
-const MAX_SIMULATION_STEPS_PER_FRAME = 128;
-const MAX_SIMULATION_SUBSTEPS_PER_FRAME = 512;
 const FP_SCALE = 65536;
 const MAX_FIXED_POINT_I32 = 2_147_483_000;
 const MAX_FIXED_POINT_GRID_SPEED = MAX_FIXED_POINT_I32 / FP_SCALE;
@@ -944,32 +945,21 @@ export class GpuSnowPipelineRunner {
 
             this.writeSimulationTimingUniforms(simulationTimestepS);
 
-            const maxSimulationTimestepMs = maxSimulationTimestepS * 1_000;
             const nowMs = performance.now();
             const timeToSimulate = Math.max(0, nowMs - simulatedThroughTimeMs);
-
-            let nSteps = 0;
-            let shouldDropSimulationBacklog = false;
-            if (this.oneSimulationStepPerFrame()) {
-                nSteps = timeToSimulate > 0 ? 1 : 0;
-                shouldDropSimulationBacklog = true;
-            }
-            else {
-                if (timeToSimulate <= MAX_SIMULATION_DRIFT_MS) {
-                    nSteps = Math.min(
-                        Math.ceil(timeToSimulate / maxSimulationTimestepMs),
-                        MAX_SIMULATION_STEPS_PER_FRAME,
-                    );
-                }
-                else {
-                    shouldDropSimulationBacklog = true;
-                }
-            }
-
-            const nSubsteps = Math.min(
-                nSteps * substepsPerMaxStep,
-                MAX_SIMULATION_SUBSTEPS_PER_FRAME,
-            );
+            const {
+                nSubsteps,
+                completedMaxSteps,
+                shouldDropSimulationBacklog,
+            } = calculateSimulationFrameSchedule({
+                timeToSimulateMs: timeToSimulate,
+                maxSimulationTimestepS,
+                substepsPerMaxStep,
+                oneSimulationStepPerFrame: this.oneSimulationStepPerFrame(),
+                maxSimulationDriftMs: MAX_SIMULATION_DRIFT_MS,
+                maxSimulationStepsPerFrame: MAX_SIMULATION_STEPS_PER_FRAME,
+                maxSimulationSubstepsPerFrame: MAX_SIMULATION_SUBSTEPS_PER_FRAME,
+            });
 
             const canSampleParticleSpeed = this.particleSpeedReductionPipelineManager.canScheduleReadback();
             const shouldForceParticleSpeedSample = !hasRequestedParticleSpeedSample
@@ -1013,15 +1003,11 @@ export class GpuSnowPipelineRunner {
                 framesSinceLastParticleSpeedSample++;
             }
 
-            const completedMaxSteps = substepsPerMaxStep > 0
-                ? nSubsteps / substepsPerMaxStep
-                : 0;
-
             if (shouldDropSimulationBacklog) {
                 simulatedThroughTimeMs = nowMs;
             }
             else {
-                simulatedThroughTimeMs += completedMaxSteps * maxSimulationTimestepMs;
+                simulatedThroughTimeMs += completedMaxSteps * maxSimulationTimestepS * 1_000;
             }
 
             if (nSubsteps > 0) {
