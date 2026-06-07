@@ -30,6 +30,7 @@
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
 		"@types/three": "^0.184.1",
 		"@vitest/browser": "^4.1.8",
+		"@vitest/browser-playwright": "^4.1.8",
 		"@webgpu/types": "^0.1.70",
 		"playwright": "^1.60.0",
 		"sass": "^1.100.0",
