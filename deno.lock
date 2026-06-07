@@ -8,6 +8,7 @@
     "npm:@sveltejs/kit@^2.63.0": "2.63.0_@sveltejs+vite-plugin-svelte@7.1.2__svelte@5.56.2__vite@8.0.16___sass@1.100.0_svelte@5.56.2_typescript@6.0.3_vite@8.0.16__sass@1.100.0",
     "npm:@sveltejs/vite-plugin-svelte@^7.1.2": "7.1.2_svelte@5.56.2_vite@8.0.16__sass@1.100.0",
     "npm:@types/three@~0.184.1": "0.184.1",
+    "npm:@vaie/hui@0.2": "0.2.0_svelte@5.56.2_sass@1.100.0_typescript@6.0.3",
     "npm:@vitest/browser@^4.1.8": "4.1.8_vitest@4.1.8__vite@8.0.16___sass@1.100.0__sass@1.100.0_sass@1.100.0_vite@8.0.16__sass@1.100.0",
     "npm:@webgpu/types@~0.1.70": "0.1.70",
     "npm:chart.js@^4.5.1": "4.5.1",
@@ -501,6 +502,13 @@
     },
     "@types/webxr@0.5.24": {
       "integrity": "sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg=="
+    },
+    "@vaie/hui@0.2.0_svelte@5.56.2_sass@1.100.0_typescript@6.0.3": {
+      "integrity": "sha512-jZQxZWZi29SZNUynm+YWTgtgR5Tm5rnz3s0bVnvnP2Mk4HJqH1N3LMjF3VG3oDlcemWRCDcAKhkEQ0pdkW7gIg==",
+      "dependencies": [
+        "svelte",
+        "svelte-preprocess"
+      ]
     },
     "@vitest/browser@4.1.8_vitest@4.1.8__vite@8.0.16___sass@1.100.0__sass@1.100.0_sass@1.100.0_vite@8.0.16__sass@1.100.0": {
       "integrity": "sha512-u21VzX07HzlJYpFgkxmjEXar/tG2UqWGgyGG/46SrrPc7rSdCTPw5vuowopO9CIqF8UCUQzDFdbVnNpw6N0BfQ==",
@@ -1046,6 +1054,19 @@
       ],
       "bin": true
     },
+    "svelte-preprocess@6.0.5_sass@1.100.0_svelte@5.56.2_typescript@6.0.3": {
+      "integrity": "sha512-sgwew5yV/2eMeQobIWgAxCNarKwiTUDIc3siAUbq3sp0G6ONtzk0W+wJihMdqjbYb3iGU3ubpGv0usnnuXT3qg==",
+      "dependencies": [
+        "sass",
+        "svelte",
+        "typescript"
+      ],
+      "optionalPeers": [
+        "sass",
+        "typescript"
+      ],
+      "scripts": true
+    },
     "svelte@5.56.2": {
       "integrity": "sha512-1lDf8TLqpxyAt3xgybfytWPJQbaUD6TiDgpiCLH0BKrKEwzecB9pjuNVnEJMpzH018xUzo6oxheK2HT0oa2RoQ==",
       "dependencies": [
@@ -1215,6 +1236,7 @@
         "npm:@sveltejs/kit@^2.63.0",
         "npm:@sveltejs/vite-plugin-svelte@^7.1.2",
         "npm:@types/three@~0.184.1",
+        "npm:@vaie/hui@0.2",
         "npm:@vitest/browser@^4.1.8",
         "npm:@webgpu/types@~0.1.70",
         "npm:chart.js@^4.5.1",
