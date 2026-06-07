@@ -1,8 +1,8 @@
 <script lang="ts">
+import { EntrySlider, Hotkey } from "@vaie/hui";
 import type { SimulationState } from "./SimulationState.svelte";
 import Separator from "$lib/components/generic/Separator.svelte";
 import Button from "$lib/components/generic/Button.svelte";
-import Hotkey from "$lib/components/headless/Hotkey.svelte";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 import OverlayPanel from "./OverlayPanel.svelte";
@@ -22,8 +22,18 @@ const MAX_TIMESTEP_DIVISOR = 10_000;
 const progressFromTimestep = (timestep: number) => {
     return 1 - Math.log((1 / timestep) / MIN_TIMESTEP_DIVISOR) / Math.log(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR);
 };
+const formatFixed3 = (value: number) => value.toFixed(3);
+const formatTimestepDivisor = (value: number) => `1 / ${value.toFixed(1)} s`;
+const parseTimestepDivisor = (value: string) => {
+    const trimmed = value.trim();
+    const reciprocalMatch = /^1\s*\/\s*(\d+(?:\.\d+)?)\s*s?$/i.exec(trimmed);
+    const numericText = reciprocalMatch?.[1] ?? trimmed.replace(/\s*s$/i, "");
+    const parsed = Number(numericText);
 
-let timestepProgress = $derived.by(() => {
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const timestepProgress = $derived.by(() => {
     switch (simulationState.simulationMethodType) {
         case GpuSimulationMethodType.ExplicitMpm:
             return progressFromTimestep(simulationState.explicitMpmMaxSimulationTimestepS);
@@ -40,15 +50,15 @@ const actualTimestepDivisor = $derived(simulationState.actualSimulationTimestepS
     : 1 / simulationState.actualSimulationTimestepS);
 const isTimestepCflLimited = $derived(actualTimestepDivisor !== null && actualTimestepDivisor > timestepDivisor * 1.001);
 
-const updateTimestep = (progress: number) => {
+const updateTimestepDivisor = (divisor: number) => {
     switch (simulationState.simulationMethodType) {
         case GpuSimulationMethodType.ExplicitMpm:
-            simulationState.explicitMpmMaxSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
+            simulationState.explicitMpmMaxSimulationTimestepS = 1 / divisor;
             break;
 
         case GpuSimulationMethodType.MlsMpm:
         case GpuSimulationMethodType.FusedMlsMpm:
-            simulationState.mlsMpmMaxSimulationTimestepS = 1 / (Math.pow(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR, 1 - progress) * MIN_TIMESTEP_DIVISOR);
+            simulationState.mlsMpmMaxSimulationTimestepS = 1 / divisor;
             break;
     }
 };
@@ -161,31 +171,33 @@ const updateTimestep = (progress: number) => {
 
     <div>Interaction radius</div>
 
-    <labeled-range>
-        <input
-            type="range"
-            bind:value={simulationState.interactionRadiusFactor}
+    <number-control>
+        <EntrySlider
+            value={simulationState.interactionRadiusFactor}
+            onValueChange={(value) => simulationState.interactionRadiusFactor = value}
             min={0}
             max={15}
-            step={Number.EPSILON}
+            softMin={0}
+            softMax={15}
+            step={0.001}
+            format={formatFixed3}
         />
-
-        <span>{simulationState.interactionRadiusFactor.toFixed(3)}</span>
-    </labeled-range>
+    </number-control>
 
     <div>Interaction strength</div>
 
-    <labeled-range>
-        <input
-            type="range"
-            bind:value={simulationState.interactionStrength}
+    <number-control>
+        <EntrySlider
+            value={simulationState.interactionStrength}
+            onValueChange={(value) => simulationState.interactionStrength = value}
             min={0}
             max={5_000}
-            step={Number.EPSILON}
+            softMin={0}
+            softMax={5_000}
+            step={0.001}
+            format={formatFixed3}
         />
-
-        <span>{simulationState.interactionStrength.toFixed(3)}</span>
-    </labeled-range>
+    </number-control>
 
     <h4>Method</h4>
 
@@ -221,21 +233,20 @@ const updateTimestep = (progress: number) => {
 
     <h4>Max timestep</h4>
 
-    <labeled-range>
-        <input
-            type="range"
-            bind:value={timestepProgress}
-            oninput={() => updateTimestep(timestepProgress)}
-            min={0}
-            max={1}
-            step={Number.EPSILON}
+    <number-control>
+        <EntrySlider
+            value={timestepDivisor}
+            onValueChange={updateTimestepDivisor}
+            exponential
+            min={MIN_TIMESTEP_DIVISOR}
+            max={MAX_TIMESTEP_DIVISOR}
+            softMin={MIN_TIMESTEP_DIVISOR}
+            softMax={MAX_TIMESTEP_DIVISOR}
+            step={0.1}
+            format={formatTimestepDivisor}
+            parse={parseTimestepDivisor}
         />
-
-        <span>
-            max 1 / {timestepDivisor.toFixed(1)}
-            s
-        </span>
-    </labeled-range>
+    </number-control>
 
     {#if isTimestepCflLimited && actualTimestepDivisor !== null}
         <div>Actual timestep: 1 / {actualTimestepDivisor.toFixed(1)} s</div>

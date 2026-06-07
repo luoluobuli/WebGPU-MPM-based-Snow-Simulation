@@ -1,5 +1,5 @@
 <script lang="ts">
-import Draggable from "$lib/components/headless/Draggable.svelte";
+import { Draggable } from "@vaie/hui";
 import type { SimulationState } from "./SimulationState.svelte";
 
 let {
