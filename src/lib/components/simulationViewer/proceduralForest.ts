@@ -28,6 +28,9 @@ const GROUND_PARTICLE_FRACTION = 0.24;
 const TRUNK_PARTICLE_FRACTION = 0.3;
 const ROOT_PARTICLE_FRACTION = 0.13;
 const BRANCH_PARTICLE_FRACTION = 0.18;
+const ROOT_CROWN_PARTICLE_FRACTION = 0.6;
+const ROOT_CROWN_DEPTH = 0.22;
+const ROOT_CROWN_HEIGHT = 0.42;
 
 const clamp = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
@@ -272,6 +275,45 @@ const writeLeafParticle = (
     });
 };
 
+const rootCrownPoint = (
+    tree: TreeSpec,
+    seed: number,
+    index: number,
+): Vec3 => {
+    const angle = hash01(seed, index, 601) * Math.PI * 2;
+    const heightT = hash01(seed, index, 602);
+    const radial = Math.sqrt(hash01(seed, index, 603));
+    const radius = tree.radius * mix(1.2, 0.72, heightT) * radial;
+    const x = tree.base[0] + Math.cos(angle) * radius;
+    const y = tree.base[1] + Math.sin(angle) * radius;
+    const z = tree.base[2] + mix(-ROOT_CROWN_DEPTH, ROOT_CROWN_HEIGHT, heightT);
+
+    return [x, y, z];
+};
+
+const runnerRootPoint = (
+    tree: TreeSpec,
+    seed: number,
+    index: number,
+): Vec3 => {
+    const rootIndex = Math.floor(hash01(seed, index, 611) * 9);
+    const angle = rootIndex * 2.39996 + mix(-0.24, 0.24, hash01(seed, rootIndex, 612));
+    const along = hash01(seed, index, 613) ** 1.35;
+    const radius = tree.radius * mix(0.78, 0.24, along) * Math.sqrt(hash01(seed, index, 614));
+    const radialAngle = hash01(seed, index, 615) * Math.PI * 2;
+    const rootLength = tree.radius * mix(3.6, 5.8, hash01(seed, rootIndex, 616));
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+    const sideX = -dirY;
+    const sideY = dirX;
+    const sink = mix(0.04, 0.48, Math.sqrt(along));
+    const x = tree.base[0] + dirX * rootLength * along + sideX * Math.cos(radialAngle) * radius;
+    const y = tree.base[1] + dirY * rootLength * along + sideY * Math.cos(radialAngle) * radius;
+    const z = tree.base[2] - sink + Math.sin(radialAngle) * radius * 0.42;
+
+    return [x, y, z];
+};
+
 const writeRootParticle = (
     points: Float32Array,
     appearances: Uint32Array,
@@ -280,23 +322,12 @@ const writeRootParticle = (
     trees: TreeSpec[],
 ) => {
     const tree = chooseTree(trees, seed, index);
-    const rootIndex = Math.floor(hash01(seed, index, 601) * 9);
-    const angle = rootIndex * 2.39996 + mix(-0.24, 0.24, hash01(seed, rootIndex, 602));
-    const along = hash01(seed, index, 603);
-    const radius = tree.radius * mix(0.72, 0.24, along) * Math.sqrt(hash01(seed, index, 604));
-    const radialAngle = hash01(seed, index, 605) * Math.PI * 2;
-    const rootLength = tree.radius * mix(3.6, 5.8, hash01(seed, rootIndex, 606));
-    const dirX = Math.cos(angle);
-    const dirY = Math.sin(angle);
-    const sideX = -dirY;
-    const sideY = dirX;
-    const sink = mix(0.1, 0.42, along);
-    const x = tree.base[0] + dirX * rootLength * along + sideX * Math.cos(radialAngle) * radius;
-    const y = tree.base[1] + dirY * rootLength * along + sideY * Math.cos(radialAngle) * radius;
-    const z = terrainHeight(tree.base[0], tree.base[1]) - sink + Math.sin(radialAngle) * radius * 0.42;
     const barkBase: Vec3 = [0.38, 0.23, 0.12];
+    const pos = hash01(seed, index, 607) < ROOT_CROWN_PARTICLE_FRACTION
+        ? rootCrownPoint(tree, seed, index)
+        : runnerRootPoint(tree, seed, index);
 
-    writePoint(points, index, [x, y, z], ParticleAppearanceMaterial.Bark);
+    writePoint(points, index, pos, ParticleAppearanceMaterial.Bark);
     appearances[index] = packParticleAppearance({
         color: colorVariation(barkBase, 0.3, seed, index),
         material: ParticleAppearanceMaterial.Bark,
