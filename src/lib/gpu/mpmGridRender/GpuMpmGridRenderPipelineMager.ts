@@ -116,4 +116,8 @@ export class GpuMpmGridRenderPipelineManager {
         renderPassEncoder.setVertexBuffer(0, this.linesBuffer);
         renderPassEncoder.draw(24);
     }
+
+    destroy() {
+        this.linesBuffer.destroy();
+    }
 }

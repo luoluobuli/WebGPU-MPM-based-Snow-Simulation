@@ -552,4 +552,10 @@ export class GpuColliderBufferManager {
         const dz = az - bz;
         return dx * dx + dy * dy + dz * dz;
     }
+
+    destroy() {
+        this.colliderDataBuffer.destroy();
+        this.colliderSdfBuffer.destroy();
+        this.textureArray?.destroy();
+    }
 }

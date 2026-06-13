@@ -5,6 +5,7 @@ export class GpuDepthPicker {
     private readonly bindGroupLayout: GPUBindGroupLayout;
     private readonly outputBuffer: GPUBuffer;
     private readonly coordsBuffer: GPUBuffer;
+    private destroyed = false;
 
     constructor({ device }: { device: GPUDevice }) {
         this.device = device;
@@ -64,6 +65,8 @@ fn main() {
     }
 
     async pick(depthTextureView: GPUTextureView, x: number, y: number): Promise<number | null> {
+        if (this.destroyed) return null;
+
         // Validation?
         // x, y are integers.
         const ix = Math.floor(x);
@@ -97,16 +100,31 @@ fn main() {
         
         this.device.queue.submit([commandEncoder.finish()]);
 
-        await readbackBuffer.mapAsync(GPUMapMode.READ);
-        const array = new Float32Array(readbackBuffer.getMappedRange());
-        const depth = array[0];
-        readbackBuffer.unmap();
-        readbackBuffer.destroy();
+        let mapped = false;
+        try {
+            await readbackBuffer.mapAsync(GPUMapMode.READ);
+            mapped = true;
 
-        return depth;
+            if (this.destroyed) return null;
+
+            const array = new Float32Array(readbackBuffer.getMappedRange());
+            return array[0];
+        } catch (error) {
+            if (this.destroyed) return null;
+
+            throw error;
+        } finally {
+            if (mapped && readbackBuffer.mapState === "mapped") {
+                readbackBuffer.unmap();
+            }
+            readbackBuffer.destroy();
+        }
     }
 
     destroy() {
+        if (this.destroyed) return;
+
+        this.destroyed = true;
         this.outputBuffer.destroy();
         this.coordsBuffer.destroy();
     }

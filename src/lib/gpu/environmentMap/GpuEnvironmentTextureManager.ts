@@ -31,4 +31,8 @@ export class GpuEnvironmentTextureManager {
 
         this.environmentTexture = environmentTexture;
     }
+
+    destroy() {
+        this.environmentTexture.destroy();
+    }
 }

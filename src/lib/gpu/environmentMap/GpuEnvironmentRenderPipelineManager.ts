@@ -132,4 +132,8 @@ export class GpuEnvironmentRenderPipelineManager {
         renderPassEncoder.setVertexBuffer(0, this.vertBuffer);
         renderPassEncoder.draw(4);
     }
+
+    destroy() {
+        this.vertBuffer.destroy();
+    }
 }

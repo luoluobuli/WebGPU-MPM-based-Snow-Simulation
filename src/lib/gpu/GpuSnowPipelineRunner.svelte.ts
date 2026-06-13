@@ -152,6 +152,8 @@ export class GpuSnowPipelineRunner {
     private readonly depthPicker: GpuDepthPicker;
 
     private depthTexture: GPUTexture | null = null;
+    private stopEffects: (() => void) | null = null;
+    private destroyed = false;
 
     private renderMethod = $state<GpuRenderMethod | null>(null);
     readonly prerenderPasses = $derived(this.renderMethod?.prerenderPasses() ?? null);
@@ -169,6 +171,10 @@ export class GpuSnowPipelineRunner {
 
 
     private readonly mpmManager: GpuMpmBufferManager;
+    private readonly spawnVolumeManager: GpuSpawnVolumeBufferManager;
+    private readonly particleAppearanceManager: GpuParticleAppearanceBufferManager;
+    private readonly colliderManager: GpuColliderBufferManager;
+    private readonly environmentTextureManager: GpuEnvironmentTextureManager;
 
     private readonly measurePerf: boolean;
     // debug
@@ -246,12 +252,12 @@ export class GpuSnowPipelineRunner {
 
         this.camera = camera;
 
-        const depthTexture = device.createTexture({
+        this.depthTexture = device.createTexture({
             size: [camera.screenDims.width(), camera.screenDims.height()],
             format: "depth32float",
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
-        this.depthTextureView = depthTexture.createView();
+        this.depthTextureView = this.depthTexture.createView();
 
         const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
@@ -322,12 +328,14 @@ export class GpuSnowPipelineRunner {
             nParticles,
             source: spawnSource,
         });
+        this.spawnVolumeManager = spawnVolumeManager;
 
         const particleAppearanceManager = new GpuParticleAppearanceBufferManager({
             device,
             nParticles,
             appearances: particleAppearances,
         });
+        this.particleAppearanceManager = particleAppearanceManager;
 
         const colliderGeometry = collider ?? emptyColliderGeometry();
         const colliderManager = new GpuColliderBufferManager({
@@ -339,6 +347,7 @@ export class GpuSnowPipelineRunner {
             textures: colliderGeometry.textures,
             indices: colliderGeometry.indices,
         });
+        this.colliderManager = colliderManager;
         this.colliderMinCoords = colliderManager.minCoords;
         this.colliderMaxCoords = colliderManager.maxCoords;
         uniformsManager.writeColliderMinCoords(colliderManager.minCoords);
@@ -419,6 +428,7 @@ export class GpuSnowPipelineRunner {
             device,
             imageBitmap: environmentImageBitmap,
         });
+        this.environmentTextureManager = environmentTextureManager;
 
         const environmentRenderPipelineManager = new GpuEnvironmentRenderPipelineManager({
             device,
@@ -441,7 +451,7 @@ export class GpuSnowPipelineRunner {
         this.getRenderMethodType = getRenderMethodType;
         this.oneSimulationStepPerFrame = oneSimulationStepPerFrame;
 
-        $effect.root(() => {
+        this.stopEffects = $effect.root(() => {
             $effect(() => this.uniformsManager.writeViewProjMat(this.camera.viewProjMat));
             $effect(() => this.uniformsManager.writeViewProjInvMat(this.camera.viewProjInvMat));
             $effect(() => {
@@ -453,11 +463,14 @@ export class GpuSnowPipelineRunner {
 
 
             let lastRenderMethodType: GpuRenderMethodType | null = null;
-            $effect(() => {                
+            $effect(() => {
+                if (this.destroyed) return;
+
                 const renderMethodType = getRenderMethodType();
                 if (renderMethodType === lastRenderMethodType) return;
 
                 this.renderMethod?.destroy();
+                this.renderMethod = null;
                 lastRenderMethodType = renderMethodType;
 
 
@@ -573,6 +586,8 @@ export class GpuSnowPipelineRunner {
             });
 
             $effect(() => {
+                if (this.destroyed) return;
+
                 this.depthTexture?.destroy();
 
                 this.depthTexture = this.device.createTexture({
@@ -598,11 +613,39 @@ export class GpuSnowPipelineRunner {
 
             return () => {
                 this.renderMethod?.destroy();
+                this.renderMethod = null;
             };
         });
     }
 
+    destroy() {
+        if (this.destroyed) return;
+
+        this.destroyed = true;
+        this.stopEffects?.();
+        this.stopEffects = null;
+
+        this.renderMethod?.destroy();
+        this.renderMethod = null;
+        this.depthTexture?.destroy();
+        this.depthTexture = null;
+
+        this.depthPicker.destroy();
+        this.environmentRenderPipelineManager.destroy();
+        this.environmentTextureManager.destroy();
+        this.mpmGridRenderPipelineManager.destroy();
+        this.particleSpeedReductionPipelineManager.destroy();
+        this.colliderManager.destroy();
+        this.particleAppearanceManager.destroy();
+        this.spawnVolumeManager.destroy();
+        this.performanceMeasurementManager?.destroy();
+        this.mpmManager.destroy();
+        this.uniformsManager.destroy();
+    }
+
     scatterParticles() {
+        if (this.destroyed) return;
+
         this.latestMaxParticleSpeed = 0;
         this.writeSimulationTimingUniforms(this.selectedSimulationTimestepS);
         this.mpmPipelineManager.invalidateActiveBlocks();
@@ -909,6 +952,8 @@ export class GpuSnowPipelineRunner {
         onAnimationFrameTimeUpdate?: (ms: number) => void,
         onUserControlUpdate?: () => void,
     } = {}) {
+        if (this.destroyed) return () => {};
+
         let handle = 0;
         let canceled = false;
 
@@ -1140,7 +1185,7 @@ export class GpuSnowPipelineRunner {
     });
 
     async pickDepth(x: number, y: number): Promise<number | null> {
-        if (!this.depthTextureView) return null;
+        if (this.destroyed || !this.depthTextureView) return null;
         return this.depthPicker.pick(this.depthTextureView, x, y);
     }
 }

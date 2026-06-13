@@ -174,4 +174,24 @@ export class GpuMpmBufferManager {
 
         this.nParticles = nParticles;
     }
+
+    destroy() {
+        this.particleDataBuffer.destroy();
+        this.particleFlagsBuffer.destroy();
+        this.sparseGridBuffer.destroy();
+        this.nextSparseGridBuffer.destroy();
+        this.gridAccumulatorBuffer.destroy();
+        this.nextGridAccumulatorBuffer.destroy();
+        this.gridVelocityBuffer.destroy();
+        this.activeBlockDispatchBuffer.destroy();
+        this.nextActiveBlockDispatchBuffer.destroy();
+        this.bukkitParticleCountsBuffer.destroy();
+        this.bukkitInsertCountersBuffer.destroy();
+        this.bukkitIndexStartBuffer.destroy();
+        this.bukkitThreadDataBuffer.destroy();
+        this.bukkitParticleDataBuffer.destroy();
+        this.bukkitDispatchBuffer.destroy();
+        this.bukkitParticleAllocatorBuffer.destroy();
+        this.bukkitThreadGroupCountBuffer.destroy();
+    }
 }

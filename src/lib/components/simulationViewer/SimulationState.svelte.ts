@@ -339,10 +339,22 @@ export class SimulationState {
         onErr?: (err: string) => void,
     }) {
         const scene = getScene();
+        let destroyed = false;
+        const updateStatus = (status: string) => {
+            if (!destroyed) {
+                onStatusChange?.(status);
+            }
+        };
+        const updateErr = (err: string) => {
+            if (!destroyed) {
+                onErr?.(err);
+            }
+        };
+
         const state = new SimulationState({
             scene,
-            onStatusChange,
-            onErr,
+            onStatusChange: updateStatus,
+            onErr: updateErr,
         });
 
 
@@ -350,26 +362,37 @@ export class SimulationState {
         onMount(() => {
             void (async () => {
                 try {
+                    const canvas = await canvasPromise;
+                    if (destroyed) return;
+
                     const response = await requestGpuDeviceAndContext({
-                        onStatusChange,
-                        onErr,
-                        canvas: await canvasPromise,
+                        onStatusChange: updateStatus,
+                        onErr: updateErr,
+                        canvas,
                     });
                     if (response === null) return;
                     const { device, context, format, supportsTimestamp } = response;
+                    if (destroyed) {
+                        device.destroy();
+                        return;
+                    }
                     state.device = device;
 
-                    onStatusChange?.("loading particles...");
+                    updateStatus("loading particles...");
                     const { spawnSource, particleAppearances } = await loadSpawnSource(scene, state.nParticles);
+                    if (destroyed) return;
 
-                    onStatusChange?.("loading collider...");
+                    updateStatus("loading collider...");
                     const collider = await loadCollider(scene);
+                    if (destroyed) return;
 
-                    onStatusChange?.("loading environment...");
+                    updateStatus("loading environment...");
                     const environmentImageBitmap = await loadEnvironmentMap();
+                    if (destroyed) return;
 
-                    onStatusChange?.("initializing renderer...");
+                    updateStatus("initializing renderer...");
                     await waitForBrowserPaint();
+                    if (destroyed) return;
 
                     state.width = innerWidth;
                     state.height = innerHeight;
@@ -403,13 +426,20 @@ export class SimulationState {
                     await state.restart();
                 } catch (error) {
                     console.error(error);
-                    onErr?.(errorToString(error));
+                    updateErr(errorToString(error));
                 }
             })();
         });
 
         onDestroy(() => {
+            destroyed = true;
+            state.restartEpoch++;
             state.stopSimulation?.();
+            state.stopSimulation = null;
+            state.runner?.destroy();
+            state.runner = null;
+            state.device?.destroy();
+            state.device = null;
         });
 
 

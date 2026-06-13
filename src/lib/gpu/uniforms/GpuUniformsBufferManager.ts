@@ -283,4 +283,8 @@ export class GpuUniformsBufferManager {
         this.device.queue.writeBuffer(this.buffer, 688, upload);
     }
 
+    destroy() {
+        this.buffer.destroy();
+    }
+
 }

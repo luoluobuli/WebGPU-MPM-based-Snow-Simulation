@@ -43,4 +43,8 @@ export class GpuMeshBufferManager {
         device.queue.writeBuffer(this.meshVerticesBuffer, 0, flatVertices);
         this.numVertices = vertices.length;
     }
+
+    destroy() {
+        this.meshVerticesBuffer.destroy();
+    }
 }

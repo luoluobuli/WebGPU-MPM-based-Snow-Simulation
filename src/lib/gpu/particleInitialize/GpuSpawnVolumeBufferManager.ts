@@ -54,4 +54,8 @@ export class GpuSpawnVolumeBufferManager {
         this.spawnPointsBuffer = spawnPointsBuffer;
         this.nSpawnPoints = nParticles;
     }
+
+    destroy() {
+        this.spawnPointsBuffer.destroy();
+    }
 }

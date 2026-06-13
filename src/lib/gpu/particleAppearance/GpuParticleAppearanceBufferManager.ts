@@ -58,4 +58,8 @@ export class GpuParticleAppearanceBufferManager {
 
         this.appearanceBuffer = buffer;
     }
+
+    destroy() {
+        this.appearanceBuffer.destroy();
+    }
 }

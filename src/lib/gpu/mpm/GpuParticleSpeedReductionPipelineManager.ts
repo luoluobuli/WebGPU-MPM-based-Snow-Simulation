@@ -6,6 +6,7 @@ export class GpuParticleSpeedReductionPipelineManager {
 
     private hasPendingReadback = false;
     private isMappingReadbackBuffer = false;
+    private destroyed = false;
 
     constructor({
         device,
@@ -33,12 +34,15 @@ export class GpuParticleSpeedReductionPipelineManager {
     }: {
         commandEncoder: GPUCommandEncoder,
     }) {
+        if (this.destroyed) return;
+
         this.hasPendingReadback = false;
         commandEncoder.clearBuffer(this.maxSpeedBuffer);
     }
 
     canScheduleReadback() {
-        return !this.hasPendingReadback
+        return !this.destroyed
+            && !this.hasPendingReadback
             && !this.isMappingReadbackBuffer
             && this.readbackBuffer.mapState === "unmapped";
     }
@@ -48,6 +52,7 @@ export class GpuParticleSpeedReductionPipelineManager {
     }: {
         commandEncoder: GPUCommandEncoder,
     }) {
+        if (this.destroyed) return;
         if (this.isMappingReadbackBuffer || this.readbackBuffer.mapState !== "unmapped") return;
 
         commandEncoder.copyBufferToBuffer(
@@ -63,7 +68,8 @@ export class GpuParticleSpeedReductionPipelineManager {
 
     async mapMaxSpeed(fn: (maxSpeed: number) => void) {
         if (
-            !this.hasPendingReadback
+            this.destroyed
+            || !this.hasPendingReadback
             || this.isMappingReadbackBuffer
             || this.readbackBuffer.mapState !== "unmapped"
         ) {
@@ -76,17 +82,35 @@ export class GpuParticleSpeedReductionPipelineManager {
             await this.readbackBuffer.mapAsync(GPUMapMode.READ);
             mapped = true;
 
+            if (this.destroyed) return null;
+
             const maxSpeedSquared = new Float32Array(this.readbackBuffer.getMappedRange())[0] ?? 0;
             const maxSpeed = Math.sqrt(Math.max(0, maxSpeedSquared));
             if (Number.isFinite(maxSpeed)) {
                 fn(maxSpeed);
             }
+        } catch (error) {
+            if (this.destroyed) return null;
+
+            throw error;
         } finally {
-            if (mapped) {
+            const mapState = this.readbackBuffer.mapState as GPUBufferMapState;
+            if (mapped && mapState === "mapped") {
                 this.readbackBuffer.unmap();
             }
             this.hasPendingReadback = false;
             this.isMappingReadbackBuffer = false;
         }
+    }
+
+    destroy() {
+        if (this.destroyed) return;
+
+        this.destroyed = true;
+        if (this.readbackBuffer.mapState === "mapped") {
+            this.readbackBuffer.unmap();
+        }
+        this.maxSpeedBuffer.destroy();
+        this.readbackBuffer.destroy();
     }
 }

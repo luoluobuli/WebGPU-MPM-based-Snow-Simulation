@@ -6,6 +6,7 @@ export class GpuPerformanceMeasurementBufferManager {
     private isMappingResultBuffer = false;
     private hasPendingReadback = false;
     private prerenderTimestampBaseIndex = 6;
+    private destroyed = false;
     enabled = true;
 
     constructor({
@@ -48,6 +49,7 @@ export class GpuPerformanceMeasurementBufferManager {
     
 
     addResolve(commandEncoder: GPUCommandEncoder, queryCount = this.querySet.count) {
+        if (this.destroyed) return;
         if (!this.enabled || this.isMappingResultBuffer || this.resultBuffer.mapState !== "unmapped") return;
 
         const resolvedQueryCount = Math.min(this.querySet.count, Math.max(0, queryCount));
@@ -61,7 +63,12 @@ export class GpuPerformanceMeasurementBufferManager {
 
 
     async mapTime(fn: (timestamps: BigUint64Array) => void) {
-        if (!this.hasPendingReadback || this.isMappingResultBuffer || this.resultBuffer.mapState !== "unmapped") {
+        if (
+            this.destroyed
+            || !this.hasPendingReadback
+            || this.isMappingResultBuffer
+            || this.resultBuffer.mapState !== "unmapped"
+        ) {
             return null;
         }
 
@@ -71,10 +78,17 @@ export class GpuPerformanceMeasurementBufferManager {
             await this.resultBuffer.mapAsync(GPUMapMode.READ);
             mapped = true;
 
+            if (this.destroyed) return null;
+
             const startEndGpuTimestamps = new BigUint64Array(this.resultBuffer.getMappedRange());
             fn(startEndGpuTimestamps);
+        } catch (error) {
+            if (this.destroyed) return null;
+
+            throw error;
         } finally {
-            if (mapped) {
+            const mapState = this.resultBuffer.mapState as GPUBufferMapState;
+            if (mapped && mapState === "mapped") {
                 this.resultBuffer.unmap();
             }
             this.hasPendingReadback = false;
@@ -83,12 +97,24 @@ export class GpuPerformanceMeasurementBufferManager {
     }
 
     buildPrerenderTimestampWritesDescriptor(prerenderPassIndex: number) {
-        if (!this.enabled) return undefined;
+        if (!this.enabled || this.destroyed) return undefined;
 
         return {
             querySet: this.querySet,
             beginningOfPassWriteIndex: this.prerenderTimestampBaseIndex + 2 * prerenderPassIndex,
             endOfPassWriteIndex: this.prerenderTimestampBaseIndex + 2 * prerenderPassIndex + 1,
         };
+    }
+
+    destroy() {
+        if (this.destroyed) return;
+
+        this.destroyed = true;
+        if (this.resultBuffer.mapState === "mapped") {
+            this.resultBuffer.unmap();
+        }
+        this.querySet.destroy();
+        this.resolveBuffer.destroy();
+        this.resultBuffer.destroy();
     }
 }
