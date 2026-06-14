@@ -18,7 +18,7 @@ const BASE_PARTICLE_RADIUS = 0.1;
 const DEFAULT_SPLAT_RADIUS_SCALE = 0.88;
 const SOIL_SPLAT_RADIUS_SCALE = 0.76;
 const BARK_SPLAT_RADIUS_SCALE = 0.72;
-const LEAF_SPLAT_RADIUS_SCALE = 0.62;
+const LEAF_SPLAT_RADIUS_SCALE = 1.55;
 const VERT_POSITIONS: array<vec2f, 6> = array(
     vec2f(-1, -1),
     vec2f(1, -1),

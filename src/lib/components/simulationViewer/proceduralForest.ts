@@ -22,8 +22,8 @@ type TreeSpec = {
 
 const DOMAIN_MIN = -5;
 const DOMAIN_MAX = 5;
-const GROUND_BASE_Z = -4.36;
-const GROUND_THICKNESS = 1.08;
+export const DEFAULT_GROUND_BASE_Z = -4.36;
+export const DEFAULT_GROUND_THICKNESS = 1.08;
 const GROUND_PARTICLE_FRACTION = 0.24;
 const TRUNK_PARTICLE_FRACTION = 0.3;
 const ROOT_PARTICLE_FRACTION = 0.13;
@@ -57,8 +57,12 @@ const hash01 = (seed: number, ...values: number[]) => {
     return hash / 0xffffffff;
 };
 
-const terrainHeight = (x: number, y: number) =>
-    GROUND_BASE_Z
+const terrainHeight = (
+    x: number,
+    y: number,
+    baseZ = DEFAULT_GROUND_BASE_Z,
+) =>
+    baseZ
     + 0.1 * Math.sin(x * 1.4 + y * 0.35)
     + 0.07 * Math.cos(y * 1.15 - x * 0.28);
 
@@ -150,11 +154,13 @@ const writeGroundParticle = (
     appearances: Uint32Array,
     index: number,
     seed: number,
+    baseZ = DEFAULT_GROUND_BASE_Z,
+    thickness = DEFAULT_GROUND_THICKNESS,
 ) => {
     const x = mix(-4.75, 4.75, hash01(seed, index, 201));
     const y = mix(-4.75, 4.75, hash01(seed, index, 202));
-    const top = terrainHeight(x, y);
-    const z = top - GROUND_THICKNESS * hash01(seed, index, 203);
+    const top = terrainHeight(x, y, baseZ);
+    const z = top - thickness * hash01(seed, index, 203);
     const moss = hash01(seed, index, 204) > 0.74;
     const baseColor: Vec3 = moss ? [0.27, 0.38, 0.2] : [0.42, 0.31, 0.2];
 
@@ -163,6 +169,34 @@ const writeGroundParticle = (
         color: colorVariation(baseColor, 0.28, seed, index),
         material: ParticleAppearanceMaterial.Soil,
     });
+};
+
+export const buildProceduralGround = ({
+    nParticles,
+    seed = 0x5650f017,
+    baseZ = DEFAULT_GROUND_BASE_Z,
+    thickness = DEFAULT_GROUND_THICKNESS,
+}: {
+    nParticles: number,
+    seed?: number,
+    baseZ?: number,
+    thickness?: number,
+}): ProceduralForest => {
+    if (!Number.isInteger(nParticles) || nParticles <= 0) {
+        throw new Error("procedural ground requires a positive particle count");
+    }
+
+    const points = new Float32Array(nParticles * 4);
+    const appearances = new Uint32Array(nParticles);
+
+    for (let i = 0; i < nParticles; i++) {
+        writeGroundParticle(points, appearances, i, seed, baseZ, thickness);
+    }
+
+    return {
+        spawnPoints: points,
+        particleAppearances: appearances,
+    };
 };
 
 const writeTrunkParticle = (

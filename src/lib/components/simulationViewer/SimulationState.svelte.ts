@@ -15,6 +15,7 @@ import {
     type SimulationSceneConfig,
 } from "./SimulationScene";
 import { buildProceduralForest } from "./proceduralForest";
+import { loadTreeModelSpawnPoints } from "./loadTreeModel";
 import type { SpawnPointSource } from "$lib/gpu/particleInitialize/GpuSpawnVolumeBufferManager";
 import { vec3 } from "wgpu-matrix";
 
@@ -47,6 +48,21 @@ const loadSpawnSource = async (
                     objects,
                 },
                 particleAppearances: null,
+            };
+        }
+
+        case "treeModel": {
+            const tree = await loadTreeModelSpawnPoints({
+                url: scene.spawnSource.url,
+                nParticles,
+            });
+
+            return {
+                spawnSource: {
+                    type: "points",
+                    points: tree.spawnPoints,
+                },
+                particleAppearances: tree.particleAppearances,
             };
         }
 

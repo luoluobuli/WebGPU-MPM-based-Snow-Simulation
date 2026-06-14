@@ -12,9 +12,13 @@ describe("SimulationScene timing", () => {
         expect(defaultSimulationScene.renderMethodType).toBe(GpuRenderMethodType.Splats);
     });
 
-    it("keeps the environment scene collider-free with grid support matched to sparse generated particles", () => {
+    it("keeps the environment scene collider-free with grid support matched to tree particles", () => {
         expect(environmentScene.colliderSource).toBeNull();
-        expect(environmentScene.nParticles).toBe(220_000);
+        expect(environmentScene.spawnSource.type).toBe("treeModel");
+        if (environmentScene.spawnSource.type === "treeModel") {
+            expect(environmentScene.spawnSource.url).toContain("tree0.glb");
+        }
+        expect(environmentScene.nParticles).toBe(480_000);
         expect(environmentScene.gridResolution).toEqual([128, 128, 128]);
         expect(environmentScene.timing?.mlsMpmMaxSimulationTimestepS).toBe(1 / 1024);
     });

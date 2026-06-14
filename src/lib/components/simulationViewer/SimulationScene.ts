@@ -1,11 +1,16 @@
 import modelUrl from "$lib/assets/models/snow3.glb?url";
 import colliderUrl from "$lib/assets/models/forest_scaled.glb?url";
+import treeModelUrl from "$lib/assets/models/tree0.glb?url";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 
 export type SimulationSpawnSource =
     | {
         type: "mesh",
+        url: string,
+    }
+    | {
+        type: "treeModel",
         url: string,
     }
     | {
@@ -65,11 +70,11 @@ export const defaultSimulationScene: SimulationSceneConfig = {
 
 export const environmentScene: SimulationSceneConfig = {
     spawnSource: {
-        type: "proceduralForest",
-        seed: 0x5650f017,
+        type: "treeModel",
+        url: treeModelUrl,
     },
     colliderSource: null,
-    nParticles: 220_000,
+    nParticles: 480_000,
     gridResolution: [128, 128, 128],
     renderMethodType: GpuRenderMethodType.Splats,
     simulationMethodType: GpuSimulationMethodType.MlsMpm,
@@ -77,7 +82,7 @@ export const environmentScene: SimulationSceneConfig = {
         radius: 8,
         lat: Math.PI / 4.6,
         long: Math.PI * 1.18,
-        offset: [0, 0, -2.1],
+        offset: [0, 0, 0],
     },
     timing: {
         mlsMpmMaxSimulationTimestepS: 1 / 1024,
