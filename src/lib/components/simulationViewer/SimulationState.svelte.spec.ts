@@ -266,6 +266,36 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(runner.renderStillFrame).toHaveBeenCalledTimes(2);
     });
 
+    it("keeps camera renders pending while timeline cache work is busy", async () => {
+        const animationFrames = installAnimationFrameQueue();
+        const state = new SimulationState({ timeline: true });
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+        };
+
+        attachRunner(state, runner);
+
+        state.timelineIsBusy = true;
+        state.turnCamera({ x: 8, y: -4 });
+
+        await animationFrames.flushNextFrame();
+
+        expect(runner.renderStillFrame).not.toHaveBeenCalled();
+        expect(animationFrames.queuedFrameCount()).toBe(0);
+
+        (
+            state as unknown as {
+                releaseTimelineBusy: (runToken: number) => void,
+            }
+        ).releaseTimelineBusy(0);
+
+        expect(animationFrames.queuedFrameCount()).toBe(1);
+
+        await animationFrames.flushNextFrame();
+
+        expect(runner.renderStillFrame).toHaveBeenCalledTimes(1);
+    });
+
     it("does not wait for submitted GPU work before accepting the next camera render", async () => {
         const animationFrames = installAnimationFrameQueue();
         const state = new SimulationState({ timeline: true });

@@ -501,9 +501,7 @@ export class SimulationState {
 
             throw error;
         } finally {
-            if (runToken === this.timelineRunToken) {
-                this.timelineIsBusy = false;
-            }
+            this.releaseTimelineBusy(runToken);
         }
     }
 
@@ -602,9 +600,16 @@ export class SimulationState {
             this.timelineIsPlaying = false;
             this.onErr?.(text);
         } finally {
-            if (runToken === this.timelineRunToken) {
-                this.timelineIsBusy = false;
-            }
+            this.releaseTimelineBusy(runToken);
+        }
+    }
+
+    private releaseTimelineBusy(runToken: number) {
+        if (runToken !== this.timelineRunToken) return;
+
+        this.timelineIsBusy = false;
+        if (this.stillFrameRenderRequested) {
+            this.scheduleStillFrameRenderFlush();
         }
     }
 
@@ -823,16 +828,20 @@ export class SimulationState {
         if (!this.stillFrameRenderRequested) return;
         if (this.stillFrameRenderInFlight) return;
 
-        this.stillFrameRenderRequested = false;
         if (
             this.runner === null
             || !this.timeline
-            || this.timelineIsBusy
             || this.timelineIsPlaying
         ) {
+            this.stillFrameRenderRequested = false;
             return;
         }
 
+        if (this.timelineIsBusy) {
+            return;
+        }
+
+        this.stillFrameRenderRequested = false;
         this.stillFrameRenderInFlight = true;
         void this.submitStillFrameRender();
     }
