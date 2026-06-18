@@ -30,6 +30,13 @@ describe("mpmOps material damping", () => {
         expect(mpmOpsSrc).toContain("return materialFlagFromId(material);");
     });
 
+    it("lets cached playback frames bypass deformation determinants", () => {
+        expect(mpmOpsSrc).toContain("PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u");
+        expect(mpmOpsSrc).toContain("fn particlePlasticVolumeFactor");
+        expect(mpmOpsSrc).toContain("fn particleElasticVolumeFactor");
+        expect(mpmOpsSrc).toContain("return 1.0;");
+    });
+
     it("keeps environment soil from becoming nearly suspended by per-substep damping", () => {
         const environmentTimestepS = 1 / 256;
         const gravityMPerS2 = 9.81;

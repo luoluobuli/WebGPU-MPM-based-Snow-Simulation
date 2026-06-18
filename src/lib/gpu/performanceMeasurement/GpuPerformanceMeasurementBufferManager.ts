@@ -46,11 +46,18 @@ export class GpuPerformanceMeasurementBufferManager {
     setPrerenderTimestampBaseIndex(baseIndex: number) {
         this.prerenderTimestampBaseIndex = baseIndex;
     }
+
+    canScheduleReadback() {
+        return !this.destroyed
+            && !this.hasPendingReadback
+            && !this.isMappingResultBuffer
+            && this.resultBuffer.mapState === "unmapped";
+    }
     
 
     addResolve(commandEncoder: GPUCommandEncoder, queryCount = this.querySet.count) {
         if (this.destroyed) return;
-        if (!this.enabled || this.isMappingResultBuffer || this.resultBuffer.mapState !== "unmapped") return;
+        if (!this.enabled || !this.canScheduleReadback()) return;
 
         const resolvedQueryCount = Math.min(this.querySet.count, Math.max(0, queryCount));
         if (resolvedQueryCount === 0) return;

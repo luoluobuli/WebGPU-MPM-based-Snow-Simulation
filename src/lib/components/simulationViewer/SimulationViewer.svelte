@@ -4,10 +4,12 @@ import { SimulationState } from "./SimulationState.svelte";
 import { onMount } from "svelte";
 import SimulationStatusPanel from "./SimulationStatusPanel.svelte";
 import SimulationControlPanel from "./SimulationControlPanel.svelte";
+import SimulationTimeline from "./SimulationTimeline.svelte";
 import {
     defaultSimulationScene,
     type SimulationSceneConfig,
 } from "./SimulationScene";
+import { browser } from "$app/environment";
 
 let {
     scene = defaultSimulationScene,
@@ -21,8 +23,14 @@ let err = $state<string | null>(null);
 let canvas = $state<HTMLCanvasElement | null>(null);
 let canvasPromise = Promise.withResolvers<HTMLCanvasElement>();
 
+const urlSearchParams = browser
+    ? new URLSearchParams(location.search)
+    : null;
+const timeline = urlSearchParams?.has("timeline") === true;
+
 const simulationState = SimulationState.loadOntoCanvas({
     getScene: () => scene,
+    timeline,
     canvasPromise: canvasPromise.promise,
     onStatusChange: text => status = text,
     onErr: text => err = text,
@@ -50,6 +58,12 @@ onMount(() => {
             {status}
             {err}
         />
+
+        {#if timeline}
+            <SimulationTimeline
+                {simulationState}
+            />
+        {/if}
     </simulation-overlay-panels>
 </main>
 
@@ -67,8 +81,13 @@ main {
 }
 
 simulation-overlay-panels {
+    width: 100vw;
+    height: 100vh;
+
     display: grid;
     grid-template-columns: auto 1fr auto;
+    grid-template-rows: minmax(0, 1fr) auto;
+    overflow: hidden;
 
     pointer-events: none;
 
@@ -78,10 +97,22 @@ simulation-overlay-panels {
 
     > :global(:nth-child(1)) {
         grid-area: 1/1;
+        align-self: stretch;
+        min-height: 0;
+        max-height: 100%;
     }
 
     > :global(:nth-child(2)) {
         grid-area: 1/3;
+        align-self: stretch;
+        min-height: 0;
+        max-height: 100%;
+    }
+
+    > :global(:nth-child(3)) {
+        grid-area: 2/1/3/4;
+        align-self: end;
+        justify-self: center;
     }
 }
 </style>

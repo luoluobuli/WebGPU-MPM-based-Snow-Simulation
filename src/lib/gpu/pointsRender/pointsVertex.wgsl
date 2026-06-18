@@ -2,6 +2,7 @@
 
 @group(0) @binding(1) var<storage, read> particle_data: array<ParticleData>;
 @group(0) @binding(2) var<storage, read> particle_appearance: array<u32>;
+@group(0) @binding(3) var<storage, read> particle_flags: array<u32>;
 
 @vertex
 fn vert(
@@ -16,8 +17,10 @@ fn vert(
 
     out.pos = pos;
     out.uv = frustumPos.xy / frustumPos.w;
-    out.deformation_elastic_volume = determinant(particle_data[vertex_index].deformationElastic);
-    out.deformation_plastic_volume = determinant(particle_data[vertex_index].deformationPlastic);
+    let particle = particle_data[vertex_index];
+    let flags = particle_flags[vertex_index];
+    out.deformation_elastic_volume = particleElasticVolumeFactor(particle, flags);
+    out.deformation_plastic_volume = particlePlasticVolumeFactor(particle, flags);
     out.appearance = decodeParticleAppearance(particle_appearance[vertex_index]);
 
     return out;

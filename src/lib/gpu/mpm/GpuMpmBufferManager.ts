@@ -4,6 +4,8 @@ const BUKKIT_DOMAIN_GRID_RESOLUTION = 384;
 export const BUKKIT_DOMAIN_BLOCKS_PER_AXIS = Math.ceil(BUKKIT_DOMAIN_GRID_RESOLUTION / BLOCK_SIZE);
 export const BUKKIT_DOMAIN_BLOCK_COUNT = BUKKIT_DOMAIN_BLOCKS_PER_AXIS ** 3;
 export const N_MAX_ACTIVE_BLOCKS = 100_000;
+export const PARTICLE_DATA_BYTES_PER_PARTICLE = 192;
+export const PARTICLE_FLAG_BYTES_PER_PARTICLE = 4;
 const GRID_CELLS_PER_BLOCK = 64;
 const SPARSE_GRID_HEADER_BYTES = 16;
 const UINT32_BYTES = 4;
@@ -35,6 +37,8 @@ export class GpuMpmBufferManager {
     readonly bukkitThreadGroupCountBuffer: GPUBuffer;
 
     readonly nParticles: number;
+    readonly particleDataByteLength: number;
+    readonly particleFlagsByteLength: number;
     readonly nMaxActiveBlocks = N_MAX_ACTIVE_BLOCKS;
     readonly bukkitDomainBlockCount = BUKKIT_DOMAIN_BLOCK_COUNT;
 
@@ -45,16 +49,23 @@ export class GpuMpmBufferManager {
         device: GPUDevice,
         nParticles: number,
     }) {
+        const particleDataByteLength = nParticles * PARTICLE_DATA_BYTES_PER_PARTICLE;
+        const particleFlagsByteLength = nParticles * PARTICLE_FLAG_BYTES_PER_PARTICLE;
         const particleDataBuffer = device.createBuffer({
             label: "MPM particle data buffer",
-            size: nParticles * 192,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM,
+            size: particleDataByteLength,
+            usage:
+                GPUBufferUsage.VERTEX
+                | GPUBufferUsage.COPY_SRC
+                | GPUBufferUsage.COPY_DST
+                | GPUBufferUsage.STORAGE
+                | GPUBufferUsage.UNIFORM,
         });
 
         const particleFlagsBuffer = device.createBuffer({
             label: "MPM particle flags buffer",
-            size: nParticles * UINT32_BYTES,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            size: particleFlagsByteLength,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
         });
 
         // SparseGridStorage layout:
@@ -173,6 +184,8 @@ export class GpuMpmBufferManager {
         this.bukkitThreadGroupCountBuffer = bukkitThreadGroupCountBuffer;
 
         this.nParticles = nParticles;
+        this.particleDataByteLength = particleDataByteLength;
+        this.particleFlagsByteLength = particleFlagsByteLength;
     }
 
     destroy() {

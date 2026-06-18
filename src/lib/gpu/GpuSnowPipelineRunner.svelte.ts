@@ -28,6 +28,7 @@ import { GpuDepthPicker } from "./GpuDepthPicker";
 import { GpuParticleSpeedReductionPipelineManager } from "./mpm/GpuParticleSpeedReductionPipelineManager";
 import { GpuParticleAppearanceBufferManager } from "./particleAppearance/GpuParticleAppearanceBufferManager";
 import { GRAVITATIONAL_ACCELERATION_M_PER_S2 } from "./gravity";
+import { GpuSimulationPlaybackFrameCacheManager } from "./simulationFrameCache/GpuSimulationPlaybackFrameCacheManager";
 import {
     CFL_NUMBER,
     calculateSimulationFrameSchedule,
@@ -41,6 +42,25 @@ import {
     MAX_SIMULATION_SUBSTEPS_PER_FRAME,
     MIN_SIMULATION_TIMESTEP_S,
 } from "./simulationTimestep";
+
+export type GpuFrameTiming = {
+    computeSimulationStepNs: bigint,
+    computeSimulationSubstepNs: bigint,
+    nSimulationSubsteps: number,
+    renderNs: bigint,
+    postprocessRenderNs: bigint,
+};
+
+export type GpuFrameTimingCallbacks = {
+    onGpuTimeUpdate?: (times: GpuFrameTiming) => void,
+    onAnimationFrameTimeUpdate?: (ms: number) => void,
+};
+
+export type GpuFixedSimulationStepResult = {
+    nSimulationSubsteps: number,
+    simulationTimestepS: number,
+    simulatedTimeS: number,
+};
 
 const FP_SCALE = 65536;
 const MAX_FIXED_POINT_I32 = 2_147_483_000;
@@ -144,6 +164,7 @@ export class GpuSnowPipelineRunner {
     private readonly performanceMeasurementManager: GpuPerformanceMeasurementBufferManager | null;
     private readonly mpmPipelineManager: GpuMpmPipelineManager;
     private readonly particleSpeedReductionPipelineManager: GpuParticleSpeedReductionPipelineManager;
+    private readonly simulationPlaybackFrameCacheManager: GpuSimulationPlaybackFrameCacheManager;
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager | null;
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
@@ -184,6 +205,10 @@ export class GpuSnowPipelineRunner {
     private readonly getSimulationMethodType: () => GpuSimulationMethodType;
     private readonly getRenderMethodType: () => GpuRenderMethodType;
     private readonly oneSimulationStepPerFrame: () => boolean;
+
+    get simulationPlaybackFrameLayout() {
+        return this.simulationPlaybackFrameCacheManager.layout;
+    }
 
     constructor({
         device,
@@ -317,6 +342,12 @@ export class GpuSnowPipelineRunner {
 
         this.particleSpeedReductionPipelineManager = new GpuParticleSpeedReductionPipelineManager({
             device,
+        });
+        this.simulationPlaybackFrameCacheManager = new GpuSimulationPlaybackFrameCacheManager({
+            device,
+            nParticles,
+            particleDataBuffer: mpmManager.particleDataBuffer,
+            particleFlagsBuffer: mpmManager.particleFlagsBuffer,
         });
 
         const spawnBounds = boundsFromSpawnSource(spawnSource);
@@ -634,6 +665,7 @@ export class GpuSnowPipelineRunner {
         this.environmentRenderPipelineManager.destroy();
         this.environmentTextureManager.destroy();
         this.mpmGridRenderPipelineManager.destroy();
+        this.simulationPlaybackFrameCacheManager.destroy();
         this.particleSpeedReductionPipelineManager.destroy();
         this.colliderManager.destroy();
         this.particleAppearanceManager.destroy();
@@ -664,6 +696,295 @@ export class GpuSnowPipelineRunner {
 
     scatterParticlesInMeshVolume() {
         this.scatterParticles();
+    }
+
+    private frameTimestampMetadata() {
+        const frameRenderUsesSsao = this.renderUsesSsao;
+        const framePrerenderTimestampBaseIndex = frameRenderUsesSsao ? 6 : 4;
+        const framePrerenderPassCount = this.renderHasPrerenderPasses
+            ? (this.prerenderPasses?.length ?? 0)
+            : 0;
+        const timestampQueryCount = framePrerenderTimestampBaseIndex + 2 * framePrerenderPassCount;
+
+        return {
+            frameRenderUsesSsao,
+            framePrerenderTimestampBaseIndex,
+            timestampQueryCount,
+        };
+    }
+
+    private canMeasureGpuTimestamps() {
+        return this.performanceMeasurementManager !== null
+            && this.renderMethod !== null
+            && this.performanceMeasurementManager.canScheduleReadback();
+    }
+
+    private addNoopComputeTimestampPass(commandEncoder: GPUCommandEncoder) {
+        if (this.performanceMeasurementManager === null) return;
+
+        const computePassEncoder = commandEncoder.beginComputePass({
+            label: "still frame timestamp compute pass",
+            timestampWrites: {
+                querySet: this.performanceMeasurementManager.querySet,
+                beginningOfPassWriteIndex: 0,
+                endOfPassWriteIndex: 1,
+            },
+        });
+        computePassEncoder.end();
+    }
+
+    private mapSubmittedGpuTimes({
+        nSimulationSubsteps,
+        frameRenderUsesSsao,
+        framePrerenderTimestampBaseIndex,
+        onGpuTimeUpdate,
+        onError,
+    }: {
+        nSimulationSubsteps: number,
+        frameRenderUsesSsao: boolean,
+        framePrerenderTimestampBaseIndex: number,
+        onGpuTimeUpdate?: (times: GpuFrameTiming) => void,
+        onError?: (error: unknown) => void,
+    }) {
+        if (this.performanceMeasurementManager === null) return;
+
+        this.performanceMeasurementManager.mapTime(timestamps => {
+            const computeSimulationStepNs = timestamps[1] - timestamps[0];
+            const computeSimulationSubstepNs = nSimulationSubsteps > 0
+                ? computeSimulationStepNs / BigInt(nSimulationSubsteps)
+                : 0n;
+            const renderNs = timestamps[3] - timestamps[2];
+            const postprocessRenderNs = frameRenderUsesSsao
+                ? timestamps[5] - timestamps[4]
+                : 0n;
+
+            if (this.#prerenderElapsedTimes !== null) {
+                for (let i = 0; i < this.#prerenderElapsedTimes.length; i++) {
+                    const index = framePrerenderTimestampBaseIndex + 2 * i;
+                    this.#prerenderElapsedTimes[i].elapsedTimeNs = timestamps[index + 1] - timestamps[index];
+                }
+            }
+
+            onGpuTimeUpdate?.({
+                computeSimulationStepNs,
+                computeSimulationSubstepNs,
+                nSimulationSubsteps,
+                renderNs,
+                postprocessRenderNs,
+            });
+        })
+            .catch(error => {
+                console.error(error);
+                onError?.(error);
+            });
+    }
+
+    async readSimulationPlaybackFrame() {
+        if (this.destroyed) {
+            throw new Error("cannot read a destroyed simulation");
+        }
+
+        const { byteLength } = this.simulationPlaybackFrameLayout;
+        const readbackBuffer = this.device.createBuffer({
+            label: "simulation playback frame readback buffer",
+            size: byteLength,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+        const commandEncoder = this.device.createCommandEncoder({
+            label: "simulation playback frame readback command encoder",
+        });
+
+        this.simulationPlaybackFrameCacheManager.addPackDispatch({ commandEncoder });
+        commandEncoder.copyBufferToBuffer(
+            this.simulationPlaybackFrameCacheManager.frameBuffer,
+            0,
+            readbackBuffer,
+            0,
+            byteLength,
+        );
+
+        this.device.queue.submit([commandEncoder.finish()]);
+
+        let mapped = false;
+        try {
+            await readbackBuffer.mapAsync(GPUMapMode.READ);
+            mapped = true;
+
+            if (this.destroyed) {
+                throw new Error("simulation was destroyed before playback frame readback completed");
+            }
+
+            return readbackBuffer.getMappedRange().slice(0);
+        } finally {
+            if (mapped && readbackBuffer.mapState === "mapped") {
+                readbackBuffer.unmap();
+            }
+            readbackBuffer.destroy();
+        }
+    }
+
+    restoreSimulationPlaybackFrame(frame: ArrayBuffer) {
+        if (this.destroyed) return;
+
+        this.simulationPlaybackFrameCacheManager.writeFrame(frame);
+
+        const commandEncoder = this.device.createCommandEncoder({
+            label: "simulation playback frame restore command encoder",
+        });
+        this.simulationPlaybackFrameCacheManager.addRestoreDispatch({ commandEncoder });
+        this.device.queue.submit([commandEncoder.finish()]);
+
+        this.latestMaxParticleSpeed = 0;
+        this.mpmPipelineManager.invalidateActiveBlocks();
+    }
+
+    renderStillFrame({
+        onGpuTimeUpdate,
+        onAnimationFrameTimeUpdate,
+    }: GpuFrameTimingCallbacks = {}) {
+        if (this.destroyed) return;
+
+        const frameStartMs = performance.now();
+        const measureGpuTimestamps = this.canMeasureGpuTimestamps();
+        this.performanceMeasurementManager?.setEnabled(measureGpuTimestamps);
+        const {
+            frameRenderUsesSsao,
+            framePrerenderTimestampBaseIndex,
+            timestampQueryCount,
+        } = this.frameTimestampMetadata();
+        const commandEncoder = this.device.createCommandEncoder({
+            label: "still frame render command encoder",
+        });
+
+        if (measureGpuTimestamps) {
+            this.addNoopComputeTimestampPass(commandEncoder);
+        }
+
+        this.addRender(commandEncoder, measureGpuTimestamps);
+
+        if (measureGpuTimestamps && this.performanceMeasurementManager !== null) {
+            this.performanceMeasurementManager.addResolve(commandEncoder, timestampQueryCount);
+        }
+
+        this.device.queue.submit([commandEncoder.finish()]);
+        onAnimationFrameTimeUpdate?.(performance.now() - frameStartMs);
+
+        if (measureGpuTimestamps) {
+            this.mapSubmittedGpuTimes({
+                nSimulationSubsteps: 0,
+                frameRenderUsesSsao,
+                framePrerenderTimestampBaseIndex,
+                onGpuTimeUpdate,
+            });
+        }
+    }
+
+    advanceFixedSimulationSubsteps({
+        nSubsteps,
+        onGpuTimeUpdate,
+        onAnimationFrameTimeUpdate,
+    }: GpuFrameTimingCallbacks & {
+        nSubsteps: number,
+    }): GpuFixedSimulationStepResult {
+        const simulationTimestepS = this.selectedSimulationTimestepS;
+        const safeNSubsteps = Number.isFinite(nSubsteps)
+            ? Math.max(0, Math.floor(nSubsteps))
+            : 0;
+
+        if (this.destroyed) {
+            return {
+                nSimulationSubsteps: 0,
+                simulationTimestepS,
+                simulatedTimeS: 0,
+            };
+        }
+
+        if (safeNSubsteps === 0) {
+            this.renderStillFrame({
+                onGpuTimeUpdate,
+                onAnimationFrameTimeUpdate,
+            });
+
+            return {
+                nSimulationSubsteps: 0,
+                simulationTimestepS,
+                simulatedTimeS: 0,
+            };
+        }
+
+        const frameStartMs = performance.now();
+        const commandEncoder = this.device.createCommandEncoder({
+            label: "fixed simulation frame command encoder",
+        });
+        const enableInteraction = this.isInteracting();
+        const shouldSampleParticleSpeed =
+            safeNSubsteps > 0
+            && this.particleSpeedReductionPipelineManager.canScheduleReadback();
+        const measureGpuTimestamps = safeNSubsteps > 0 && this.canMeasureGpuTimestamps();
+        this.performanceMeasurementManager?.setEnabled(measureGpuTimestamps);
+        const {
+            frameRenderUsesSsao,
+            framePrerenderTimestampBaseIndex,
+            timestampQueryCount,
+        } = this.frameTimestampMetadata();
+
+        this.writeSimulationTimingUniforms(simulationTimestepS);
+
+        if (shouldSampleParticleSpeed) {
+            this.particleSpeedReductionPipelineManager.reset({ commandEncoder });
+        }
+
+        this.addSimulationStepsComputePass({
+            commandEncoder,
+            nSimulationSteps: safeNSubsteps,
+            measureGpuTimestamps,
+            recordParticleSpeed: shouldSampleParticleSpeed,
+            enableInteraction,
+        });
+
+        if (shouldSampleParticleSpeed) {
+            this.particleSpeedReductionPipelineManager.copyToReadback({ commandEncoder });
+        }
+
+        this.addRender(commandEncoder, measureGpuTimestamps);
+
+        if (measureGpuTimestamps && this.performanceMeasurementManager !== null) {
+            this.performanceMeasurementManager.addResolve(commandEncoder, timestampQueryCount);
+        }
+
+        this.device.queue.submit([commandEncoder.finish()]);
+        onAnimationFrameTimeUpdate?.(performance.now() - frameStartMs);
+
+        if (shouldSampleParticleSpeed) {
+            this.particleSpeedReductionPipelineManager.mapMaxSpeed(maxSpeed => {
+                this.latestMaxParticleSpeed = maxSpeed;
+            })
+                .catch(error => {
+                    console.error(error);
+                });
+        }
+
+        if (measureGpuTimestamps) {
+            this.mapSubmittedGpuTimes({
+                nSimulationSubsteps: safeNSubsteps,
+                frameRenderUsesSsao,
+                framePrerenderTimestampBaseIndex,
+                onGpuTimeUpdate,
+            });
+        }
+
+        return {
+            nSimulationSubsteps: safeNSubsteps,
+            simulationTimestepS,
+            simulatedTimeS: safeNSubsteps * simulationTimestepS,
+        };
+    }
+
+    advanceFixedSimulationFrame(callbacks: GpuFrameTimingCallbacks = {}) {
+        return this.advanceFixedSimulationSubsteps({
+            nSubsteps: this.selectedSimulationSubstepsPerMaxStep,
+            ...callbacks,
+        });
     }
 
     updateColliderTransformMat(transformMat: Mat4) {
@@ -941,15 +1262,7 @@ export class GpuSnowPipelineRunner {
         onGpuTimeUpdate,
         onAnimationFrameTimeUpdate,
         onUserControlUpdate,
-    }: {
-        onGpuTimeUpdate?: (times: {
-            computeSimulationStepNs: bigint,
-            computeSimulationSubstepNs: bigint,
-            nSimulationSubsteps: number,
-            renderNs: bigint,
-            postprocessRenderNs: bigint,
-        }) => void,
-        onAnimationFrameTimeUpdate?: (ms: number) => void,
+    }: GpuFrameTimingCallbacks & {
         onUserControlUpdate?: () => void,
     } = {}) {
         if (this.destroyed) return () => {};

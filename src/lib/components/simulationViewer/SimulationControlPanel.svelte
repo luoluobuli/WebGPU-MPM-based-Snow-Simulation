@@ -7,6 +7,10 @@ import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 import OverlayPanel from "./OverlayPanel.svelte";
 import { ParticleControlMode } from "./ParticleControlMode";
+import {
+    formatReciprocalSecondsDivisor,
+    parseReciprocalSecondsDivisor,
+} from "./reciprocalSeconds";
 
 let {
     simulationState,
@@ -23,15 +27,6 @@ const progressFromTimestep = (timestep: number) => {
     return 1 - Math.log((1 / timestep) / MIN_TIMESTEP_DIVISOR) / Math.log(MAX_TIMESTEP_DIVISOR / MIN_TIMESTEP_DIVISOR);
 };
 const formatFixed3 = (value: number) => value.toFixed(3);
-const formatTimestepDivisor = (value: number) => `1 / ${value.toFixed(1)} s`;
-const parseTimestepDivisor = (value: string) => {
-    const trimmed = value.trim();
-    const reciprocalMatch = /^1\s*\/\s*(\d+(?:\.\d+)?)\s*s?$/i.exec(trimmed);
-    const numericText = reciprocalMatch?.[1] ?? trimmed.replace(/\s*s$/i, "");
-    const parsed = Number(numericText);
-
-    return Number.isFinite(parsed) ? parsed : null;
-};
 
 const timestepProgress = $derived.by(() => {
     switch (simulationState.simulationMethodType) {
@@ -243,8 +238,8 @@ const updateTimestepDivisor = (divisor: number) => {
             softMin={MIN_TIMESTEP_DIVISOR}
             softMax={MAX_TIMESTEP_DIVISOR}
             step={0.1}
-            format={formatTimestepDivisor}
-            parse={parseTimestepDivisor}
+            format={formatReciprocalSecondsDivisor}
+            parse={parseReciprocalSecondsDivisor}
         />
     </number-control>
 

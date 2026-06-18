@@ -1,5 +1,6 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> particle_data: array<ParticleData>;
+@group(0) @binding(2) var<storage, read> particle_flags: array<u32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -29,6 +30,7 @@ fn vert(
 ) -> VertexOutput {
     var out: VertexOutput;
     let particle = particle_data[instance_index];
+    let flags = particle_flags[instance_index];
     let pos_world = vec4f(particle.pos, 1);
 
     let radius = BASE_PARTICLE_RADIUS * particle.mass;
@@ -51,7 +53,7 @@ fn vert(
     let vertex_pos_world = particle.pos + (right * uv.x + up * uv.y) * quad_radius;
     out.position = uniforms.viewProjMat * vec4f(vertex_pos_world, 1);
     
-    out.compression_volume_fac = determinant(particle.deformationPlastic);
-    
+    out.compression_volume_fac = particlePlasticVolumeFactor(particle, flags);
+
     return out;
 }

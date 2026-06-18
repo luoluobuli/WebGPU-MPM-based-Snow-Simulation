@@ -10,4 +10,10 @@ describe("splatsRender material radius", () => {
         expect(splatsRenderSrc).toContain("LEAF_SPLAT_RADIUS_SCALE = 1.55");
         expect(splatsRenderSrc).toContain("splatRadiusScaleForMaterial(appearance.w)");
     });
+
+    it("uses cached identity-determinant volume factors during replay", () => {
+        expect(splatsRenderSrc).toContain("particle_flags");
+        expect(splatsRenderSrc).toContain("particlePlasticVolumeFactor(particle, flags)");
+        expect(splatsRenderSrc).toContain("particleElasticVolumeFactor(particle, flags)");
+    });
 });

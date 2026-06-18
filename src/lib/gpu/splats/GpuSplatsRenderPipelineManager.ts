@@ -53,6 +53,13 @@ export class GpuSplatsRenderPipelineManager implements GpuRenderMethod {
                         type: "read-only-storage",
                     },
                 },
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: "read-only-storage",
+                    },
+                },
             ],
         });
 
@@ -76,6 +83,12 @@ export class GpuSplatsRenderPipelineManager implements GpuRenderMethod {
                     binding: 2,
                     resource: {
                         buffer: particleAppearanceManager.appearanceBuffer,
+                    },
+                },
+                {
+                    binding: 3,
+                    resource: {
+                        buffer: mpmManager.particleFlagsBuffer,
                     },
                 },
             ],

@@ -12,8 +12,8 @@ let {
 </script>
 
 <section
-    bind:clientWidth={null, clientWidth => simulationState.width = clientWidth!}
-    bind:clientHeight={null, clientHeight => simulationState.height = clientHeight!}
+    bind:clientWidth={null, clientWidth => simulationState.setViewportWidth(clientWidth)}
+    bind:clientHeight={null, clientHeight => simulationState.setViewportHeight(clientHeight)}
 >
     <Draggable
         onDown={({ pointerEvent }) => {
@@ -29,11 +29,11 @@ let {
         onDrag={async ({ movement, button, pointerEvent }) => {
             switch (button) {
                 case 0:
-                    simulationState.orbit.turn(movement);
+                    simulationState.turnCamera(movement);
                     break;
 
                 case 1:
-                    simulationState.orbit.pan(movement);
+                    simulationState.panCamera(movement);
                     break;
                 
                 case 2:
@@ -60,7 +60,7 @@ let {
                 {onpointerdown}
                 oncontextmenu={(e) => { e.preventDefault(); }}
                 onwheel={(event) => {
-                    simulationState.orbit.radius *= 2 ** (event.deltaY * 0.001);
+                    simulationState.zoomCamera(event.deltaY);
                     event.preventDefault();
                 }}
             ></canvas>

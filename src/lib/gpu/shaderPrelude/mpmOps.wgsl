@@ -18,6 +18,7 @@ const MAX_FIXED_POINT_GRID_SPEED = MAX_FIXED_POINT_I32 * INV_FIXED_POINT_SCALE;
 const DEFAULT_PARTICLE_MASS = 1.0 / 3.0;
 const PARTICLE_FLAG_DEFORMATION_DELTA_VALID = 1u;
 const PARTICLE_FLAG_ELASTIC_NON_IDENTITY = 2u;
+const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
 const PARTICLE_MATERIAL_SHIFT = 8u;
 const PARTICLE_MATERIAL_MASK = 3u << PARTICLE_MATERIAL_SHIFT;
 const PARTICLE_MATERIAL_DEFAULT = 0u;
@@ -56,6 +57,22 @@ fn particlePersistentFlags(flags: u32) -> u32 {
         PARTICLE_FLAG_ELASTIC_NON_IDENTITY
         | PARTICLE_MATERIAL_MASK
     );
+}
+
+fn particlePlasticVolumeFactor(particle: ParticleData, flags: u32) -> f32 {
+    if (flags & PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS) != 0u {
+        return 1.0;
+    }
+
+    return determinant(particle.deformationPlastic);
+}
+
+fn particleElasticVolumeFactor(particle: ParticleData, flags: u32) -> f32 {
+    if (flags & PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS) != 0u {
+        return 1.0;
+    }
+
+    return determinant(particle.deformationElastic);
 }
 
 fn particleMassForMaterial(material: u32) -> f32 {
