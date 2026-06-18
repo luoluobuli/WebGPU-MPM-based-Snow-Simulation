@@ -828,6 +828,64 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(state.timelineFrame).toBe(1);
     });
 
+    it("finishes the active playback write after pause and releases timeline controls", async () => {
+        vi.useFakeTimers();
+
+        let nowMs = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+
+        let finishWrite = () => {};
+        const writePromise = new Promise<void>((resolve) => {
+            finishWrite = resolve;
+        });
+
+        const state = new SimulationState({ timeline: true });
+        const runner: MockTimelineRunner = {
+            selectedSimulationTimestepS: 1 / 1024,
+            renderStillFrame: vi.fn(() => {}),
+            advanceFixedSimulationSubsteps: vi.fn(({
+                nSubsteps,
+            }) => ({
+                nSimulationSubsteps: nSubsteps,
+                simulationTimestepS: 1 / 1024,
+                simulatedTimeS: nSubsteps / 1024,
+            })),
+            readSimulationPlaybackFrame: vi.fn(async () => new ArrayBuffer(8)),
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity: estimateFullTimelineCapacity,
+            readFrame: vi.fn(async () => null),
+            writeFrame: vi.fn(() => writePromise),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        state.timelineFrameCount = 2;
+        state.timelineNextUncachedFrame = 1;
+        state.timelineFrame = 0;
+
+        const playPromise = state.playTimeline();
+        await Promise.resolve();
+
+        nowMs = TIMELINE_FRAME_INTERVAL_MS;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
+        await flushMicrotasks();
+
+        expect(timelineCache.writeFrame).toHaveBeenCalledTimes(1);
+        expect(state.timelineIsBusy).toBe(true);
+
+        state.pauseTimeline();
+        finishWrite();
+        await playPromise;
+
+        expect(state.timelineIsPlaying).toBe(false);
+        expect(state.timelineIsBusy).toBe(false);
+        expect(state.timelineFrame).toBe(1);
+        expect(state.timelineNextUncachedFrame).toBe(2);
+    });
+
     it("rebuilds solver state from scatter before baking past compact cached playback frames", async () => {
         const state = new SimulationState({ timeline: true });
         const runner: MockTimelineRunner = {

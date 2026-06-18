@@ -550,7 +550,9 @@ export class SimulationState {
 
             this.timelineFrame = frameIndex;
             this.timelineStatus = `cached frame ${frameIndex} to ${this.timelineStorageLabel}`;
-            await waitForTimelineWorkYield();
+            if (frameIndex < targetFrame) {
+                await waitForTimelineWorkYield();
+            }
         }
     }
 
@@ -641,6 +643,10 @@ export class SimulationState {
     }
 
     pauseTimeline() {
+        this.timelineIsPlaying = false;
+    }
+
+    private cancelTimelineWork() {
         this.timelineRunToken++;
         this.timelineIsPlaying = false;
     }
@@ -1122,7 +1128,7 @@ export class SimulationState {
 
         onDestroy(() => {
             destroyed = true;
-            state.pauseTimeline();
+            state.cancelTimelineWork();
             if (state.stillFrameRenderHandle !== null) {
                 cancelAnimationFrame(state.stillFrameRenderHandle);
                 state.stillFrameRenderHandle = null;
