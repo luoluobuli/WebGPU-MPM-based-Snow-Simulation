@@ -7,15 +7,19 @@ import { TIMELINE_FRAME_COUNT } from "./SimulationTimelineTiming";
 
 const createTimelineState = ({
     timelineNextUncachedFrame = 1,
+    timelineIsBusy = false,
+    timelineIsPlaying = false,
 }: {
     timelineNextUncachedFrame?: number,
+    timelineIsBusy?: boolean,
+    timelineIsPlaying?: boolean,
 } = {}) => {
     const state = {
         timelineFrame: 0,
         timelineFrameCount: TIMELINE_FRAME_COUNT,
         timelineNextUncachedFrame,
-        timelineIsBusy: false,
-        timelineIsPlaying: false,
+        timelineIsBusy,
+        timelineIsPlaying,
         timelineCanSelectCacheDirectory: false,
         timelineStepDivisor: 30,
         timelineDurationS: 6,
@@ -64,6 +68,22 @@ describe("SimulationTimeline", () => {
         expect(progress).toBeInstanceOf(HTMLProgressElement);
         expect((progress as HTMLProgressElement).max).toBe(TIMELINE_FRAME_COUNT);
         expect((progress as HTMLProgressElement).value).toBe(0);
+    });
+
+    it("keeps the frame scrubber enabled while playback is changing frames", async () => {
+        const simulationState = createTimelineState({
+            timelineIsBusy: true,
+            timelineIsPlaying: true,
+        });
+        await render(SimulationTimeline, {
+            props: {
+                simulationState: simulationState as unknown as SimulationState,
+            },
+        });
+
+        const frameInput = document.querySelector("timeline-range input");
+        expect(frameInput).toBeInstanceOf(HTMLInputElement);
+        expect((frameInput as HTMLInputElement).disabled).toBe(false);
     });
 
     it("does not commit typed timestep digits until text entry is committed", async () => {
@@ -139,7 +159,7 @@ describe("SimulationTimeline", () => {
         expect(simulationState.setTimelineStepDivisor).toHaveBeenCalledTimes(1);
     });
 
-    it("commits dragged frame scrubber changes once on pointer release", async () => {
+    it("requests dragged frame scrubber changes before pointer release", async () => {
         const simulationState = createTimelineState();
         await render(SimulationTimeline, {
             props: {
@@ -165,7 +185,9 @@ describe("SimulationTimeline", () => {
         frameInput.dispatchEvent(new Event("input", { bubbles: true }));
         await Promise.resolve();
 
-        expect(simulationState.setTimelineFrame).not.toHaveBeenCalled();
+        expect(simulationState.setTimelineFrame).toHaveBeenCalledTimes(2);
+        expect(simulationState.setTimelineFrame).toHaveBeenNthCalledWith(1, 1);
+        expect(simulationState.setTimelineFrame).toHaveBeenNthCalledWith(2, 2);
 
         window.dispatchEvent(new PointerEvent("pointerup", {
             bubbles: true,
@@ -176,7 +198,53 @@ describe("SimulationTimeline", () => {
         frameInput.dispatchEvent(new Event("change", { bubbles: true }));
         await Promise.resolve();
 
-        expect(simulationState.setTimelineFrame).toHaveBeenCalledTimes(1);
-        expect(simulationState.setTimelineFrame).toHaveBeenCalledWith(2);
+        expect(simulationState.setTimelineFrame).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps showing the committed scrubber frame while the seek loads", async () => {
+        let finishSeek = () => {};
+        const seekPromise = new Promise<void>((resolve) => {
+            finishSeek = resolve;
+        });
+        const simulationState = createTimelineState();
+        simulationState.setTimelineFrame = vi.fn(async () => {
+            await seekPromise;
+        });
+
+        await render(SimulationTimeline, {
+            props: {
+                simulationState: simulationState as unknown as SimulationState,
+            },
+        });
+
+        const input = document.querySelector("timeline-range input");
+        expect(input).toBeInstanceOf(HTMLInputElement);
+
+        const frameInput = input as HTMLInputElement;
+        frameInput.dispatchEvent(new PointerEvent("pointerdown", {
+            bubbles: true,
+            button: 0,
+            clientX: 0,
+            clientY: 0,
+            pointerId: 1,
+        }));
+
+        frameInput.value = "2";
+        frameInput.dispatchEvent(new Event("input", { bubbles: true }));
+        await Promise.resolve();
+
+        window.dispatchEvent(new PointerEvent("pointerup", {
+            bubbles: true,
+            clientX: 48,
+            clientY: 0,
+            pointerId: 1,
+        }));
+        frameInput.dispatchEvent(new Event("change", { bubbles: true }));
+        await Promise.resolve();
+
+        expect(simulationState.timelineFrame).toBe(0);
+        expect(frameInput.value).toBe("2");
+
+        finishSeek();
     });
 });

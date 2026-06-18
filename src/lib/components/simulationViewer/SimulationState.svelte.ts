@@ -40,6 +40,11 @@ import {
 } from "./SimulationTimelineTiming";
 
 const TIMELINE_BACKGROUND_WORK_YIELD_MS = 250;
+const TIMELINE_MEMORY_CACHE_BYTE_LIMIT = 96 * 1024 * 1024;
+const TIMELINE_MEMORY_CACHE_MIN_FRAME_LIMIT = 3;
+const TIMELINE_MEMORY_CACHE_MAX_FRAME_LIMIT = 24;
+const TIMELINE_PLAYBACK_READY_FRAME_COUNT = 3;
+const TIMELINE_PLAYBACK_PERF_SAMPLE_INTERVAL_FRAMES = 30;
 
 const waitForTimelineWorkYield = () => new Promise<void>((resolve) => {
     if (typeof requestAnimationFrame === "undefined") {
@@ -235,6 +240,11 @@ export class SimulationState {
     private timelineCache: SimulationFrameFileCache | null = null;
     private timelineCacheRootDirectory: FileSystemDirectoryHandle | null = null;
     private timelineCacheKey = "";
+    private readonly timelineMemoryFrames = new Map<number, ArrayBuffer>();
+    private readonly timelinePendingFrameReads = new Map<number, Promise<ArrayBuffer | null>>();
+    private timelineMemoryFrameReadEpoch = 0;
+    private pendingTimelineFrame: number | null = null;
+    private pendingTimelineSecondsPerFrame: number | null = null;
     private timelineRunToken = 0;
     private timelineSimulatedTimeS = 0;
     private timelineSolverFrame: number | null = 0;
@@ -345,6 +355,7 @@ export class SimulationState {
         this.timelineSolverFrame = 0;
 
         if (this.timelineCache === null || this.timelineCacheKey !== cacheKey) {
+            this.clearTimelineMemoryFrames();
             this.timelineCache = await createSimulationFrameFileCache({
                 cacheKey,
                 rootDirectory: this.timelineCacheRootDirectory,
@@ -363,6 +374,7 @@ export class SimulationState {
         this.timelineNextUncachedFrame = existingNextUncachedFrame ?? 0;
 
         if (this.timelineNextUncachedFrame <= 0) {
+            this.clearTimelineMemoryFrames();
             await this.timelineCache.clear();
             this.timelineNextUncachedFrame = 0;
         }
@@ -370,11 +382,133 @@ export class SimulationState {
         return await this.updateTimelineCacheCapacity();
     }
 
+    private clearTimelineMemoryFrames() {
+        this.timelineMemoryFrameReadEpoch++;
+        this.timelineMemoryFrames.clear();
+        this.timelinePendingFrameReads.clear();
+    }
+
+    private timelineMemoryFrameLimit() {
+        const frameByteLength = this.runner?.simulationPlaybackFrameLayout?.byteLength ?? 0;
+        if (!Number.isFinite(frameByteLength) || frameByteLength <= 0) {
+            return TIMELINE_MEMORY_CACHE_MIN_FRAME_LIMIT;
+        }
+
+        return Math.max(
+            TIMELINE_MEMORY_CACHE_MIN_FRAME_LIMIT,
+            Math.min(
+                TIMELINE_MEMORY_CACHE_MAX_FRAME_LIMIT,
+                Math.floor(TIMELINE_MEMORY_CACHE_BYTE_LIMIT / frameByteLength),
+            ),
+        );
+    }
+
+    private timelinePlaybackPrefetchFrameCount() {
+        return Math.max(
+            TIMELINE_PLAYBACK_READY_FRAME_COUNT,
+            this.timelineMemoryFrameLimit() - 1,
+        );
+    }
+
+    private rememberTimelineMemoryFrame(frameIndex: number, frame: ArrayBuffer) {
+        this.timelineMemoryFrames.delete(frameIndex);
+        this.timelineMemoryFrames.set(frameIndex, frame);
+
+        while (this.timelineMemoryFrames.size > this.timelineMemoryFrameLimit()) {
+            const oldestFrameIndex = this.timelineMemoryFrames.keys().next().value as number | undefined;
+            if (oldestFrameIndex === undefined) return;
+
+            this.timelineMemoryFrames.delete(oldestFrameIndex);
+        }
+    }
+
+    private async readTimelineFrameFromCache(frameIndex: number) {
+        if (this.timelineCache === null) return null;
+
+        const cachedFrame = this.timelineMemoryFrames.get(frameIndex);
+        if (cachedFrame !== undefined) {
+            this.timelineMemoryFrames.delete(frameIndex);
+            this.timelineMemoryFrames.set(frameIndex, cachedFrame);
+
+            return cachedFrame;
+        }
+
+        const pendingFrame = this.timelinePendingFrameReads.get(frameIndex);
+        if (pendingFrame !== undefined) {
+            return await pendingFrame;
+        }
+
+        const readEpoch = this.timelineMemoryFrameReadEpoch;
+        const framePromise = this.timelineCache.readFrame(frameIndex)
+            .then(frame => {
+                if (frame !== null && readEpoch === this.timelineMemoryFrameReadEpoch) {
+                    this.rememberTimelineMemoryFrame(frameIndex, frame);
+                }
+
+                return frame;
+            })
+            .finally(() => {
+                if (this.timelinePendingFrameReads.get(frameIndex) === framePromise) {
+                    this.timelinePendingFrameReads.delete(frameIndex);
+                }
+            });
+        this.timelinePendingFrameReads.set(frameIndex, framePromise);
+
+        return await framePromise;
+    }
+
+    private prefetchTimelineFrames(frameIndex: number) {
+        const prefetches: Array<Promise<ArrayBuffer | null>> = [];
+        if (this.timelineCache === null) return prefetches;
+
+        const maxFrameIndex = Math.min(
+            this.timelineFrameCount - 1,
+            this.timelineNextUncachedFrame - 1,
+        );
+        const lastPrefetchFrameIndex = Math.min(
+            maxFrameIndex,
+            frameIndex + this.timelinePlaybackPrefetchFrameCount(),
+        );
+
+        for (
+            let nextFrameIndex = frameIndex + 1;
+            nextFrameIndex <= lastPrefetchFrameIndex;
+            nextFrameIndex++
+        ) {
+            if (this.timelineMemoryFrames.has(nextFrameIndex)) continue;
+            if (this.timelinePendingFrameReads.has(nextFrameIndex)) continue;
+
+            const prefetch = this.readTimelineFrameFromCache(nextFrameIndex)
+                .catch(error => {
+                    console.error(error);
+
+                    return null;
+                });
+            prefetches.push(prefetch);
+        }
+
+        return prefetches;
+    }
+
+    private async primeTimelinePlaybackBuffer(runToken: number) {
+        const prefetches = this.prefetchTimelineFrames(this.timelineFrame);
+        if (prefetches.length === 0) return true;
+
+        const readyFrameCount = Math.min(
+            TIMELINE_PLAYBACK_READY_FRAME_COUNT,
+            prefetches.length,
+        );
+        await Promise.all(prefetches.slice(0, readyFrameCount));
+
+        return runToken === this.timelineRunToken && this.timelineIsPlaying;
+    }
+
     private async cacheCurrentTimelineFrame(frameIndex: number) {
         if (this.runner === null || this.timelineCache === null) return;
 
         const frame = await this.runner.readSimulationPlaybackFrame();
         await this.timelineCache.writeFrame(frameIndex, frame);
+        this.rememberTimelineMemoryFrame(frameIndex, frame);
         this.timelineNextUncachedFrame = Math.max(
             this.timelineNextUncachedFrame,
             frameIndex + 1,
@@ -385,28 +519,54 @@ export class SimulationState {
         frameIndex: number,
         {
             render = true,
+            measureRenderPerformance = false,
+            prefetch = true,
         }: {
             render?: boolean,
+            measureRenderPerformance?: boolean,
+            prefetch?: boolean,
         } = {},
     ) {
         if (this.runner === null || this.timelineCache === null) return false;
 
-        const frame = await this.timelineCache.readFrame(frameIndex);
+        const frame = await this.readTimelineFrameFromCache(frameIndex);
         if (frame === null) {
             return false;
         }
 
-        this.runner.restoreSimulationPlaybackFrame(frame);
+        const renderOptions = {
+            ...this.frameTimingCallbacks,
+            measureGpuTimestamps: measureRenderPerformance,
+        };
+        const renderSimulationPlaybackFrame = (this.runner as {
+            renderSimulationPlaybackFrame?: (
+                frame: ArrayBuffer,
+                options?: typeof renderOptions,
+            ) => void,
+        }).renderSimulationPlaybackFrame;
+        if (render && renderSimulationPlaybackFrame !== undefined) {
+            renderSimulationPlaybackFrame.call(
+                this.runner,
+                frame,
+                renderOptions,
+            );
+        } else {
+            this.runner.restoreSimulationPlaybackFrame(frame);
+        }
         this.timelineSolverFrame = null;
         this.timelineSimulatedTimeS = timelineFrameSimulationTimeS(
             frameIndex,
             this.timelineSecondsPerFrame,
         );
-        if (render) {
-            this.runner.renderStillFrame(this.frameTimingCallbacks);
+        if (render && renderSimulationPlaybackFrame === undefined) {
+            this.runner.renderStillFrame(renderOptions);
         }
 
         this.timelineFrame = frameIndex;
+        if (prefetch) {
+            this.prefetchTimelineFrames(frameIndex);
+        }
+
         return true;
     }
 
@@ -558,18 +718,17 @@ export class SimulationState {
         frameIndex: number,
         {
             keepPlaying = false,
+            measureRenderPerformance = false,
             runToken = ++this.timelineRunToken,
         }: {
             keepPlaying?: boolean,
+            measureRenderPerformance?: boolean,
             runToken?: number,
         } = {},
     ) {
         if (!this.timeline || this.runner === null || this.timelineCache === null) return;
 
-        const targetFrame = Math.max(
-            0,
-            Math.min(this.timelineFrameCount - 1, Math.round(frameIndex)),
-        );
+        const targetFrame = this.clampTimelineFrame(frameIndex);
 
         if (!keepPlaying) {
             this.timelineIsPlaying = false;
@@ -579,7 +738,10 @@ export class SimulationState {
         try {
             if (targetFrame < this.timelineNextUncachedFrame) {
                 this.timelineStatus = `restoring frame ${targetFrame}...`;
-                const restored = await this.restoreTimelineFrameFromCache(targetFrame);
+                const restored = await this.restoreTimelineFrameFromCache(
+                    targetFrame,
+                    { measureRenderPerformance },
+                );
                 if (!restored) {
                     throw new Error(`missing cached frame ${targetFrame}`);
                 }
@@ -608,9 +770,48 @@ export class SimulationState {
         if (runToken !== this.timelineRunToken) return;
 
         this.timelineIsBusy = false;
+        if (this.runPendingTimelineChange()) return;
+
         if (this.stillFrameRenderRequested) {
             this.scheduleStillFrameRenderFlush();
         }
+    }
+
+    private clampTimelineFrame(frameIndex: number) {
+        return Math.max(
+            0,
+            Math.min(this.timelineFrameCount - 1, Math.round(frameIndex)),
+        );
+    }
+
+    private queueTimelineFrame(frameIndex: number) {
+        this.pendingTimelineFrame = this.clampTimelineFrame(frameIndex);
+        this.pauseTimeline();
+    }
+
+    private queueTimelineSecondsPerFrame(secondsPerFrame: number) {
+        this.pendingTimelineSecondsPerFrame = secondsPerFrame;
+        this.pauseTimeline();
+    }
+
+    private runPendingTimelineChange() {
+        const pendingSecondsPerFrame = this.pendingTimelineSecondsPerFrame;
+        if (pendingSecondsPerFrame !== null) {
+            this.pendingTimelineSecondsPerFrame = null;
+            void this.setTimelineSecondsPerFrame(pendingSecondsPerFrame);
+
+            return true;
+        }
+
+        const pendingFrame = this.pendingTimelineFrame;
+        if (pendingFrame !== null) {
+            this.pendingTimelineFrame = null;
+            void this.seekTimelineFrame(pendingFrame);
+
+            return true;
+        }
+
+        return false;
     }
 
     private async handleTimelineQuotaExceeded() {
@@ -636,15 +837,17 @@ export class SimulationState {
     }
 
     async setTimelineFrame(frameIndex: number) {
-        if (this.timelineIsBusy) return;
+        if (this.timelineIsBusy) {
+            this.queueTimelineFrame(frameIndex);
+
+            return;
+        }
 
         await this.seekTimelineFrame(frameIndex);
     }
 
     async stepTimelineFrame(delta: number) {
-        if (this.timelineIsBusy) return;
-
-        await this.seekTimelineFrame(this.timelineFrame + delta);
+        await this.setTimelineFrame(this.timelineFrame + delta);
     }
 
     pauseTimeline() {
@@ -654,12 +857,20 @@ export class SimulationState {
     private cancelTimelineWork() {
         this.timelineRunToken++;
         this.timelineIsPlaying = false;
+        this.pendingTimelineFrame = null;
+        this.pendingTimelineSecondsPerFrame = null;
     }
 
     async setTimelineSecondsPerFrame(secondsPerFrame: number) {
         const clampedSecondsPerFrame = clampTimelineSecondsPerFrame(secondsPerFrame);
         if (Math.abs(clampedSecondsPerFrame - this.timelineSecondsPerFrame) < 1e-9) return;
-        if (this.timelineIsBusy) return;
+        if (this.timelineIsBusy) {
+            if (this.timelineIsPlaying) {
+                this.queueTimelineSecondsPerFrame(clampedSecondsPerFrame);
+            }
+
+            return;
+        }
 
         this.pauseTimeline();
         this.timelineSecondsPerFrame = clampedSecondsPerFrame;
@@ -714,10 +925,14 @@ export class SimulationState {
         if (this.timelineIsBusy || this.timelineIsPlaying) return;
 
         const runToken = ++this.timelineRunToken;
-        let nextFrameTimeMs = performance.now() + TIMELINE_FRAME_INTERVAL_MS;
+        let playbackFrameCounter = 0;
         this.timelineIsPlaying = true;
 
         try {
+            const bufferReady = await this.primeTimelinePlaybackBuffer(runToken);
+            if (!bufferReady) return;
+
+            let nextFrameTimeMs = performance.now() + TIMELINE_FRAME_INTERVAL_MS;
             while (
                 runToken === this.timelineRunToken
                 && this.timelineIsPlaying
@@ -730,22 +945,27 @@ export class SimulationState {
                     continue;
                 }
 
+                const measureRenderPerformance =
+                    (playbackFrameCounter + 1) % TIMELINE_PLAYBACK_PERF_SAMPLE_INTERVAL_FRAMES === 0;
                 await this.seekTimelineFrame(
                     this.timelineFrame + 1,
                     {
                         keepPlaying: true,
+                        measureRenderPerformance,
                         runToken,
                     },
                 );
+                playbackFrameCounter++;
 
                 if (runToken !== this.timelineRunToken || !this.timelineIsPlaying) {
                     return;
                 }
 
-                nextFrameTimeMs = Math.max(
-                    nextFrameTimeMs + TIMELINE_FRAME_INTERVAL_MS,
-                    performance.now() + TIMELINE_FRAME_INTERVAL_MS,
-                );
+                const scheduledNextFrameTimeMs = nextFrameTimeMs + TIMELINE_FRAME_INTERVAL_MS;
+                const frameCompleteMs = performance.now();
+                nextFrameTimeMs = scheduledNextFrameTimeMs > frameCompleteMs
+                    ? scheduledNextFrameTimeMs
+                    : frameCompleteMs + TIMELINE_FRAME_INTERVAL_MS;
             }
         } finally {
             if (runToken === this.timelineRunToken) {

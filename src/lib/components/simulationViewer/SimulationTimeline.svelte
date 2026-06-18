@@ -28,11 +28,6 @@ const formatSeconds = (seconds: number) => {
     return `${seconds.toFixed(2)} s`;
 };
 
-const timelineDisabled = $derived(
-    simulationState.timelineIsBusy
-    || simulationState.timelineNextUncachedFrame <= 0,
-);
-
 type TimelineStepEntryProps = {
     text: string,
     el: HTMLElement | null,
@@ -72,14 +67,35 @@ let timelineStepDraftDivisor = $state<number | null>(null);
 let suppressNextTimelineStepCommit = false;
 let timelineFramePointerActive = false;
 let timelineFrameDraft = $state<number | null>(null);
+let timelineFrameCommitTarget = $state<number | null>(null);
 let suppressNextTimelineFrameCommit = false;
 
 const timelineStepValue = $derived(
     timelineStepDraftDivisor ?? simulationState.timelineStepDivisor,
 );
 const timelineFrameValue = $derived(
-    timelineFrameDraft ?? simulationState.timelineFrame,
+    timelineFrameDraft ?? timelineFrameCommitTarget ?? simulationState.timelineFrame,
 );
+
+const timelineFrameControlsDisabled = $derived(
+    (simulationState.timelineIsBusy && !simulationState.timelineIsPlaying)
+    || simulationState.timelineNextUncachedFrame <= 0,
+);
+
+const timelineFrameScrubberDisabled = $derived(
+    (
+        simulationState.timelineIsBusy
+        && !simulationState.timelineIsPlaying
+        && !timelineFramePointerActive
+    )
+    || simulationState.timelineNextUncachedFrame <= 0,
+);
+
+$effect(() => {
+    if (timelineFrameCommitTarget === simulationState.timelineFrame) {
+        timelineFrameCommitTarget = null;
+    }
+});
 
 const clampTimelineFrame = (frameIndex: number) => Math.max(
     0,
@@ -156,11 +172,24 @@ const handleTimelineStepPointerEnd = () => {
     commitTimelineStepDraft();
 };
 
-const commitTimelineFrame = (frameIndex: number) => {
+const requestTimelineFrame = (frameIndex: number) => {
     const clampedFrameIndex = clampTimelineFrame(frameIndex);
-    if (clampedFrameIndex === simulationState.timelineFrame) return;
+    if (
+        clampedFrameIndex === simulationState.timelineFrame
+        && timelineFrameCommitTarget === null
+    ) {
+        timelineFrameCommitTarget = null;
+        return;
+    }
+    if (clampedFrameIndex === timelineFrameCommitTarget) return;
 
+    timelineFrameCommitTarget = clampedFrameIndex;
     void simulationState.setTimelineFrame(clampedFrameIndex);
+};
+
+const commitTimelineFrame = (frameIndex: number) => {
+    timelineFrameDraft = null;
+    requestTimelineFrame(frameIndex);
 };
 
 const handleTimelineFrameInput = (event: Event) => {
@@ -168,6 +197,7 @@ const handleTimelineFrameInput = (event: Event) => {
     if (frameIndex === null) return;
 
     timelineFrameDraft = frameIndex;
+    requestTimelineFrame(frameIndex);
 };
 
 const handleTimelineFramePointerDown = (event: PointerEvent) => {
@@ -183,7 +213,6 @@ const handleTimelineFramePointerEnd = () => {
 
     timelineFramePointerActive = false;
     const draftFrame = timelineFrameDraft;
-    timelineFrameDraft = null;
 
     suppressNextTimelineFrameCommit = true;
     setTimeout(() => {
@@ -209,7 +238,6 @@ const handleTimelineFrameCommitEvent = (event: Event) => {
         return;
     }
 
-    timelineFrameDraft = null;
     commitTimelineFrame(frameIndex);
 };
 
@@ -303,7 +331,7 @@ const handleTimelineStepKeydown = (
     <timeline-controls>
         <button
             type="button"
-            disabled={timelineDisabled || simulationState.timelineFrame === 0}
+            disabled={timelineFrameControlsDisabled || simulationState.timelineFrame === 0}
             onclick={() => void simulationState.stepTimelineFrame(-1)}
         >
             Prev
@@ -324,7 +352,7 @@ const handleTimelineStepKeydown = (
 
         <button
             type="button"
-            disabled={timelineDisabled || simulationState.timelineFrame >= simulationState.timelineFrameCount - 1}
+            disabled={timelineFrameControlsDisabled || simulationState.timelineFrame >= simulationState.timelineFrameCount - 1}
             onclick={() => void simulationState.stepTimelineFrame(1)}
         >
             Next
@@ -332,7 +360,7 @@ const handleTimelineStepKeydown = (
 
         <button
             type="button"
-            disabled={!simulationState.timelineCanSelectCacheDirectory || simulationState.timelineIsBusy}
+            disabled={!simulationState.timelineCanSelectCacheDirectory || simulationState.timelineIsBusy || simulationState.timelineIsPlaying}
             title={simulationState.timelineCanSelectCacheDirectory
                 ? "Select cache folder"
                 : "Folder cache requires directory picker support"}
@@ -355,7 +383,7 @@ const handleTimelineStepKeydown = (
                 step={0.1}
                 format={formatReciprocalSecondsDivisor}
                 parse={parseReciprocalSecondsDivisor}
-                disabled={simulationState.timelineIsBusy}
+                disabled={simulationState.timelineIsBusy && !simulationState.timelineIsPlaying}
             />
         </timeline-step>
 
@@ -367,7 +395,7 @@ const handleTimelineStepKeydown = (
                 max={simulationState.timelineFrameCount - 1}
                 step="1"
                 value={timelineFrameValue}
-                disabled={simulationState.timelineIsBusy || simulationState.timelineNextUncachedFrame <= 0}
+                disabled={timelineFrameScrubberDisabled}
                 oninput={handleTimelineFrameInput}
                 onchange={handleTimelineFrameCommitEvent}
                 onpointerdown={handleTimelineFramePointerDown}

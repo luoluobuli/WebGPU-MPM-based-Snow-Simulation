@@ -56,6 +56,10 @@ export type GpuFrameTimingCallbacks = {
     onAnimationFrameTimeUpdate?: (ms: number) => void,
 };
 
+export type GpuStillFrameRenderOptions = GpuFrameTimingCallbacks & {
+    measureGpuTimestamps?: boolean,
+};
+
 export type GpuFixedSimulationStepResult = {
     nSimulationSubsteps: number,
     simulationTimestepS: number,
@@ -838,15 +842,67 @@ export class GpuSnowPipelineRunner {
         this.mpmPipelineManager.invalidateActiveBlocks();
     }
 
-    renderStillFrame({
-        onGpuTimeUpdate,
-        onAnimationFrameTimeUpdate,
-    }: GpuFrameTimingCallbacks = {}) {
+    renderSimulationPlaybackFrame(
+        frame: ArrayBuffer,
+        {
+            onGpuTimeUpdate,
+            onAnimationFrameTimeUpdate,
+            measureGpuTimestamps = false,
+        }: GpuStillFrameRenderOptions = {},
+    ) {
         if (this.destroyed) return;
 
         const frameStartMs = performance.now();
-        const measureGpuTimestamps = this.canMeasureGpuTimestamps();
-        this.performanceMeasurementManager?.setEnabled(measureGpuTimestamps);
+        this.simulationPlaybackFrameCacheManager.writeFrame(frame);
+
+        const shouldMeasureGpuTimestamps = measureGpuTimestamps && this.canMeasureGpuTimestamps();
+        this.performanceMeasurementManager?.setEnabled(shouldMeasureGpuTimestamps);
+        const {
+            frameRenderUsesSsao,
+            framePrerenderTimestampBaseIndex,
+            timestampQueryCount,
+        } = this.frameTimestampMetadata();
+        const commandEncoder = this.device.createCommandEncoder({
+            label: "simulation playback frame restore and render command encoder",
+        });
+
+        this.simulationPlaybackFrameCacheManager.addRestoreDispatch({ commandEncoder });
+
+        if (shouldMeasureGpuTimestamps) {
+            this.addNoopComputeTimestampPass(commandEncoder);
+        }
+
+        this.addRender(commandEncoder, shouldMeasureGpuTimestamps);
+
+        if (shouldMeasureGpuTimestamps && this.performanceMeasurementManager !== null) {
+            this.performanceMeasurementManager.addResolve(commandEncoder, timestampQueryCount);
+        }
+
+        this.device.queue.submit([commandEncoder.finish()]);
+        this.latestMaxParticleSpeed = 0;
+        this.mpmPipelineManager.invalidateActiveBlocks();
+        onAnimationFrameTimeUpdate?.(performance.now() - frameStartMs);
+
+        if (shouldMeasureGpuTimestamps) {
+            this.mapSubmittedGpuTimes({
+                nSimulationSubsteps: 0,
+                frameRenderUsesSsao,
+                framePrerenderTimestampBaseIndex,
+                onGpuTimeUpdate,
+            });
+        }
+    }
+
+    renderStillFrame({
+        onGpuTimeUpdate,
+        onAnimationFrameTimeUpdate,
+        measureGpuTimestamps = true,
+    }: GpuStillFrameRenderOptions = {}) {
+        if (this.destroyed) return;
+
+        const frameStartMs = performance.now();
+        const shouldMeasureGpuTimestamps = measureGpuTimestamps && this.canMeasureGpuTimestamps();
+        this.performanceMeasurementManager?.setEnabled(shouldMeasureGpuTimestamps);
         const {
             frameRenderUsesSsao,
             framePrerenderTimestampBaseIndex,
@@ -856,20 +912,20 @@ export class GpuSnowPipelineRunner {
             label: "still frame render command encoder",
         });
 
-        if (measureGpuTimestamps) {
+        if (shouldMeasureGpuTimestamps) {
             this.addNoopComputeTimestampPass(commandEncoder);
         }
 
-        this.addRender(commandEncoder, measureGpuTimestamps);
+        this.addRender(commandEncoder, shouldMeasureGpuTimestamps);
 
-        if (measureGpuTimestamps && this.performanceMeasurementManager !== null) {
+        if (shouldMeasureGpuTimestamps && this.performanceMeasurementManager !== null) {
             this.performanceMeasurementManager.addResolve(commandEncoder, timestampQueryCount);
         }
 
         this.device.queue.submit([commandEncoder.finish()]);
         onAnimationFrameTimeUpdate?.(performance.now() - frameStartMs);
 
-        if (measureGpuTimestamps) {
+        if (shouldMeasureGpuTimestamps) {
             this.mapSubmittedGpuTimes({
                 nSimulationSubsteps: 0,
                 frameRenderUsesSsao,

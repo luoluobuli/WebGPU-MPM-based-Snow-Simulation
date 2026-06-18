@@ -22,4 +22,15 @@ describe("GpuSimulationPlaybackFrameCacheManager", () => {
         expect(shaderSrc).toContain("PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u");
         expect(shaderSrc).toContain("| PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS");
     });
+
+    it("restores only display-visible cached frame fields", () => {
+        expect(shaderSrc).toContain("(*particle).pos = cached_particle.pos");
+        expect(shaderSrc).toContain("(*particle)._hom = 1.0");
+        expect(shaderSrc).toContain("(*particle).mass = particleMassForMaterial(material)");
+        expect(shaderSrc).not.toContain("(*particle).vel =");
+        expect(shaderSrc).not.toContain("(*particle).deformationElastic =");
+        expect(shaderSrc).not.toContain("(*particle).deformationPlastic =");
+        expect(shaderSrc).not.toContain("(*particle).pos_displacement =");
+        expect(shaderSrc).not.toContain("(*particle).deformation_displacement =");
+    });
 });

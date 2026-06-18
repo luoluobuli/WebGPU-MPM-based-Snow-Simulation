@@ -10,4 +10,17 @@ describe("GpuSnowPipelineRunner timestep stability", () => {
         expect(runnerSrc).not.toContain("STRESS_STABLE_TIMESTEP");
         expect(runnerSrc).not.toContain("stressStableTimestepS");
     });
+
+    it("renders cached playback frames in one restore-and-render submission", () => {
+        const methodStart = runnerSrc.indexOf("renderSimulationPlaybackFrame(");
+        const methodEnd = runnerSrc.indexOf("renderStillFrame({");
+        const methodSrc = runnerSrc.slice(methodStart, methodEnd);
+
+        expect(methodStart).toBeGreaterThanOrEqual(0);
+        expect(methodEnd).toBeGreaterThan(methodStart);
+        expect(methodSrc).toContain("measureGpuTimestamps = false");
+        expect(methodSrc).toContain("this.simulationPlaybackFrameCacheManager.addRestoreDispatch({ commandEncoder });");
+        expect(methodSrc).toContain("this.addRender(commandEncoder, shouldMeasureGpuTimestamps);");
+        expect(methodSrc.match(/this\.device\.queue\.submit/g)).toHaveLength(1);
+    });
 });

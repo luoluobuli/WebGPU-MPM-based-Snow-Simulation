@@ -21,6 +21,7 @@ type MockFrameTimingCallbacks = {
         postprocessRenderNs: bigint,
     }) => void,
     onAnimationFrameTimeUpdate?: (ms: number) => void,
+    measureGpuTimestamps?: boolean,
 };
 
 type MockRunner = {
@@ -31,6 +32,10 @@ type MockTimelineRunner = MockRunner & {
     selectedSimulationTimestepS: number,
     scatterParticles?: () => void,
     restoreSimulationPlaybackFrame?: (frame: ArrayBuffer) => void,
+    renderSimulationPlaybackFrame?: (
+        frame: ArrayBuffer,
+        callbacks?: MockFrameTimingCallbacks,
+    ) => void,
     advanceFixedSimulationSubsteps: (args: MockFrameTimingCallbacks & {
         nSubsteps: number,
     }) => {
@@ -653,9 +658,10 @@ describe("SimulationState camera still-frame rendering", () => {
         state.timelineFrame = 0;
 
         const playPromise = state.playTimeline();
-        await Promise.resolve();
+        await flushMicrotasks();
 
-        expect(timelineCache.readFrame).not.toHaveBeenCalled();
+        expect(timelineCache.readFrame).toHaveBeenCalledWith(1);
+        expect(runner.restoreSimulationPlaybackFrame).not.toHaveBeenCalled();
 
         nowMs = TIMELINE_FRAME_INTERVAL_MS * 5;
         await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
@@ -664,6 +670,281 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(timelineCache.readFrame).toHaveBeenCalledWith(1);
         expect(timelineCache.readFrame).not.toHaveBeenCalledWith(5);
         expect(state.timelineFrame).toBe(1);
+    });
+
+    it("warms cached playback frames before starting the frame clock", async () => {
+        vi.useFakeTimers();
+
+        let nowMs = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+
+        const frameResolvers = new Map<number, (frame: ArrayBuffer) => void>();
+        const state = new SimulationState({ timeline: true });
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+            restoreSimulationPlaybackFrame: vi.fn(() => {}),
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity: estimateFullTimelineCapacity,
+            readFrame: vi.fn((frameIndex: number) => new Promise<ArrayBuffer>((resolve) => {
+                frameResolvers.set(frameIndex, resolve);
+            })),
+            writeFrame: vi.fn(async () => {}),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        state.timelineNextUncachedFrame = 3;
+        state.timelineFrameCount = 3;
+        state.timelineFrame = 0;
+
+        const playPromise = state.playTimeline();
+        await flushMicrotasks();
+
+        expect(timelineCache.readFrame).toHaveBeenCalledWith(1);
+        expect(timelineCache.readFrame).toHaveBeenCalledWith(2);
+        expect(runner.restoreSimulationPlaybackFrame).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS * 5);
+        expect(runner.restoreSimulationPlaybackFrame).not.toHaveBeenCalled();
+
+        frameResolvers.get(1)?.(new ArrayBuffer(8));
+        frameResolvers.get(2)?.(new ArrayBuffer(8));
+        await flushMicrotasks();
+
+        expect(runner.restoreSimulationPlaybackFrame).not.toHaveBeenCalled();
+
+        nowMs = TIMELINE_FRAME_INTERVAL_MS;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
+        await flushMicrotasks();
+
+        nowMs = TIMELINE_FRAME_INTERVAL_MS * 2;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
+        await playPromise;
+
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(2);
+        expect(state.timelineFrame).toBe(2);
+    });
+
+    it("keeps cached playback on the frame clock instead of adding restore work time", async () => {
+        vi.useFakeTimers();
+
+        let nowMs = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+
+        const state = new SimulationState({ timeline: true });
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+            restoreSimulationPlaybackFrame: vi.fn(() => {
+                nowMs += 10;
+            }),
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity: estimateFullTimelineCapacity,
+            readFrame: vi.fn(async () => new ArrayBuffer(8)),
+            writeFrame: vi.fn(async () => {}),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        state.timelineNextUncachedFrame = 91;
+        state.timelineFrameCount = 3;
+        state.timelineFrame = 0;
+
+        const playPromise = state.playTimeline();
+        await flushMicrotasks();
+
+        nowMs = TIMELINE_FRAME_INTERVAL_MS;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
+        await flushMicrotasks();
+
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(1);
+
+        nowMs = TIMELINE_FRAME_INTERVAL_MS * 2;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS - 10);
+        await playPromise;
+
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(2);
+        expect(state.timelineFrame).toBe(2);
+    });
+
+    it("waits another frame interval after a cached restore misses its slot", async () => {
+        vi.useFakeTimers();
+
+        let nowMs = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+
+        const state = new SimulationState({ timeline: true });
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+            restoreSimulationPlaybackFrame: vi.fn(() => {
+                nowMs += TIMELINE_FRAME_INTERVAL_MS * 3;
+            }),
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity: estimateFullTimelineCapacity,
+            readFrame: vi.fn(async () => new ArrayBuffer(8)),
+            writeFrame: vi.fn(async () => {}),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        state.timelineNextUncachedFrame = 91;
+        state.timelineFrameCount = 3;
+        state.timelineFrame = 0;
+
+        const playPromise = state.playTimeline();
+        await flushMicrotasks();
+
+        nowMs = TIMELINE_FRAME_INTERVAL_MS;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
+        await flushMicrotasks();
+
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(1);
+
+        await flushMicrotasks();
+
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(1);
+
+        nowMs += TIMELINE_FRAME_INTERVAL_MS;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
+        await playPromise;
+
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(2);
+        expect(state.timelineFrame).toBe(2);
+    });
+
+    it("uses prefetched cached frames without reading them again", async () => {
+        const readFrame = vi.fn(async (_frameIndex: number) => new ArrayBuffer(8));
+        const state = new SimulationState({ timeline: true });
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+            restoreSimulationPlaybackFrame: vi.fn(() => {}),
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity: estimateFullTimelineCapacity,
+            readFrame,
+            writeFrame: vi.fn(async () => {}),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        state.timelineNextUncachedFrame = 3;
+        state.timelineFrameCount = 3;
+        state.timelineFrame = 0;
+
+        await state.setTimelineFrame(1);
+        await flushMicrotasks();
+        await state.setTimelineFrame(2);
+
+        const frameTwoReads = readFrame.mock.calls.filter(([frameIndex]) => frameIndex === 2);
+        expect(frameTwoReads).toHaveLength(1);
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(2);
+        expect(state.timelineFrame).toBe(2);
+    });
+
+    it("applies the latest manual seek after the active restore finishes", async () => {
+        let finishFirstRead = (_frame: ArrayBuffer) => {};
+        const firstRead = new Promise<ArrayBuffer>((resolve) => {
+            finishFirstRead = resolve;
+        });
+        const readFrame = vi.fn((frameIndex: number) => frameIndex === 1
+            ? firstRead
+            : Promise.resolve(new ArrayBuffer(8)));
+        const state = new SimulationState({ timeline: true });
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+            restoreSimulationPlaybackFrame: vi.fn(() => {}),
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity: estimateFullTimelineCapacity,
+            readFrame,
+            writeFrame: vi.fn(async () => {}),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        state.timelineNextUncachedFrame = 3;
+        state.timelineFrameCount = 3;
+        state.timelineFrame = 0;
+
+        const firstSeek = state.setTimelineFrame(1);
+        await flushMicrotasks();
+
+        expect(state.timelineIsBusy).toBe(true);
+        expect(readFrame).toHaveBeenCalledWith(1);
+
+        await state.setTimelineFrame(2);
+        await flushMicrotasks();
+
+        expect(readFrame).not.toHaveBeenCalledWith(2);
+
+        finishFirstRead(new ArrayBuffer(8));
+        await firstSeek;
+        await flushMicrotasks();
+
+        expect(readFrame).toHaveBeenCalledWith(2);
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(2);
+        expect(state.timelineFrame).toBe(2);
+    });
+
+    it("does not timestamp early cached playback renders", async () => {
+        vi.useFakeTimers();
+
+        let nowMs = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+
+        const state = new SimulationState({ timeline: true });
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+            restoreSimulationPlaybackFrame: vi.fn(() => {}),
+            renderSimulationPlaybackFrame: vi.fn(() => {}),
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity: estimateFullTimelineCapacity,
+            readFrame: vi.fn(async () => new ArrayBuffer(8)),
+            writeFrame: vi.fn(async () => {}),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        state.timelineNextUncachedFrame = 91;
+        state.timelineFrameCount = 3;
+        state.timelineFrame = 0;
+
+        const playPromise = state.playTimeline();
+        await flushMicrotasks();
+
+        nowMs = TIMELINE_FRAME_INTERVAL_MS;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
+        await flushMicrotasks();
+        nowMs = TIMELINE_FRAME_INTERVAL_MS * 2;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
+        await playPromise;
+
+        expect(runner.renderSimulationPlaybackFrame).toHaveBeenCalledTimes(2);
+        expect(runner.renderSimulationPlaybackFrame).toHaveBeenNthCalledWith(
+            1,
+            expect.any(ArrayBuffer),
+            expect.objectContaining({ measureGpuTimestamps: false }),
+        );
+        expect(runner.renderSimulationPlaybackFrame).toHaveBeenNthCalledWith(
+            2,
+            expect.any(ArrayBuffer),
+            expect.objectContaining({ measureGpuTimestamps: false }),
+        );
     });
 
     it("clamps the timeline to cached frames when file-cache quota is reached", async () => {
@@ -957,6 +1238,68 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(state.timelineIsBusy).toBe(false);
         expect(state.timelineFrame).toBe(1);
         expect(state.timelineNextUncachedFrame).toBe(2);
+    });
+
+    it("applies the latest scrub request after the active playback write finishes", async () => {
+        vi.useFakeTimers();
+
+        let nowMs = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+
+        let finishWrite = () => {};
+        const writePromise = new Promise<void>((resolve) => {
+            finishWrite = resolve;
+        });
+
+        const state = new SimulationState({ timeline: true });
+        const runner: MockTimelineRunner = {
+            selectedSimulationTimestepS: 1 / 1024,
+            renderStillFrame: vi.fn(() => {}),
+            restoreSimulationPlaybackFrame: vi.fn(() => {}),
+            advanceFixedSimulationSubsteps: vi.fn(({
+                nSubsteps,
+            }) => ({
+                nSimulationSubsteps: nSubsteps,
+                simulationTimestepS: 1 / 1024,
+                simulatedTimeS: nSubsteps / 1024,
+            })),
+            readSimulationPlaybackFrame: vi.fn(async () => new ArrayBuffer(8)),
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity: estimateFullTimelineCapacity,
+            readFrame: vi.fn(async () => new ArrayBuffer(8)),
+            writeFrame: vi.fn(() => writePromise),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        state.timelineFrameCount = 3;
+        state.timelineNextUncachedFrame = 1;
+        state.timelineFrame = 0;
+
+        const playPromise = state.playTimeline();
+        await Promise.resolve();
+
+        nowMs = TIMELINE_FRAME_INTERVAL_MS;
+        await vi.advanceTimersByTimeAsync(TIMELINE_FRAME_INTERVAL_MS);
+        await flushMicrotasks();
+
+        expect(timelineCache.writeFrame).toHaveBeenCalledTimes(1);
+        expect(state.timelineIsBusy).toBe(true);
+
+        await state.setTimelineFrame(0);
+        expect(state.timelineIsPlaying).toBe(false);
+
+        finishWrite();
+        await playPromise;
+        await flushMicrotasks();
+
+        expect(timelineCache.readFrame).toHaveBeenCalledWith(0);
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(1);
+        expect(state.timelineFrame).toBe(0);
+        expect(state.timelineIsBusy).toBe(false);
     });
 
     it("rebuilds solver state from scatter before baking past compact cached playback frames", async () => {

@@ -11,12 +11,6 @@ struct ParticleData {
     deformation_displacement: mat3x3f,
 }
 
-const IDENTITY_MAT3 = mat3x3f(
-    1, 0, 0,
-    0, 1, 0,
-    0, 0, 1,
-);
-
 const DEFAULT_PARTICLE_MASS = 1.0 / 3.0;
 const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
 const PARTICLE_MATERIAL_SHIFT = 8u;
@@ -84,14 +78,11 @@ fn restoreSimulationPlaybackFrame(
     let material = cached_particle.material;
     let particle = &restored_particle_data[particle_index];
 
+    // Cached playback frames are display snapshots. Solver state is rebuilt from
+    // scatter before baking again, so restore only fields the renderers consume.
     (*particle).pos = cached_particle.pos;
     (*particle)._hom = 1.0;
-    (*particle).vel = vec3f();
     (*particle).mass = particleMassForMaterial(material);
-    (*particle).deformationElastic = IDENTITY_MAT3;
-    (*particle).deformationPlastic = IDENTITY_MAT3;
-    (*particle).pos_displacement = vec3f();
-    (*particle).deformation_displacement = mat3x3f();
 
     restored_particle_flags[particle_index] =
         materialFlagFromId(material)
