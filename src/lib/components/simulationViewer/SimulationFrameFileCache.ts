@@ -1,5 +1,6 @@
 import {
     SIMULATION_FRAME_CACHE_DIRECTORY_NAME,
+    simulationFrameIndexFromFileName,
     simulationFrameFileName,
     sanitizeSimulationFrameCacheKey,
 } from "./SimulationFrameCacheNames";
@@ -11,6 +12,10 @@ export type SimulationFrameFileCache = {
         frameByteLength: number,
         requestedFrameCount: number,
     }) => Promise<SimulationFrameCacheCapacity>,
+    findNextUncachedFrame?: (options: {
+        frameByteLength: number,
+        requestedFrameCount: number,
+    }) => Promise<number>,
     readFrame: (frameIndex: number) => Promise<ArrayBuffer | null>,
     writeFrame: (frameIndex: number, snapshot: ArrayBuffer) => Promise<void>,
 };
@@ -79,6 +84,33 @@ const ensureDirectoryReadWritePermission = async (
     }
 };
 
+const getExistingDirectoryHandle = async (
+    directory: FileSystemDirectoryHandle,
+    name: string,
+) => {
+    try {
+        return await directory.getDirectoryHandle(name);
+    } catch (error) {
+        if (error instanceof DOMException && error.name === "NotFoundError") {
+            return null;
+        }
+
+        throw error;
+    }
+};
+
+const directoryContainsSimulationFrameFiles = async (
+    directory: FileSystemDirectoryHandle,
+) => {
+    for await (const [name] of directory.entries()) {
+        if (simulationFrameIndexFromFileName(name) !== null) {
+            return true;
+        }
+    }
+
+    return false;
+};
+
 const openFrameDirectory = async ({
     rootDirectory,
     cacheKey,
@@ -86,11 +118,23 @@ const openFrameDirectory = async ({
     rootDirectory: FileSystemDirectoryHandle,
     cacheKey: string,
 }) => {
+    if (await directoryContainsSimulationFrameFiles(rootDirectory)) {
+        return rootDirectory;
+    }
+
+    const sanitizedCacheKey = sanitizeSimulationFrameCacheKey(cacheKey);
+    const selectedCacheKeyDirectory = await getExistingDirectoryHandle(
+        rootDirectory,
+        sanitizedCacheKey,
+    );
+    if (selectedCacheKeyDirectory !== null) {
+        return selectedCacheKeyDirectory;
+    }
+
     const cacheRoot = await rootDirectory.getDirectoryHandle(
         SIMULATION_FRAME_CACHE_DIRECTORY_NAME,
         { create: true },
     );
-    const sanitizedCacheKey = sanitizeSimulationFrameCacheKey(cacheKey);
 
     for await (const [name] of cacheRoot.entries()) {
         if (name !== sanitizedCacheKey) {
@@ -115,6 +159,49 @@ const estimateSelectedDirectoryFrameCapacity = async ({
     quotaByteLength: null,
     usageByteLength: null,
 });
+
+const findDirectoryNextUncachedFrame = async ({
+    directory,
+    frameByteLength,
+    requestedFrameCount,
+}: {
+    directory: FileSystemDirectoryHandle,
+    frameByteLength: number,
+    requestedFrameCount: number,
+}) => {
+    const frameCount = safeRequestedFrameCount(requestedFrameCount);
+    if (!Number.isFinite(frameByteLength) || frameByteLength <= 0) {
+        return 0;
+    }
+
+    const existingFrameIndexes = new Set<number>();
+    for await (const [name] of directory.entries()) {
+        const frameIndex = simulationFrameIndexFromFileName(name);
+        if (
+            frameIndex !== null
+            && frameIndex >= 0
+            && frameIndex < frameCount
+        ) {
+            existingFrameIndexes.add(frameIndex);
+        }
+    }
+
+    for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+        if (!existingFrameIndexes.has(frameIndex)) {
+            return frameIndex;
+        }
+
+        const handle = await directory.getFileHandle(
+            simulationFrameFileName(frameIndex),
+        );
+        const file = await handle.getFile();
+        if (file.size !== frameByteLength) {
+            return frameIndex;
+        }
+    }
+
+    return frameCount;
+};
 
 export const isQuotaExceededError = (error: unknown) => {
     if (!(error instanceof DOMException)) return false;
@@ -185,6 +272,20 @@ class DirectorySimulationFrameFileCache implements SimulationFrameFileCache {
         requestedFrameCount: number,
     }) {
         return await this.estimateFrameCapacityImpl({
+            frameByteLength,
+            requestedFrameCount,
+        });
+    }
+
+    async findNextUncachedFrame({
+        frameByteLength,
+        requestedFrameCount,
+    }: {
+        frameByteLength: number,
+        requestedFrameCount: number,
+    }) {
+        return await findDirectoryNextUncachedFrame({
+            directory: this.directory,
             frameByteLength,
             requestedFrameCount,
         });
@@ -313,6 +414,28 @@ class MemorySimulationFrameFileCache implements SimulationFrameFileCache {
             quotaByteLength: null,
             usageByteLength: null,
         };
+    }
+
+    async findNextUncachedFrame({
+        frameByteLength,
+        requestedFrameCount,
+    }: {
+        frameByteLength: number,
+        requestedFrameCount: number,
+    }) {
+        const frameCount = safeRequestedFrameCount(requestedFrameCount);
+        if (!Number.isFinite(frameByteLength) || frameByteLength <= 0) {
+            return 0;
+        }
+
+        for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+            const frame = this.frames.get(frameIndex);
+            if (frame === undefined || frame.byteLength !== frameByteLength) {
+                return frameIndex;
+            }
+        }
+
+        return frameCount;
     }
 
     async readFrame(frameIndex: number) {

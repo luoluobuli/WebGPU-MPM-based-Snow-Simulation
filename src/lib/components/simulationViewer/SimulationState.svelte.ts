@@ -82,6 +82,9 @@ const formatCacheBytes = (bytes: number | null) => {
     return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 };
 
+const formatCachedTimelineFrameCount = (frameCount: number) =>
+    frameCount === 1 ? "1 cached frame" : `${frameCount} cached frames`;
+
 const sleep = (ms: number) => new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
 });
@@ -350,8 +353,19 @@ export class SimulationState {
             this.timelineStorageLabel = this.timelineCache.storageLabel;
         }
 
-        await this.timelineCache.clear();
-        this.timelineNextUncachedFrame = 0;
+        const frameByteLength = this.runner?.simulationPlaybackFrameLayout.byteLength ?? null;
+        const existingNextUncachedFrame = frameByteLength === null
+            ? null
+            : await this.timelineCache.findNextUncachedFrame?.({
+                frameByteLength,
+                requestedFrameCount: TIMELINE_FRAME_COUNT,
+            });
+        this.timelineNextUncachedFrame = existingNextUncachedFrame ?? 0;
+
+        if (this.timelineNextUncachedFrame <= 0) {
+            await this.timelineCache.clear();
+            this.timelineNextUncachedFrame = 0;
+        }
 
         return await this.updateTimelineCacheCapacity();
     }
@@ -448,6 +462,22 @@ export class SimulationState {
                 this.runner.renderStillFrame(this.frameTimingCallbacks);
                 this.onStatusChange?.("timeline cache unavailable");
 
+                return;
+            }
+
+            if (this.timelineNextUncachedFrame > 0) {
+                this.timelineStatus = `loading ${formatCachedTimelineFrameCount(this.timelineNextUncachedFrame)} from ${this.timelineStorageLabel}...`;
+                await waitForTimelineWorkYield();
+                if (restartEpoch !== this.restartEpoch || runToken !== this.timelineRunToken) return;
+
+                const restored = await this.restoreTimelineFrameFromCache(0);
+                if (!restored) {
+                    throw new Error("cached frame 0 disappeared while loading cache");
+                }
+                if (restartEpoch !== this.restartEpoch || runToken !== this.timelineRunToken) return;
+
+                this.timelineStatus = `loaded ${formatCachedTimelineFrameCount(this.timelineNextUncachedFrame)} from ${this.timelineStorageLabel}`;
+                this.onStatusChange?.("timeline ready");
                 return;
             }
 
@@ -652,7 +682,7 @@ export class SimulationState {
             this.timelineCache = null;
             this.timelineCacheKey = "";
             this.timelineStorageLabel = `folder cache pending: ${directory.name || "selected folder"}`;
-            this.timelineStatus = "cache folder selected; rebuilding cache...";
+            this.timelineStatus = "cache folder selected; loading cache...";
 
             if (this.runner === null) return;
 

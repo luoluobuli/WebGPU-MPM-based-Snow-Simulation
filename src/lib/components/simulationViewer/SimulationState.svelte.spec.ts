@@ -5,6 +5,10 @@ import {
     TIMELINE_FRAME_COUNT,
     TIMELINE_FRAME_INTERVAL_MS,
 } from "./SimulationTimelineTiming";
+import {
+    SIMULATION_FRAME_CACHE_DIRECTORY_NAME,
+    simulationFrameFileName,
+} from "./SimulationFrameCacheNames";
 
 const TIMELINE_BACKGROUND_WORK_YIELD_MS = 250;
 
@@ -135,8 +139,10 @@ const estimateFullTimelineCapacity = vi.fn(async ({
 
 const createMockSelectedCacheDirectory = ({
     frameByteLength,
+    cachedFrameCount = 0,
 }: {
     frameByteLength: number,
+    cachedFrameCount?: number,
 }) => {
     const writable = {
         write: vi.fn(async () => {}),
@@ -144,11 +150,16 @@ const createMockSelectedCacheDirectory = ({
         abort: vi.fn(async () => {}),
     };
     const frameDirectory = {
-        entries: async function* () {},
+        entries: async function* () {
+            for (let frameIndex = 0; frameIndex < cachedFrameCount; frameIndex++) {
+                yield [simulationFrameFileName(frameIndex), {}] as [string, unknown];
+            }
+        },
         removeEntry: vi.fn(async () => {}),
         getFileHandle: vi.fn(async () => ({
             createWritable: vi.fn(async () => writable),
             getFile: vi.fn(async () => ({
+                size: frameByteLength,
                 arrayBuffer: vi.fn(async () => new ArrayBuffer(frameByteLength)),
             })),
         })),
@@ -160,12 +171,21 @@ const createMockSelectedCacheDirectory = ({
     };
     const rootDirectory = {
         name: "sim-cache",
+        entries: async function* () {},
         queryPermission: vi.fn(async () => "granted" as PermissionState),
         requestPermission: vi.fn(async () => "granted" as PermissionState),
-        getDirectoryHandle: vi.fn(async () => cacheRootDirectory),
+        getDirectoryHandle: vi.fn(async (name: string) => {
+            if (name === SIMULATION_FRAME_CACHE_DIRECTORY_NAME) {
+                return cacheRootDirectory;
+            }
+
+            throw new DOMException("Directory not found", "NotFoundError");
+        }),
     };
 
     return {
+        cacheRootDirectory,
+        frameDirectory,
         rootDirectory,
         writable,
     };
@@ -706,6 +726,48 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(state.timelineNextUncachedFrame).toBe(1);
         expect(state.timelineStorageLabel).toBe("folder cache: sim-cache");
         expect(state.timelineStatus).toContain("cached frame 0");
+    });
+
+    it("loads existing frames from a selected cache folder instead of rebuilding them", async () => {
+        vi.useFakeTimers();
+        installSuspendedAnimationFrame();
+
+        const frameByteLength = 8;
+        const {
+            frameDirectory,
+            rootDirectory,
+            writable,
+        } = createMockSelectedCacheDirectory({
+            frameByteLength,
+            cachedFrameCount: 3,
+        });
+        const showDirectoryPicker = vi.fn(async () => rootDirectory);
+
+        vi.stubGlobal("showDirectoryPicker", showDirectoryPicker);
+
+        const state = new SimulationState({ timeline: true });
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+            restoreSimulationPlaybackFrame: vi.fn(() => {}),
+            simulationPlaybackFrameLayout: {
+                byteLength: frameByteLength,
+            },
+            readSimulationPlaybackFrame: vi.fn(async () => new ArrayBuffer(frameByteLength)),
+        };
+
+        attachRunner(state, runner);
+
+        const selectPromise = state.selectTimelineCacheDirectory();
+        await vi.advanceTimersByTimeAsync(TIMELINE_BACKGROUND_WORK_YIELD_MS);
+        await selectPromise;
+
+        expect(frameDirectory.removeEntry).not.toHaveBeenCalled();
+        expect(writable.write).not.toHaveBeenCalled();
+        expect(runner.readSimulationPlaybackFrame).not.toHaveBeenCalled();
+        expect(runner.restoreSimulationPlaybackFrame).toHaveBeenCalledTimes(1);
+        expect(state.timelineFrame).toBe(0);
+        expect(state.timelineNextUncachedFrame).toBe(3);
+        expect(state.timelineStatus).toContain("loaded 3 cached frames");
     });
 
     it("reports unsupported folder cache selection when the browser lacks a directory picker", async () => {

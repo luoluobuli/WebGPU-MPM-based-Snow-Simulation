@@ -5,6 +5,10 @@ import {
     createSimulationFrameFileCache,
     selectSimulationFrameCacheDirectory,
 } from "./SimulationFrameFileCache";
+import {
+    SIMULATION_FRAME_CACHE_DIRECTORY_NAME,
+    simulationFrameFileName,
+} from "./SimulationFrameCacheNames";
 
 type MockWritable = {
     write: ReturnType<typeof vi.fn>,
@@ -16,24 +20,38 @@ const createMockOpfs = (
     writable: MockWritable,
     {
         cacheRootEntries = [],
+        frameDirectoryEntries = [],
         estimate = async () => ({
             quota: 512 * 1024 * 1024,
             usage: 0,
         }),
     }: {
         cacheRootEntries?: string[],
+        frameDirectoryEntries?: Array<{
+            name: string,
+            byteLength: number,
+        }>,
         estimate?: () => Promise<StorageEstimate>,
     } = {},
 ) => {
     const frameDirectory = {
-        entries: async function* () {},
+        entries: async function* () {
+            for (const entry of frameDirectoryEntries) {
+                yield [entry.name, {}] as [string, unknown];
+            }
+        },
         removeEntry: vi.fn(async () => {}),
-        getFileHandle: vi.fn(async () => ({
-            createWritable: vi.fn(async () => writable),
-            getFile: vi.fn(async () => ({
-                arrayBuffer: vi.fn(async () => new ArrayBuffer(0)),
-            })),
-        })),
+        getFileHandle: vi.fn(async (name: string) => {
+            const entry = frameDirectoryEntries.find((candidate) => candidate.name === name);
+
+            return {
+                createWritable: vi.fn(async () => writable),
+                getFile: vi.fn(async () => ({
+                    size: entry?.byteLength ?? 0,
+                    arrayBuffer: vi.fn(async () => new ArrayBuffer(entry?.byteLength ?? 0)),
+                })),
+            };
+        }),
     };
     const cacheRootDirectory = {
         entries: async function* () {
@@ -45,7 +63,14 @@ const createMockOpfs = (
         getDirectoryHandle: vi.fn(async () => frameDirectory),
     };
     const rootDirectory = {
-        getDirectoryHandle: vi.fn(async () => cacheRootDirectory),
+        entries: async function* () {},
+        getDirectoryHandle: vi.fn(async (name: string) => {
+            if (name === SIMULATION_FRAME_CACHE_DIRECTORY_NAME) {
+                return cacheRootDirectory;
+            }
+
+            throw new DOMException("Directory not found", "NotFoundError");
+        }),
     };
 
     vi.stubGlobal("navigator", {
@@ -65,19 +90,35 @@ const createMockSelectedDirectory = (
     writable: MockWritable,
     {
         cacheRootEntries = [],
+        rootEntries = [],
+        frameDirectoryEntries = [],
     }: {
         cacheRootEntries?: string[],
+        rootEntries?: string[],
+        frameDirectoryEntries?: Array<{
+            name: string,
+            byteLength: number,
+        }>,
     } = {},
 ) => {
     const frameDirectory = {
-        entries: async function* () {},
+        entries: async function* () {
+            for (const entry of frameDirectoryEntries) {
+                yield [entry.name, {}] as [string, unknown];
+            }
+        },
         removeEntry: vi.fn(async () => {}),
-        getFileHandle: vi.fn(async () => ({
-            createWritable: vi.fn(async () => writable),
-            getFile: vi.fn(async () => ({
-                arrayBuffer: vi.fn(async () => new ArrayBuffer(0)),
-            })),
-        })),
+        getFileHandle: vi.fn(async (name: string) => {
+            const entry = frameDirectoryEntries.find((candidate) => candidate.name === name);
+
+            return {
+                createWritable: vi.fn(async () => writable),
+                getFile: vi.fn(async () => ({
+                    size: entry?.byteLength ?? 0,
+                    arrayBuffer: vi.fn(async () => new ArrayBuffer(entry?.byteLength ?? 0)),
+                })),
+            };
+        }),
     };
     const cacheRootDirectory = {
         entries: async function* () {
@@ -90,11 +131,25 @@ const createMockSelectedDirectory = (
     };
     const rootDirectory = {
         name: "sim-cache",
-        getDirectoryHandle: vi.fn(async () => cacheRootDirectory),
+        entries: async function* () {
+            for (const name of rootEntries) {
+                yield [name, {}] as [string, unknown];
+            }
+        },
+        removeEntry: frameDirectory.removeEntry,
+        getFileHandle: frameDirectory.getFileHandle,
+        getDirectoryHandle: vi.fn(async (name: string) => {
+            if (name === SIMULATION_FRAME_CACHE_DIRECTORY_NAME) {
+                return cacheRootDirectory;
+            }
+
+            throw new DOMException("Directory not found", "NotFoundError");
+        }),
     } as unknown as FileSystemDirectoryHandle;
 
     return {
         cacheRootDirectory,
+        frameDirectory,
         rootDirectory,
     };
 };
@@ -209,6 +264,123 @@ describe("SimulationFrameFileCache", () => {
             "selected-cache",
             { recursive: true },
         );
+    });
+
+    it("finds the next uncached frame in a selected folder cache", async () => {
+        const writable = {
+            write: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+            abort: vi.fn(async () => {}),
+        };
+        const { cacheRootDirectory, frameDirectory, rootDirectory } = createMockSelectedDirectory(
+            writable,
+            {
+                frameDirectoryEntries: [
+                    {
+                        name: simulationFrameFileName(0),
+                        byteLength: 16,
+                    },
+                    {
+                        name: simulationFrameFileName(1),
+                        byteLength: 16,
+                    },
+                    {
+                        name: simulationFrameFileName(3),
+                        byteLength: 16,
+                    },
+                ],
+            },
+        );
+
+        const cache = await createSimulationFrameFileCache({
+            cacheKey: "selected-cache",
+            rootDirectory,
+        });
+
+        await expect(cache.findNextUncachedFrame?.({
+            frameByteLength: 16,
+            requestedFrameCount: 180,
+        })).resolves.toBe(2);
+        expect(frameDirectory.removeEntry).not.toHaveBeenCalled();
+        expect(cacheRootDirectory.removeEntry).not.toHaveBeenCalledWith(
+            "selected-cache",
+            { recursive: true },
+        );
+    });
+
+    it("does not adopt selected folder cache frames with the wrong byte length", async () => {
+        const writable = {
+            write: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+            abort: vi.fn(async () => {}),
+        };
+        const { rootDirectory } = createMockSelectedDirectory(
+            writable,
+            {
+                frameDirectoryEntries: [
+                    {
+                        name: simulationFrameFileName(0),
+                        byteLength: 12,
+                    },
+                    {
+                        name: simulationFrameFileName(1),
+                        byteLength: 16,
+                    },
+                ],
+            },
+        );
+
+        const cache = await createSimulationFrameFileCache({
+            cacheKey: "selected-cache",
+            rootDirectory,
+        });
+
+        await expect(cache.findNextUncachedFrame?.({
+            frameByteLength: 16,
+            requestedFrameCount: 180,
+        })).resolves.toBe(0);
+    });
+
+    it("can use a selected folder that already contains cache frame files", async () => {
+        const writable = {
+            write: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+            abort: vi.fn(async () => {}),
+        };
+        const { cacheRootDirectory, rootDirectory } = createMockSelectedDirectory(
+            writable,
+            {
+                rootEntries: [
+                    simulationFrameFileName(0),
+                    simulationFrameFileName(1),
+                ],
+                frameDirectoryEntries: [
+                    {
+                        name: simulationFrameFileName(0),
+                        byteLength: 16,
+                    },
+                    {
+                        name: simulationFrameFileName(1),
+                        byteLength: 16,
+                    },
+                ],
+            },
+        );
+
+        const cache = await createSimulationFrameFileCache({
+            cacheKey: "selected-cache",
+            rootDirectory,
+        });
+
+        await expect(cache.findNextUncachedFrame?.({
+            frameByteLength: 16,
+            requestedFrameCount: 180,
+        })).resolves.toBe(2);
+        expect(rootDirectory.getDirectoryHandle).not.toHaveBeenCalledWith(
+            SIMULATION_FRAME_CACHE_DIRECTORY_NAME,
+            { create: true },
+        );
+        expect(cacheRootDirectory.removeEntry).not.toHaveBeenCalled();
     });
 
     it("selects a writable cache folder with the browser directory picker", async () => {
