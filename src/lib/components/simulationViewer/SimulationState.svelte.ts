@@ -213,8 +213,8 @@ export class SimulationState {
 
     timelineFrameCount = $state(TIMELINE_FRAME_COUNT);
     timelineFrame = $state(0);
-    timelineCachedThroughFrame = $state(-1);
-    timelineCachedFrameCount = $derived(Math.max(0, this.timelineCachedThroughFrame + 1));
+    timelineNextUncachedFrame = $state(0);
+    timelineCachedFrameCount = $derived(this.timelineNextUncachedFrame);
     timelineIsBusy = $state(false);
     timelineIsPlaying = $state(false);
     timelineStorageLabel = $state("file cache pending");
@@ -351,7 +351,7 @@ export class SimulationState {
         }
 
         await this.timelineCache.clear();
-        this.timelineCachedThroughFrame = -1;
+        this.timelineNextUncachedFrame = 0;
 
         return await this.updateTimelineCacheCapacity();
     }
@@ -361,9 +361,9 @@ export class SimulationState {
 
         const frame = await this.runner.readSimulationPlaybackFrame();
         await this.timelineCache.writeFrame(frameIndex, frame);
-        this.timelineCachedThroughFrame = Math.max(
-            this.timelineCachedThroughFrame,
-            frameIndex,
+        this.timelineNextUncachedFrame = Math.max(
+            this.timelineNextUncachedFrame,
+            frameIndex + 1,
         );
     }
 
@@ -483,16 +483,16 @@ export class SimulationState {
     ) {
         if (this.runner === null || this.timelineCache === null) return;
 
-        if (this.timelineCachedThroughFrame >= 0) {
+        if (this.timelineNextUncachedFrame > 0) {
             const solverReady = await this.rebuildTimelineSolverThroughFrame(
-                this.timelineCachedThroughFrame,
+                this.timelineNextUncachedFrame - 1,
                 runToken,
             );
             if (!solverReady) return;
         }
 
         for (
-            let frameIndex = this.timelineCachedThroughFrame + 1;
+            let frameIndex = this.timelineNextUncachedFrame;
             frameIndex <= targetFrame;
             frameIndex++
         ) {
@@ -547,7 +547,7 @@ export class SimulationState {
 
         this.timelineIsBusy = true;
         try {
-            if (targetFrame <= this.timelineCachedThroughFrame) {
+            if (targetFrame < this.timelineNextUncachedFrame) {
                 this.timelineStatus = `restoring frame ${targetFrame}...`;
                 const restored = await this.restoreTimelineFrameFromCache(targetFrame);
                 if (!restored) {
@@ -579,15 +579,16 @@ export class SimulationState {
     private async handleTimelineQuotaExceeded() {
         this.timelineIsPlaying = false;
 
-        const cachedFrameCount = Math.max(0, this.timelineCachedThroughFrame + 1);
+        const cachedFrameCount = this.timelineNextUncachedFrame;
         this.timelineFrameCount = Math.max(1, cachedFrameCount);
         this.timelineStorageLabel = this.timelineCache === null
             ? "file cache full"
             : `${this.timelineCache.storageLabel} (${cachedFrameCount}/${TIMELINE_FRAME_COUNT} frames cached)`;
 
-        if (this.timelineCachedThroughFrame >= 0) {
-            await this.restoreTimelineFrameFromCache(this.timelineCachedThroughFrame);
-            this.timelineStatus = `cache quota reached at frame ${cachedFrameCount}; using cached frames 0-${this.timelineCachedThroughFrame}`;
+        if (this.timelineNextUncachedFrame > 0) {
+            const lastCachedFrame = this.timelineNextUncachedFrame - 1;
+            await this.restoreTimelineFrameFromCache(lastCachedFrame);
+            this.timelineStatus = `cache quota reached at frame ${cachedFrameCount}; using cached frames 0-${lastCachedFrame}`;
             this.onStatusChange?.("timeline cache full");
             return;
         }

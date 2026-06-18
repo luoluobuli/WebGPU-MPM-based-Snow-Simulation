@@ -30,7 +30,7 @@ const formatSeconds = (seconds: number) => {
 
 const timelineDisabled = $derived(
     simulationState.timelineIsBusy
-    || simulationState.timelineCachedThroughFrame < 0,
+    || simulationState.timelineNextUncachedFrame <= 0,
 );
 
 type TimelineStepEntryProps = {
@@ -292,7 +292,7 @@ const handleTimelineStepKeydown = (
 
         <timeline-readout aria-live="polite">
             <span>Frame {simulationState.timelineFrame}</span>
-            <span>Cached through {simulationState.timelineCachedThroughFrame}</span>
+            <span>Next uncached {simulationState.timelineNextUncachedFrame}</span>
             <span>Step {formatReciprocalSecondsDivisor(timelineStepValue)}</span>
             <span>Span {formatSeconds(simulationState.timelineDurationS)}</span>
             <span>{simulationState.timelineStorageLabel}</span>
@@ -313,7 +313,7 @@ const handleTimelineStepKeydown = (
             type="button"
             disabled={!simulationState.timelineIsPlaying && (
                 simulationState.timelineIsBusy
-                || simulationState.timelineCachedThroughFrame < 0
+                || simulationState.timelineNextUncachedFrame <= 0
             )}
             onclick={() => simulationState.timelineIsPlaying
                 ? simulationState.pauseTimeline()
@@ -367,7 +367,7 @@ const handleTimelineStepKeydown = (
                 max={simulationState.timelineFrameCount - 1}
                 step="1"
                 value={timelineFrameValue}
-                disabled={simulationState.timelineIsBusy || simulationState.timelineCachedThroughFrame < 0}
+                disabled={simulationState.timelineIsBusy || simulationState.timelineNextUncachedFrame <= 0}
                 oninput={handleTimelineFrameInput}
                 onchange={handleTimelineFrameCommitEvent}
                 onpointerdown={handleTimelineFramePointerDown}
@@ -375,8 +375,8 @@ const handleTimelineStepKeydown = (
 
             <progress
                 aria-label="Cached frames"
-                max={simulationState.timelineFrameCount - 1}
-                value={Math.max(0, simulationState.timelineCachedThroughFrame)}
+                max={simulationState.timelineFrameCount}
+                value={simulationState.timelineNextUncachedFrame}
             ></progress>
         </timeline-range>
     </timeline-controls>

@@ -337,7 +337,7 @@ describe("SimulationState camera still-frame rendering", () => {
 
         expect(runner.renderStillFrame).toHaveBeenCalledTimes(1);
         expect(timelineCache.writeFrame).toHaveBeenCalledTimes(1);
-        expect(state.timelineCachedThroughFrame).toBe(0);
+        expect(state.timelineNextUncachedFrame).toBe(1);
         expect(state.timelineStatus).toContain("cached frame 0");
     });
 
@@ -392,7 +392,7 @@ describe("SimulationState camera still-frame rendering", () => {
 
         expect(runner.renderStillFrame).toHaveBeenCalledTimes(1);
         expect(timelineCache.writeFrame).toHaveBeenCalledTimes(1);
-        expect(state.timelineCachedThroughFrame).toBe(0);
+        expect(state.timelineNextUncachedFrame).toBe(1);
     });
 
     it("continues baking timeline frames when animation frames are suspended", async () => {
@@ -423,7 +423,7 @@ describe("SimulationState camera still-frame rendering", () => {
 
         attachRunner(state, runner);
         attachTimelineCache(state, timelineCache);
-        state.timelineCachedThroughFrame = 0;
+        state.timelineNextUncachedFrame = 1;
         state.timelineFrame = 0;
 
         const bakePromise = state.setTimelineFrame(2);
@@ -434,7 +434,7 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(runner.advanceFixedSimulationSubsteps).toHaveBeenCalledTimes(2);
         expect(timelineCache.writeFrame).toHaveBeenCalledTimes(2);
         expect(state.timelineFrame).toBe(2);
-        expect(state.timelineCachedThroughFrame).toBe(2);
+        expect(state.timelineNextUncachedFrame).toBe(3);
     });
 
     it("bakes timeline frames by simulated seconds instead of one solver max step per frame", async () => {
@@ -467,7 +467,7 @@ describe("SimulationState camera still-frame rendering", () => {
 
         attachRunner(state, runner);
         attachTimelineCache(state, timelineCache);
-        state.timelineCachedThroughFrame = 0;
+        state.timelineNextUncachedFrame = 1;
         state.timelineFrame = 0;
 
         await state.setTimelineFrame(30);
@@ -476,7 +476,7 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(runner.advanceFixedSimulationSubsteps).toHaveBeenCalledTimes(30);
         expect(timelineCache.writeFrame).toHaveBeenCalledTimes(30);
         expect(state.timelineFrame).toBe(30);
-        expect(state.timelineCachedThroughFrame).toBe(30);
+        expect(state.timelineNextUncachedFrame).toBe(31);
     });
 
     it("uses the selected timeline step divisor when baking frames", async () => {
@@ -510,7 +510,7 @@ describe("SimulationState camera still-frame rendering", () => {
 
         attachRunner(state, runner);
         attachTimelineCache(state, timelineCache);
-        state.timelineCachedThroughFrame = 0;
+        state.timelineNextUncachedFrame = 1;
         state.timelineFrame = 0;
 
         await state.setTimelineFrame(2);
@@ -519,7 +519,7 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(state.timelineStepDivisor).toBe(10);
         expect(state.timelineSecondsPerFrame).toBe(0.1);
         expect(state.timelineFrame).toBe(2);
-        expect(state.timelineCachedThroughFrame).toBe(2);
+        expect(state.timelineNextUncachedFrame).toBe(3);
     });
 
     it("clamps selected timeline step divisors into the supported range", async () => {
@@ -555,7 +555,7 @@ describe("SimulationState camera still-frame rendering", () => {
 
         attachRunner(state, runner);
         attachTimelineCache(state, timelineCache);
-        state.timelineCachedThroughFrame = 90;
+        state.timelineNextUncachedFrame = 91;
         state.timelineFrameCount = 2;
         state.timelineFrame = 0;
 
@@ -609,7 +609,7 @@ describe("SimulationState camera still-frame rendering", () => {
 
         attachRunner(state, runner);
         attachTimelineCache(state, timelineCache);
-        state.timelineCachedThroughFrame = 0;
+        state.timelineNextUncachedFrame = 1;
         state.timelineFrame = 0;
 
         await state.setTimelineFrame(2);
@@ -703,7 +703,7 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(writable.write).toHaveBeenCalledTimes(1);
         expect(writable.close).toHaveBeenCalledTimes(1);
         expect(state.timelineFrameCount).toBe(TIMELINE_FRAME_COUNT);
-        expect(state.timelineCachedThroughFrame).toBe(0);
+        expect(state.timelineNextUncachedFrame).toBe(1);
         expect(state.timelineStorageLabel).toBe("folder cache: sim-cache");
         expect(state.timelineStatus).toContain("cached frame 0");
     });
@@ -749,7 +749,7 @@ describe("SimulationState camera still-frame rendering", () => {
         attachRunner(state, runner);
         attachTimelineCache(state, timelineCache);
         state.timelineFrameCount = 2;
-        state.timelineCachedThroughFrame = 0;
+        state.timelineNextUncachedFrame = 1;
         state.timelineFrame = 0;
 
         const playPromise = state.playTimeline();
@@ -792,7 +792,7 @@ describe("SimulationState camera still-frame rendering", () => {
 
         attachRunner(state, runner);
         attachTimelineCache(state, timelineCache);
-        state.timelineCachedThroughFrame = 2;
+        state.timelineNextUncachedFrame = 3;
         state.timelineFrame = 0;
 
         await state.setTimelineFrame(1);
@@ -802,6 +802,6 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(runner.advanceFixedSimulationSubsteps).toHaveBeenCalledTimes(3);
         expect(timelineCache.writeFrame).toHaveBeenCalledTimes(1);
         expect(state.timelineFrame).toBe(3);
-        expect(state.timelineCachedThroughFrame).toBe(3);
+        expect(state.timelineNextUncachedFrame).toBe(4);
     });
 });

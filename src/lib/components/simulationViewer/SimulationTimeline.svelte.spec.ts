@@ -5,11 +5,15 @@ import type { SimulationState } from "./SimulationState.svelte";
 import SimulationTimeline from "./SimulationTimeline.svelte";
 import { TIMELINE_FRAME_COUNT } from "./SimulationTimelineTiming";
 
-const createTimelineState = () => {
+const createTimelineState = ({
+    timelineNextUncachedFrame = 1,
+}: {
+    timelineNextUncachedFrame?: number,
+} = {}) => {
     const state = {
         timelineFrame: 0,
         timelineFrameCount: TIMELINE_FRAME_COUNT,
-        timelineCachedThroughFrame: 0,
+        timelineNextUncachedFrame,
         timelineIsBusy: false,
         timelineIsPlaying: false,
         timelineCanSelectCacheDirectory: false,
@@ -36,6 +40,30 @@ const createTimelineState = () => {
 describe("SimulationTimeline", () => {
     afterEach(() => {
         cleanup();
+    });
+
+    it("shows empty cache progress without negative frame numbers", async () => {
+        const simulationState = createTimelineState({
+            timelineNextUncachedFrame: 0,
+        });
+        await render(SimulationTimeline, {
+            props: {
+                simulationState: simulationState as unknown as SimulationState,
+            },
+        });
+
+        const text = document.body.textContent ?? "";
+        expect(text).toContain("Next uncached 0");
+        expect(text).not.toContain("-1");
+
+        const frameInput = document.querySelector("timeline-range input");
+        expect(frameInput).toBeInstanceOf(HTMLInputElement);
+        expect((frameInput as HTMLInputElement).disabled).toBe(true);
+
+        const progress = document.querySelector("timeline-range progress");
+        expect(progress).toBeInstanceOf(HTMLProgressElement);
+        expect((progress as HTMLProgressElement).max).toBe(TIMELINE_FRAME_COUNT);
+        expect((progress as HTMLProgressElement).value).toBe(0);
     });
 
     it("does not commit typed timestep digits until text entry is committed", async () => {
