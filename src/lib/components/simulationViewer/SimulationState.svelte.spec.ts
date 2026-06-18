@@ -79,6 +79,21 @@ const attachTimelineCache = (
     ).timelineCache = timelineCache;
 };
 
+const attachDevice = (
+    state: SimulationState,
+    device: {
+        queue: {
+            onSubmittedWorkDone: () => Promise<void>,
+        },
+    },
+) => {
+    (
+        state as unknown as {
+            device: typeof device,
+        }
+    ).device = device;
+};
+
 const attachCurrentTimelineCacheKey = (state: SimulationState) => {
     (
         state as unknown as {
@@ -249,6 +264,34 @@ describe("SimulationState camera still-frame rendering", () => {
         await animationFrames.flushNextFrame();
 
         expect(runner.renderStillFrame).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not wait for submitted GPU work before accepting the next camera render", async () => {
+        const animationFrames = installAnimationFrameQueue();
+        const state = new SimulationState({ timeline: true });
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+        };
+        const device = {
+            queue: {
+                onSubmittedWorkDone: vi.fn(async () => {}),
+            },
+        };
+
+        attachRunner(state, runner);
+        attachDevice(state, device);
+
+        state.turnCamera({ x: 8, y: -4 });
+        await animationFrames.flushNextFrame();
+
+        state.turnCamera({ x: -3, y: 6 });
+
+        expect(animationFrames.queuedFrameCount()).toBe(1);
+
+        await animationFrames.flushNextFrame();
+
+        expect(runner.renderStillFrame).toHaveBeenCalledTimes(2);
+        expect(device.queue.onSubmittedWorkDone).not.toHaveBeenCalled();
     });
 
     it("feeds timeline still-frame timings into the profiling state", async () => {

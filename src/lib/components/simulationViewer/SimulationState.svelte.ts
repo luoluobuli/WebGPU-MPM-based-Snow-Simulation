@@ -840,7 +840,6 @@ export class SimulationState {
     private async submitStillFrameRender() {
         try {
             await this.runner?.renderStillFrame(this.frameTimingCallbacks);
-            await this.device?.queue.onSubmittedWorkDone();
         } catch (error) {
             console.error(error);
             this.onErr?.(errorToString(error));
