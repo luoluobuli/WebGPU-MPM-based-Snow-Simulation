@@ -931,13 +931,29 @@ export class SimulationState {
         try {
             const bufferReady = await this.primeTimelinePlaybackBuffer(runToken);
             if (!bufferReady) return;
+            if (this.timelineFrameCount <= 1) return;
 
             let nextFrameTimeMs = performance.now() + TIMELINE_FRAME_INTERVAL_MS;
             while (
                 runToken === this.timelineRunToken
                 && this.timelineIsPlaying
-                && this.timelineFrame < this.timelineFrameCount - 1
             ) {
+                if (this.timelineFrame >= this.timelineFrameCount - 1) {
+                    await this.seekTimelineFrame(
+                        0,
+                        {
+                            keepPlaying: true,
+                            runToken,
+                        },
+                    );
+                    if (runToken !== this.timelineRunToken || !this.timelineIsPlaying) {
+                        return;
+                    }
+
+                    nextFrameTimeMs = performance.now() + TIMELINE_FRAME_INTERVAL_MS;
+                    continue;
+                }
+
                 const nowMs = performance.now();
                 if (nowMs < nextFrameTimeMs) {
                     const delayMs = nextFrameTimeMs - nowMs;
