@@ -5,6 +5,7 @@ export interface ColliderGeometry {
     materialIndices: number[];
     textures: ImageBitmap[];
     indices: number[];
+    sdfResolution?: number;
     objects: {
         min: [number, number, number];
         max: [number, number, number];
@@ -13,10 +14,25 @@ export interface ColliderGeometry {
     }[];
 }
 
+export type AnimatedColliderGeometry = ColliderGeometry & {
+    animationDurationS: number,
+    sampleAtTimeS: (timeS: number) => ColliderGeometry,
+};
+
 export const COLLIDER_SDF_RESOLUTION = 64;
 export const COLLIDER_SDF_SURFACE_THICKNESS = 0.05;
 
+const COLLIDER_SDF_BVH_NODE_FLOATS = 12;
+const COLLIDER_SDF_BVH_ANIMATION_PADDING = 0.35;
+
 type Vec3 = [number, number, number];
+
+export const isAnimatedColliderGeometry = (
+    collider: ColliderGeometry | null | undefined,
+): collider is AnimatedColliderGeometry =>
+    collider !== null
+    && collider !== undefined
+    && "sampleAtTimeS" in collider;
 
 interface Triangle {
     v0: Vec3;
@@ -40,15 +56,26 @@ interface SdfBvhNode {
 export class GpuColliderBufferManager {
     readonly colliderDataBuffer: GPUBuffer;
     readonly colliderSdfBuffer: GPUBuffer;
+    readonly colliderIndexStorageBuffer: GPUBuffer;
+    readonly colliderVertexStorageBuffer: GPUBuffer;
+    readonly colliderSdfBvhNodeBuffer: GPUBuffer;
+    readonly colliderSdfBvhTriangleOrderBuffer: GPUBuffer;
     readonly numIndices: number;
-    readonly minCoords: [number, number, number];
-    readonly maxCoords: [number, number, number];
+    readonly numVertices: number;
+    readonly numSdfBvhNodes: number;
+    readonly sdfResolution: number;
+    minCoords: [number, number, number];
+    maxCoords: [number, number, number];
 
     readonly indicesOffset: number;
     readonly verticesOffset: number;
     readonly normalsOffset: number;
     readonly uvsOffset: number;
     readonly materialIndicesOffset: number;
+    readonly verticesSize: number;
+    readonly normalsSize: number;
+    readonly uvsSize: number;
+    readonly materialIndicesSize: number;
     
     readonly textureArray: GPUTexture | null;
     readonly textureArrayView: GPUTextureView | null;
@@ -63,6 +90,8 @@ export class GpuColliderBufferManager {
         materialIndices,
         textures,
         indices,
+        sdfResolution = COLLIDER_SDF_RESOLUTION,
+        buildInitialSdf = true,
     }: {
         device: GPUDevice,
         vertices: number[],
@@ -71,22 +100,51 @@ export class GpuColliderBufferManager {
         materialIndices: number[],
         textures: ImageBitmap[],
         indices: number[],
+        sdfResolution?: number,
+        buildInitialSdf?: boolean,
     }) {
+        this.sdfResolution = Math.max(2, Math.floor(sdfResolution));
         if (vertices.length === 0 || indices.length === 0) {
             this.minCoords = [0, 0, 0];
             this.maxCoords = [0, 0, 0];
             this.numIndices = 0;
+            this.numVertices = 0;
+            this.numSdfBvhNodes = 0;
             this.numTextures = 0;
             this.indicesOffset = 0;
             this.verticesOffset = 0;
             this.normalsOffset = 0;
             this.uvsOffset = 0;
             this.materialIndicesOffset = 0;
+            this.verticesSize = 0;
+            this.normalsSize = 0;
+            this.uvsSize = 0;
+            this.materialIndicesSize = 0;
 
             this.colliderDataBuffer = device.createBuffer({
                 label: "disabled collider data buffer",
                 size: 4,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX,
+            });
+            this.colliderIndexStorageBuffer = device.createBuffer({
+                label: "disabled collider index storage buffer",
+                size: 4,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+            this.colliderVertexStorageBuffer = device.createBuffer({
+                label: "disabled collider vertex storage buffer",
+                size: 4,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+            this.colliderSdfBvhNodeBuffer = device.createBuffer({
+                label: "disabled collider SDF BVH node buffer",
+                size: 4,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+            this.colliderSdfBvhTriangleOrderBuffer = device.createBuffer({
+                label: "disabled collider SDF BVH triangle order buffer",
+                size: 4,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             });
 
             this.sampler = device.createSampler({
@@ -141,6 +199,7 @@ export class GpuColliderBufferManager {
         this.maxCoords = sdfBounds.max;
 
         this.numIndices = indices.length;
+        this.numVertices = vertices.length / 3;
         this.numTextures = textures.length;
 
         // Pack data: [Indices (u32), Vertices (f32x3), Normals (f32x3), UVs (f32x2), MaterialIndices (u32)]
@@ -150,6 +209,10 @@ export class GpuColliderBufferManager {
         const uvsSize = uvs.length * 4;
         const materialIndicesSize = materialIndices.length * 4;
         const totalSize = indicesSize + verticesSize + normalsSize + uvsSize + materialIndicesSize;
+        this.verticesSize = verticesSize;
+        this.normalsSize = normalsSize;
+        this.uvsSize = uvsSize;
+        this.materialIndicesSize = materialIndicesSize;
         
         this.colliderDataBuffer = device.createBuffer({
             label: "collider data buffer",
@@ -159,6 +222,7 @@ export class GpuColliderBufferManager {
 
         const flatIndices = new Uint32Array(indices);
         const flatVertices = new Float32Array(vertices);
+        const packedStorageVertices = this.packStorageVertices(vertices);
         const flatNormals = new Float32Array(normals);
         const flatUvs = new Float32Array(uvs);
         const flatMaterialIndices = new Uint32Array(materialIndices);
@@ -174,6 +238,40 @@ export class GpuColliderBufferManager {
         device.queue.writeBuffer(this.colliderDataBuffer, indicesSize + verticesSize, flatNormals);
         device.queue.writeBuffer(this.colliderDataBuffer, indicesSize + verticesSize + normalsSize, flatUvs);
         device.queue.writeBuffer(this.colliderDataBuffer, indicesSize + verticesSize + normalsSize + uvsSize, flatMaterialIndices);
+
+        this.colliderIndexStorageBuffer = device.createBuffer({
+            label: "collider index storage buffer",
+            size: Math.max(flatIndices.byteLength, 4),
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        this.colliderVertexStorageBuffer = device.createBuffer({
+            label: "collider vertex storage buffer",
+            size: Math.max(packedStorageVertices.byteLength, 4),
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(this.colliderIndexStorageBuffer, 0, flatIndices);
+        device.queue.writeBuffer(this.colliderVertexStorageBuffer, 0, packedStorageVertices);
+
+        const sdfBvh = this.buildSdfBvh(vertices, indices);
+        const packedSdfBvhNodes = this.packSdfBvhNodes(sdfBvh.nodes);
+        const flatSdfBvhTriangleOrder = new Uint32Array(sdfBvh.triangleIndices);
+        this.numSdfBvhNodes = sdfBvh.nodes.length;
+        this.colliderSdfBvhNodeBuffer = device.createBuffer({
+            label: "collider SDF BVH node buffer",
+            size: Math.max(packedSdfBvhNodes.byteLength, 4),
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        this.colliderSdfBvhTriangleOrderBuffer = device.createBuffer({
+            label: "collider SDF BVH triangle order buffer",
+            size: Math.max(flatSdfBvhTriangleOrder.byteLength, 4),
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        if (packedSdfBvhNodes.byteLength > 0) {
+            device.queue.writeBuffer(this.colliderSdfBvhNodeBuffer, 0, packedSdfBvhNodes);
+        }
+        if (flatSdfBvhTriangleOrder.byteLength > 0) {
+            device.queue.writeBuffer(this.colliderSdfBvhTriangleOrderBuffer, 0, flatSdfBvhTriangleOrder);
+        }
 
         // Create sampler
         this.sampler = device.createSampler({
@@ -225,13 +323,186 @@ export class GpuColliderBufferManager {
             });
         }
 
-        const sdfData = this.buildColliderSdf(vertices, indices, sdfBounds);
+        const sdfData = buildInitialSdf
+            ? this.buildColliderSdf(vertices, indices, sdfBounds)
+            : this.buildPlaceholderColliderSdf();
         this.colliderSdfBuffer = device.createBuffer({
             label: "collider SDF buffer",
             size: Math.max(sdfData.byteLength, 4),
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
         device.queue.writeBuffer(this.colliderSdfBuffer, 0, sdfData.buffer as ArrayBuffer, sdfData.byteOffset, sdfData.byteLength);
+    }
+
+    updateRenderGeometry(update: {
+        device: GPUDevice,
+        vertices: number[],
+        normals: number[],
+        indices: number[],
+    }) {
+        this.validateGeometryUpdate(update);
+        this.writeRenderGeometry(update);
+    }
+
+    updateGeometryForGpuSdf(update: {
+        device: GPUDevice,
+        vertices: number[],
+        normals: number[],
+        indices: number[],
+    }) {
+        this.validateGeometryUpdate(update);
+        const { vertices } = update;
+        const meshBounds = this.calculateMeshBounds(vertices);
+        const sdfBounds = this.buildSdfBounds(meshBounds.min, meshBounds.max);
+
+        this.minCoords = sdfBounds.min;
+        this.maxCoords = sdfBounds.max;
+
+        this.writeRenderGeometry(update);
+
+        return {
+            minCoords: this.minCoords,
+            maxCoords: this.maxCoords,
+        };
+    }
+
+    updateGeometry(update: {
+        device: GPUDevice,
+        vertices: number[],
+        normals: number[],
+        indices: number[],
+    }) {
+        this.validateGeometryUpdate(update);
+        const { device, vertices, indices } = update;
+        const meshBounds = this.calculateMeshBounds(vertices);
+        const sdfBounds = this.buildSdfBounds(meshBounds.min, meshBounds.max);
+        const sdfData = this.buildColliderSdf(vertices, indices, sdfBounds);
+
+        this.minCoords = sdfBounds.min;
+        this.maxCoords = sdfBounds.max;
+
+        this.writeRenderGeometry(update);
+        device.queue.writeBuffer(
+            this.colliderSdfBuffer,
+            0,
+            sdfData.buffer as ArrayBuffer,
+            sdfData.byteOffset,
+            sdfData.byteLength,
+        );
+
+        return {
+            minCoords: this.minCoords,
+            maxCoords: this.maxCoords,
+        };
+    }
+
+    private validateGeometryUpdate({
+        vertices,
+        normals,
+        indices,
+    }: {
+        vertices: number[],
+        normals: number[],
+        indices: number[],
+    }) {
+        if (indices.length !== this.numIndices) {
+            throw new Error("animated collider topology must keep the same index count");
+        }
+
+        const verticesByteLength = vertices.length * 4;
+        const normalsByteLength = normals.length * 4;
+        if (verticesByteLength !== this.verticesSize || normalsByteLength !== this.normalsSize) {
+            throw new Error("animated collider topology must keep the same vertex and normal counts");
+        }
+    }
+
+    private writeRenderGeometry({
+        device,
+        vertices,
+        normals,
+    }: {
+        device: GPUDevice,
+        vertices: number[],
+        normals: number[],
+    }) {
+        const flatVertices = new Float32Array(vertices);
+        const packedStorageVertices = this.packStorageVertices(vertices);
+        const flatNormals = new Float32Array(normals);
+        device.queue.writeBuffer(
+            this.colliderDataBuffer,
+            this.verticesOffset,
+            flatVertices,
+        );
+        device.queue.writeBuffer(
+            this.colliderDataBuffer,
+            this.normalsOffset,
+            flatNormals,
+        );
+        device.queue.writeBuffer(
+            this.colliderVertexStorageBuffer,
+            0,
+            packedStorageVertices,
+        );
+    }
+
+    private packStorageVertices(vertices: number[]) {
+        const packed = new Float32Array(this.numVertices * 4);
+
+        for (
+            let sourceIndex = 0, targetIndex = 0;
+            sourceIndex < vertices.length;
+            sourceIndex += 3, targetIndex += 4
+        ) {
+            packed[targetIndex] = vertices[sourceIndex];
+            packed[targetIndex + 1] = vertices[sourceIndex + 1];
+            packed[targetIndex + 2] = vertices[sourceIndex + 2];
+            packed[targetIndex + 3] = 1;
+        }
+
+        return packed;
+    }
+
+    private packSdfBvhNodes(nodes: SdfBvhNode[]) {
+        const buffer = new ArrayBuffer(nodes.length * COLLIDER_SDF_BVH_NODE_FLOATS * 4);
+        const floats = new Float32Array(buffer);
+        const uints = new Uint32Array(buffer);
+
+        for (let i = 0; i < nodes.length; i++) {
+            const node = nodes[i];
+            const base = i * COLLIDER_SDF_BVH_NODE_FLOATS;
+
+            floats[base] = node.minBounds[0] - COLLIDER_SDF_BVH_ANIMATION_PADDING;
+            floats[base + 1] = node.minBounds[1] - COLLIDER_SDF_BVH_ANIMATION_PADDING;
+            floats[base + 2] = node.minBounds[2] - COLLIDER_SDF_BVH_ANIMATION_PADDING;
+            uints[base + 3] = node.leftChild;
+            floats[base + 4] = node.maxBounds[0] + COLLIDER_SDF_BVH_ANIMATION_PADDING;
+            floats[base + 5] = node.maxBounds[1] + COLLIDER_SDF_BVH_ANIMATION_PADDING;
+            floats[base + 6] = node.maxBounds[2] + COLLIDER_SDF_BVH_ANIMATION_PADDING;
+            uints[base + 7] = node.rightChild;
+            uints[base + 8] = node.start;
+            uints[base + 9] = node.count;
+            uints[base + 10] = node.isLeaf ? 1 : 0;
+            uints[base + 11] = 0;
+        }
+
+        return new Uint32Array(buffer);
+    }
+
+    private calculateMeshBounds(vertices: number[]): { min: Vec3, max: Vec3 } {
+        const min: Vec3 = [Infinity, Infinity, Infinity];
+        const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+
+        for (let i = 0; i < vertices.length; i += 3) {
+            min[0] = Math.min(min[0], vertices[i]);
+            min[1] = Math.min(min[1], vertices[i + 1]);
+            min[2] = Math.min(min[2], vertices[i + 2]);
+
+            max[0] = Math.max(max[0], vertices[i]);
+            max[1] = Math.max(max[1], vertices[i + 1]);
+            max[2] = Math.max(max[2], vertices[i + 2]);
+        }
+
+        return { min, max };
     }
 
     private buildSdfBounds(meshMin: Vec3, meshMax: Vec3): { min: Vec3, max: Vec3 } {
@@ -241,7 +512,7 @@ export class GpuColliderBufferManager {
             meshMax[2] - meshMin[2],
         ];
         const maxExtent = Math.max(extent[0], extent[1], extent[2], 1e-3);
-        const voxelEstimate = maxExtent / (COLLIDER_SDF_RESOLUTION - 1);
+        const voxelEstimate = maxExtent / (this.sdfResolution - 1);
         const padding = Math.max(COLLIDER_SDF_SURFACE_THICKNESS * 2, voxelEstimate * 2);
 
         return {
@@ -250,12 +521,20 @@ export class GpuColliderBufferManager {
         };
     }
 
+    private buildPlaceholderColliderSdf() {
+        const voxelCount = this.sdfResolution * this.sdfResolution * this.sdfResolution;
+        const sdfData = new Float32Array(voxelCount);
+        sdfData.fill(1e6);
+
+        return sdfData;
+    }
+
     private buildColliderSdf(
         vertices: number[],
         indices: number[],
         bounds: { min: Vec3, max: Vec3 },
     ): Float32Array {
-        const voxelCount = COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
+        const voxelCount = this.sdfResolution * this.sdfResolution * this.sdfResolution;
         const sdfData = new Float32Array(voxelCount);
         const { triangles, triangleIndices, nodes } = this.buildSdfBvh(vertices, indices);
 
@@ -264,20 +543,20 @@ export class GpuColliderBufferManager {
             return sdfData;
         }
 
-        const dx = (bounds.max[0] - bounds.min[0]) / (COLLIDER_SDF_RESOLUTION - 1);
-        const dy = (bounds.max[1] - bounds.min[1]) / (COLLIDER_SDF_RESOLUTION - 1);
-        const dz = (bounds.max[2] - bounds.min[2]) / (COLLIDER_SDF_RESOLUTION - 1);
+        const dx = (bounds.max[0] - bounds.min[0]) / (this.sdfResolution - 1);
+        const dy = (bounds.max[1] - bounds.min[1]) / (this.sdfResolution - 1);
+        const dz = (bounds.max[2] - bounds.min[2]) / (this.sdfResolution - 1);
         const stack = new Uint32Array(nodes.length);
 
-        for (let z = 0; z < COLLIDER_SDF_RESOLUTION; z++) {
+        for (let z = 0; z < this.sdfResolution; z++) {
             const pz = bounds.min[2] + z * dz;
-            for (let y = 0; y < COLLIDER_SDF_RESOLUTION; y++) {
+            for (let y = 0; y < this.sdfResolution; y++) {
                 const py = bounds.min[1] + y * dy;
-                for (let x = 0; x < COLLIDER_SDF_RESOLUTION; x++) {
+                for (let x = 0; x < this.sdfResolution; x++) {
                     const px = bounds.min[0] + x * dx;
                     const index = x
-                        + y * COLLIDER_SDF_RESOLUTION
-                        + z * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
+                        + y * this.sdfResolution
+                        + z * this.sdfResolution * this.sdfResolution;
                     const distSq = this.closestDistanceSqToMesh(
                         [px, py, pz],
                         triangles,
@@ -556,6 +835,11 @@ export class GpuColliderBufferManager {
     destroy() {
         this.colliderDataBuffer.destroy();
         this.colliderSdfBuffer.destroy();
+        this.colliderIndexStorageBuffer.destroy();
+        this.colliderVertexStorageBuffer.destroy();
+        this.colliderSdfBvhNodeBuffer.destroy();
+        this.colliderSdfBvhTriangleOrderBuffer.destroy();
         this.textureArray?.destroy();
     }
 }
+

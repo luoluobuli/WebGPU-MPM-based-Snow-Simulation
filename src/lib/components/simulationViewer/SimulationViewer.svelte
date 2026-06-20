@@ -13,8 +13,10 @@ import { browser } from "$app/environment";
 
 let {
     scene = defaultSimulationScene,
+    kinematicScene = null,
 }: {
     scene?: SimulationSceneConfig,
+    kinematicScene?: SimulationSceneConfig | null,
 } = $props();
 
 let status = $state("loading javascript");
@@ -27,9 +29,13 @@ const urlSearchParams = browser
     ? new URLSearchParams(location.search)
     : null;
 const timeline = urlSearchParams?.has("timeline") === true;
+const kinematic = timeline && urlSearchParams?.has("kinematic") === true;
+const getActiveScene = () => kinematic && kinematicScene !== null
+    ? kinematicScene
+    : scene;
 
 const simulationState = SimulationState.loadOntoCanvas({
-    getScene: () => scene,
+    getScene: getActiveScene,
     timeline,
     canvasPromise: canvasPromise.promise,
     onStatusChange: text => status = text,

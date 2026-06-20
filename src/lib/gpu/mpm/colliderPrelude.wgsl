@@ -1,9 +1,13 @@
-const COLLIDER_SDF_RESOLUTION = 64u;
-const COLLIDER_SDF_LAST_INDEX = 63u;
-const COLLIDER_SDF_LAST_COORD = 63.0;
+override COLLIDER_SDF_RESOLUTION: u32 = 64u;
 const COLLIDER_SDF_MAX_SWEEP_STEPS = 16u;
-const COLLIDER_SDF_LOG_RESOLUTION = 6u;
-const COLLIDER_SDF_Z_SHIFT = COLLIDER_SDF_LOG_RESOLUTION * 2u;
+
+fn colliderSdfLastIndex() -> u32 {
+    return COLLIDER_SDF_RESOLUTION - 1u;
+}
+
+fn colliderSdfLastCoord() -> f32 {
+    return f32(colliderSdfLastIndex());
+}
 
 override COLLIDER_TRANSFORM_ALWAYS_IDENTITY: u32 = 0u;
 override COLLIDER_VELOCITY_ALWAYS_ZERO: u32 = 0u;
@@ -52,19 +56,19 @@ fn colliderVelocityIsZero() -> bool {
 
 fn colliderSdfIndex(cell: vec3u) -> u32 {
     return cell.x
-        + (cell.y << COLLIDER_SDF_LOG_RESOLUTION)
-        + (cell.z << COLLIDER_SDF_Z_SHIFT);
+        + cell.y * COLLIDER_SDF_RESOLUTION
+        + cell.z * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
 }
 
 fn sampleColliderSdfGridClamped(grid_pos: vec3f) -> f32 {
     let base_f = floor(grid_pos);
     let base = vec3u(u32(base_f.x), u32(base_f.y), u32(base_f.z));
-    let next = min(base + vec3u(1u), vec3u(COLLIDER_SDF_LAST_INDEX));
+    let next = min(base + vec3u(1u), vec3u(colliderSdfLastIndex()));
     let frac = grid_pos - vec3f(f32(base.x), f32(base.y), f32(base.z));
-    let base_y_offset = base.y << COLLIDER_SDF_LOG_RESOLUTION;
-    let next_y_offset = next.y << COLLIDER_SDF_LOG_RESOLUTION;
-    let base_z_offset = base.z << COLLIDER_SDF_Z_SHIFT;
-    let next_z_offset = next.z << COLLIDER_SDF_Z_SHIFT;
+    let base_y_offset = base.y * COLLIDER_SDF_RESOLUTION;
+    let next_y_offset = next.y * COLLIDER_SDF_RESOLUTION;
+    let base_z_offset = base.z * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
+    let next_z_offset = next.z * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
     let base_yz_offset = base_y_offset + base_z_offset;
     let next_y_base_z_offset = next_y_offset + base_z_offset;
     let base_y_next_z_offset = base_y_offset + next_z_offset;
@@ -91,12 +95,12 @@ fn sampleColliderSdfGridClamped(grid_pos: vec3f) -> f32 {
 fn sampleColliderSdfGridValueGradientClamped(grid_pos: vec3f) -> ColliderSdfGridValueGradient {
     let base_f = floor(grid_pos);
     let base = vec3u(u32(base_f.x), u32(base_f.y), u32(base_f.z));
-    let next = min(base + vec3u(1u), vec3u(COLLIDER_SDF_LAST_INDEX));
+    let next = min(base + vec3u(1u), vec3u(colliderSdfLastIndex()));
     let frac = grid_pos - vec3f(f32(base.x), f32(base.y), f32(base.z));
-    let base_y_offset = base.y << COLLIDER_SDF_LOG_RESOLUTION;
-    let next_y_offset = next.y << COLLIDER_SDF_LOG_RESOLUTION;
-    let base_z_offset = base.z << COLLIDER_SDF_Z_SHIFT;
-    let next_z_offset = next.z << COLLIDER_SDF_Z_SHIFT;
+    let base_y_offset = base.y * COLLIDER_SDF_RESOLUTION;
+    let next_y_offset = next.y * COLLIDER_SDF_RESOLUTION;
+    let base_z_offset = base.z * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
+    let next_z_offset = next.z * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
     let base_yz_offset = base_y_offset + base_z_offset;
     let next_y_base_z_offset = next_y_offset + base_z_offset;
     let base_y_next_z_offset = base_y_offset + next_z_offset;
@@ -139,7 +143,7 @@ fn sampleColliderSdfGridValueGradientClamped(grid_pos: vec3f) -> ColliderSdfGrid
 }
 
 fn sampleColliderSdfGrid(grid_pos_in: vec3f) -> f32 {
-    return sampleColliderSdfGridClamped(clamp(grid_pos_in, vec3f(0.0), vec3f(COLLIDER_SDF_LAST_COORD)));
+    return sampleColliderSdfGridClamped(clamp(grid_pos_in, vec3f(0.0), vec3f(colliderSdfLastCoord())));
 }
 
 fn sampleColliderSdfNearest(local_pos: vec3f) -> f32 {
@@ -149,7 +153,7 @@ fn sampleColliderSdfNearest(local_pos: vec3f) -> f32 {
 
     let sdf_min = uniforms.colliderMinCoords;
     let grid_pos = (local_pos - sdf_min) * uniforms.colliderSdfGridScale;
-    let clamped_grid_pos = clamp(floor(grid_pos + vec3f(0.5)), vec3f(0.0), vec3f(COLLIDER_SDF_LAST_COORD));
+    let clamped_grid_pos = clamp(floor(grid_pos + vec3f(0.5)), vec3f(0.0), vec3f(colliderSdfLastCoord()));
     let clamped_cell = vec3u(
         u32(clamped_grid_pos.x),
         u32(clamped_grid_pos.y),
@@ -166,11 +170,11 @@ fn sampleColliderSdf(local_pos: vec3f) -> f32 {
 
     let sdf_min = uniforms.colliderMinCoords;
     let grid_pos = (local_pos - sdf_min) * uniforms.colliderSdfGridScale;
-    if all(grid_pos >= vec3f(0.0)) && all(grid_pos <= vec3f(COLLIDER_SDF_LAST_COORD)) {
+    if all(grid_pos >= vec3f(0.0)) && all(grid_pos <= vec3f(colliderSdfLastCoord())) {
         return sampleColliderSdfGridClamped(grid_pos);
     }
 
-    let clamped_grid_pos = clamp(grid_pos, vec3f(0.0), vec3f(COLLIDER_SDF_LAST_COORD));
+    let clamped_grid_pos = clamp(grid_pos, vec3f(0.0), vec3f(colliderSdfLastCoord()));
     let clamped_local_pos = sdf_min + clamped_grid_pos * uniforms.colliderSdfCellSize;
 
     return sampleColliderSdfGridClamped(clamped_grid_pos) + length(local_pos - clamped_local_pos);
@@ -178,7 +182,7 @@ fn sampleColliderSdf(local_pos: vec3f) -> f32 {
 
 fn sampleColliderSdfValueGradient(local_pos: vec3f) -> ColliderSdfValueGradient {
     let grid_pos = (local_pos - uniforms.colliderMinCoords) * uniforms.colliderSdfGridScale;
-    if all(grid_pos > vec3f(0.0)) && all(grid_pos < vec3f(COLLIDER_SDF_LAST_COORD)) {
+    if all(grid_pos > vec3f(0.0)) && all(grid_pos < vec3f(colliderSdfLastCoord())) {
         let sample = sampleColliderSdfGridValueGradientClamped(grid_pos);
         let grad = sample.gradient_grid * uniforms.colliderSdfGridScale;
         let grad_len_squared = dot(grad, grad);
@@ -198,15 +202,15 @@ fn sampleColliderSdfValueGradient(local_pos: vec3f) -> ColliderSdfValueGradient 
 
 fn sampleColliderSdfCurrentPosition(local_pos: vec3f) -> ColliderSdfValueGradient {
     let grid_pos = (local_pos - uniforms.colliderMinCoords) * uniforms.colliderSdfGridScale;
-    if all(grid_pos > vec3f(0.0)) && all(grid_pos < vec3f(COLLIDER_SDF_LAST_COORD)) {
+    if all(grid_pos > vec3f(0.0)) && all(grid_pos < vec3f(colliderSdfLastCoord())) {
         let base_f = floor(grid_pos);
         let base = vec3u(u32(base_f.x), u32(base_f.y), u32(base_f.z));
-        let next = min(base + vec3u(1u), vec3u(COLLIDER_SDF_LAST_INDEX));
+        let next = min(base + vec3u(1u), vec3u(colliderSdfLastIndex()));
         let frac = grid_pos - vec3f(f32(base.x), f32(base.y), f32(base.z));
-        let base_y_offset = base.y << COLLIDER_SDF_LOG_RESOLUTION;
-        let next_y_offset = next.y << COLLIDER_SDF_LOG_RESOLUTION;
-        let base_z_offset = base.z << COLLIDER_SDF_Z_SHIFT;
-        let next_z_offset = next.z << COLLIDER_SDF_Z_SHIFT;
+        let base_y_offset = base.y * COLLIDER_SDF_RESOLUTION;
+        let next_y_offset = next.y * COLLIDER_SDF_RESOLUTION;
+        let base_z_offset = base.z * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
+        let next_z_offset = next.z * COLLIDER_SDF_RESOLUTION * COLLIDER_SDF_RESOLUTION;
         let base_yz_offset = base_y_offset + base_z_offset;
         let next_y_base_z_offset = next_y_offset + base_z_offset;
         let base_y_next_z_offset = base_y_offset + next_z_offset;
@@ -263,7 +267,7 @@ fn sampleColliderSdfCurrentPosition(local_pos: vec3f) -> ColliderSdfValueGradien
 
 fn colliderSdfGradient(local_pos: vec3f) -> vec3f {
     let grid_pos = (local_pos - uniforms.colliderMinCoords) * uniforms.colliderSdfGridScale;
-    if all(grid_pos > vec3f(0.0)) && all(grid_pos < vec3f(COLLIDER_SDF_LAST_COORD)) {
+    if all(grid_pos > vec3f(0.0)) && all(grid_pos < vec3f(colliderSdfLastCoord())) {
         let grad = sampleColliderSdfGridValueGradientClamped(grid_pos).gradient_grid * uniforms.colliderSdfGridScale;
         let grad_len_squared = dot(grad, grad);
         if grad_len_squared >= 1e-12 {

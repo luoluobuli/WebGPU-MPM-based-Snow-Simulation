@@ -16,7 +16,7 @@ export class GpuPerformanceMeasurementBufferManager {
     }) {
         const querySet = device.createQuerySet({
             type: "timestamp",
-            count: 16,
+            count: 24,
         });
         const queryResultByteLength = querySet.count * BigUint64Array.BYTES_PER_ELEMENT;
 

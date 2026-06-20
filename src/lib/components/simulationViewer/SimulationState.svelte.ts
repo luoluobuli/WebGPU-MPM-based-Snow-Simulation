@@ -5,6 +5,7 @@ import {
 } from "../../gpu/GpuSnowPipelineRunner.svelte";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
+import { loadAnimatedGltfCollider } from "./loadAnimatedGltfCollider";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
@@ -158,14 +159,16 @@ const loadSpawnSource = async (
     }
 };
 
-const loadCollider = async (
-    scene: SimulationSceneConfig,
-): Promise<ColliderGeometry | null> => {
-    if (scene.colliderSource === null) {
-        return null;
-    }
-
-    const { positions, normals, uvs, materialIndices, textures, indices, objects } = await loadGltfScene(scene.colliderSource.url);
+const loadStaticGltfCollider = async (url: string): Promise<ColliderGeometry> => {
+    const {
+        positions,
+        normals,
+        uvs,
+        materialIndices,
+        textures,
+        indices,
+        objects,
+    } = await loadGltfScene(url);
 
     return {
         positions,
@@ -176,6 +179,26 @@ const loadCollider = async (
         indices,
         objects,
     };
+};
+
+const loadCollider = async (
+    scene: SimulationSceneConfig,
+): Promise<ColliderGeometry | null> => {
+    const { colliderSource } = scene;
+    if (colliderSource === null) {
+        return null;
+    }
+
+    switch (colliderSource.type) {
+        case "mesh":
+            return await loadStaticGltfCollider(colliderSource.url);
+
+        case "animatedMesh":
+            return await loadAnimatedGltfCollider({
+                url: colliderSource.url,
+                sdfResolution: colliderSource.sdfResolution,
+            });
+    }
 };
 
 export class SimulationState {
@@ -515,6 +538,36 @@ export class SimulationState {
         );
     }
 
+    private runnerHasAnimatedCollider() {
+        return (this.runner as {
+            hasAnimatedCollider?: boolean,
+        } | null)?.hasAnimatedCollider === true;
+    }
+
+    private updateAnimatedColliderRenderPoseAtTimeS(timeS: number) {
+        const runner = this.runner as {
+            updateAnimatedColliderRenderPoseAtTimeS?: (timeS: number) => void,
+        } | null;
+        if (runner?.updateAnimatedColliderRenderPoseAtTimeS === undefined) return;
+
+        runner.updateAnimatedColliderRenderPoseAtTimeS(timeS);
+    }
+
+    private advanceTimelineSimulationSubsteps(nSubsteps: number) {
+        if (this.runner === null) return;
+
+        const animatedColliderTimeS = this.runnerHasAnimatedCollider()
+            ? this.timelineSimulatedTimeS + nSubsteps * this.runner.selectedSimulationTimestepS
+            : undefined;
+
+        const result = this.runner.advanceFixedSimulationSubsteps({
+            nSubsteps,
+            animatedColliderTimeS,
+            ...this.frameTimingCallbacks,
+        });
+        this.timelineSimulatedTimeS += result.simulatedTimeS;
+    }
+
     private async restoreTimelineFrameFromCache(
         frameIndex: number,
         {
@@ -533,6 +586,12 @@ export class SimulationState {
         if (frame === null) {
             return false;
         }
+
+        const targetTimeS = timelineFrameSimulationTimeS(
+            frameIndex,
+            this.timelineSecondsPerFrame,
+        );
+        this.updateAnimatedColliderRenderPoseAtTimeS(targetTimeS);
 
         const renderOptions = {
             ...this.frameTimingCallbacks,
@@ -554,10 +613,7 @@ export class SimulationState {
             this.runner.restoreSimulationPlaybackFrame(frame);
         }
         this.timelineSolverFrame = null;
-        this.timelineSimulatedTimeS = timelineFrameSimulationTimeS(
-            frameIndex,
-            this.timelineSecondsPerFrame,
-        );
+        this.timelineSimulatedTimeS = targetTimeS;
         if (render && renderSimulationPlaybackFrame === undefined) {
             this.runner.renderStillFrame(renderOptions);
         }
@@ -593,11 +649,7 @@ export class SimulationState {
             });
 
             this.timelineStatus = `rebuilding solver frame ${frameIndex} (${nSubsteps} substeps)...`;
-            const result = this.runner.advanceFixedSimulationSubsteps({
-                nSubsteps,
-                ...this.frameTimingCallbacks,
-            });
-            this.timelineSimulatedTimeS += result.simulatedTimeS;
+            this.advanceTimelineSimulationSubsteps(nSubsteps);
             this.timelineSolverFrame = frameIndex;
             if (runToken !== this.timelineRunToken) return false;
         }
@@ -617,6 +669,7 @@ export class SimulationState {
 
         try {
             const cacheHasRoom = await this.resetTimelineCache();
+            this.updateAnimatedColliderRenderPoseAtTimeS(0);
             if (restartEpoch !== this.restartEpoch || runToken !== this.timelineRunToken) return;
             if (!cacheHasRoom) {
                 this.runner.renderStillFrame(this.frameTimingCallbacks);
@@ -694,11 +747,7 @@ export class SimulationState {
             });
 
             this.timelineStatus = `simulating frame ${frameIndex} (${nSubsteps} substeps)...`;
-            const result = this.runner.advanceFixedSimulationSubsteps({
-                nSubsteps,
-                ...this.frameTimingCallbacks,
-            });
-            this.timelineSimulatedTimeS += result.simulatedTimeS;
+            this.advanceTimelineSimulationSubsteps(nSubsteps);
             this.timelineSolverFrame = frameIndex;
             if (runToken !== this.timelineRunToken) return;
 
@@ -997,6 +1046,7 @@ export class SimulationState {
     }
 
     private updateGpuTime(times: GpuFrameTiming) {
+        this.elapsedTime.gpuColliderSdfCreationTimeNs = times.colliderSdfCreationNs;
         this.elapsedTime.gpuComputeSimulationStepTimeNs = times.computeSimulationStepNs;
         this.elapsedTime.gpuComputeSimulationSubstepTimeNs = times.computeSimulationSubstepNs;
         this.elapsedTime.nSimulationSubsteps = times.nSimulationSubsteps;

@@ -20,7 +20,8 @@ describe("GpuSnowPipelineRunner timestep stability", () => {
         expect(methodEnd).toBeGreaterThan(methodStart);
         expect(methodSrc).toContain("measureGpuTimestamps = false");
         expect(methodSrc).toContain("this.simulationPlaybackFrameCacheManager.addRestoreDispatch({ commandEncoder });");
-        expect(methodSrc).toContain("this.addRender(commandEncoder, shouldMeasureGpuTimestamps);");
+        expect(methodSrc).toContain("this.addRender(");
+        expect(methodSrc).toContain("framePrerenderTimestampBaseIndex");
         expect(methodSrc.match(/this\.device\.queue\.submit/g)).toHaveLength(1);
     });
 });

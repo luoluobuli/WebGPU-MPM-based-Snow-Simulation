@@ -14,6 +14,7 @@ const TIMELINE_BACKGROUND_WORK_YIELD_MS = 250;
 
 type MockFrameTimingCallbacks = {
     onGpuTimeUpdate?: (times: {
+        colliderSdfCreationNs: bigint,
         computeSimulationStepNs: bigint,
         computeSimulationSubstepNs: bigint,
         nSimulationSubsteps: number,
@@ -38,6 +39,7 @@ type MockTimelineRunner = MockRunner & {
     ) => void,
     advanceFixedSimulationSubsteps: (args: MockFrameTimingCallbacks & {
         nSubsteps: number,
+        animatedColliderTimeS?: number,
     }) => {
         nSimulationSubsteps: number,
         simulationTimestepS: number,
@@ -345,6 +347,7 @@ describe("SimulationState camera still-frame rendering", () => {
             renderStillFrame: vi.fn((callbacks?: MockFrameTimingCallbacks) => {
                 callbacks?.onAnimationFrameTimeUpdate?.(3.5);
                 callbacks?.onGpuTimeUpdate?.({
+                    colliderSdfCreationNs: 0n,
                     computeSimulationStepNs: 0n,
                     computeSimulationSubstepNs: 0n,
                     nSimulationSubsteps: 0,
@@ -360,6 +363,7 @@ describe("SimulationState camera still-frame rendering", () => {
         await animationFrames.flushNextFrame();
 
         expect(state.elapsedTime.animationFrameTimeNs).toBe(3_500_000n);
+        expect(state.elapsedTime.gpuColliderSdfCreationTimeNs).toBe(0n);
         expect(state.elapsedTime.gpuComputeSimulationStepTimeNs).toBe(0n);
         expect(state.elapsedTime.gpuComputeSimulationSubstepTimeNs).toBe(0n);
         expect(state.elapsedTime.nSimulationSubsteps).toBe(0);

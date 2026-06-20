@@ -1,6 +1,8 @@
 import modelUrl from "$lib/assets/models/snow3.glb?url";
 import colliderUrl from "$lib/assets/models/forest_scaled.glb?url";
 import treeModelUrl from "$lib/assets/models/tree0.glb?url";
+import groundModelUrl from "$lib/assets/models/ground-snow.glb?url";
+import zubeiaModelUrl from "$lib/assets/models/zubeia.glb?url";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 
@@ -22,6 +24,11 @@ export type SimulationColliderSource =
     | {
         type: "mesh",
         url: string,
+    }
+    | {
+        type: "animatedMesh",
+        url: string,
+        sdfResolution?: number,
     }
     | null;
 
@@ -86,5 +93,38 @@ export const environmentScene: SimulationSceneConfig = {
     },
     timing: {
         mlsMpmMaxSimulationTimestepS: 1 / 1024,
+    },
+};
+
+export const groundScene: SimulationSceneConfig = {
+    spawnSource: {
+        type: "mesh",
+        url: groundModelUrl,
+    },
+    colliderSource: null,
+    nParticles: 180_000,
+    gridResolution: [128, 128, 128],
+    renderMethodType: GpuRenderMethodType.Splats,
+    simulationMethodType: GpuSimulationMethodType.MlsMpm,
+    camera: {
+        radius: 8,
+        lat: Math.PI / 4.6,
+        long: Math.PI * 1.18,
+        offset: [0, 0, 0],
+    },
+    timing: {
+        mlsMpmMaxSimulationTimestepS: 1 / 512,
+    },
+};
+
+export const kinematicGroundScene: SimulationSceneConfig = {
+    ...groundScene,
+    colliderSource: {
+        type: "animatedMesh",
+        url: zubeiaModelUrl,
+        sdfResolution: 32,
+    },
+    timing: {
+        mlsMpmMaxSimulationTimestepS: 1 / 30,
     },
 };

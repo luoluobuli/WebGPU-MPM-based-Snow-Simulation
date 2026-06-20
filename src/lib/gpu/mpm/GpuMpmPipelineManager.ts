@@ -137,6 +137,9 @@ export class GpuMpmPipelineManager {
             N_PARTICLES: particleCountConstant,
             PARTICLE_WORKGROUP_SIZE,
         };
+        const colliderSdfConstants = {
+            COLLIDER_SDF_RESOLUTION: colliderManager.sdfResolution,
+        };
         const gridBoundaryMaxX = gridResolutionX - 3;
         const gridBoundaryMaxY = gridResolutionY - 3;
         const gridBoundaryMaxZ = gridResolutionZ - 3;
@@ -681,6 +684,7 @@ export class GpuMpmPipelineManager {
                 constants: {
                     ...sparseGridConstants,
                     ...particleKernelConstants,
+                    ...colliderSdfConstants,
                     RECORD_PARTICLE_SPEED: recordParticleSpeed ? 1 : 0,
                     PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE: particleSpeedReductionWorkgroupSize,
                     COLLIDER_TRANSFORM_ALWAYS_IDENTITY: colliderTransformAlwaysIdentity ? 1 : 0,
@@ -838,6 +842,7 @@ export class GpuMpmPipelineManager {
                 entryPoint: "doFusedMlsG2p2g",
                 constants: {
                     ...sparseGridConstants,
+                    ...colliderSdfConstants,
                     N_PARTICLES: particleCountConstant,
                     PARTICLE_WORKGROUP_SIZE: FUSED_PARTICLE_WORKGROUP_SIZE,
                     ENABLE_INTERACTION: enableInteraction ? 1 : 0,
