@@ -25,6 +25,7 @@ export class GpuMpmBufferManager {
     readonly gridAccumulatorBuffer: GPUBuffer;
     readonly nextGridAccumulatorBuffer: GPUBuffer;
     readonly gridVelocityBuffer: GPUBuffer;
+    readonly nextGridVelocityBuffer: GPUBuffer;
     readonly activeBlockDispatchBuffer: GPUBuffer;
     readonly nextActiveBlockDispatchBuffer: GPUBuffer;
     readonly bukkitParticleCountsBuffer: GPUBuffer;
@@ -98,11 +99,15 @@ export class GpuMpmBufferManager {
             "MPM fused next packed grid accumulator buffer",
         );
 
-        const gridVelocityBuffer = device.createBuffer({
-            label: "MPM packed grid velocity buffer",
-            size: gridVectorStorageSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
+        // Classic MPM uses the primary buffer for post-force grid velocity.
+        // Fused MLS reuses both 16-byte buffers as ping-ponged, stress-free
+        // transfer accumulators for the FLIP velocity delta.
+        const gridVelocityBuffer = createGridAccumulatorBuffer(
+            "MPM packed grid velocity or fused transfer accumulator buffer",
+        );
+        const nextGridVelocityBuffer = createGridAccumulatorBuffer(
+            "MPM fused next transfer accumulator buffer",
+        );
 
         // 0..2: active block dispatch, 3: active block count.
         const activeBlockDispatchBuffer = device.createBuffer({
@@ -172,6 +177,7 @@ export class GpuMpmBufferManager {
         this.gridAccumulatorBuffer = gridAccumulatorBuffer;
         this.nextGridAccumulatorBuffer = nextGridAccumulatorBuffer;
         this.gridVelocityBuffer = gridVelocityBuffer;
+        this.nextGridVelocityBuffer = nextGridVelocityBuffer;
         this.activeBlockDispatchBuffer = activeBlockDispatchBuffer;
         this.nextActiveBlockDispatchBuffer = nextActiveBlockDispatchBuffer;
         this.bukkitParticleCountsBuffer = bukkitParticleCountsBuffer;
@@ -196,6 +202,7 @@ export class GpuMpmBufferManager {
         this.gridAccumulatorBuffer.destroy();
         this.nextGridAccumulatorBuffer.destroy();
         this.gridVelocityBuffer.destroy();
+        this.nextGridVelocityBuffer.destroy();
         this.activeBlockDispatchBuffer.destroy();
         this.nextActiveBlockDispatchBuffer.destroy();
         this.bukkitParticleCountsBuffer.destroy();

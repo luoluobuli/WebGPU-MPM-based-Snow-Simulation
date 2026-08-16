@@ -1,10 +1,17 @@
 import modelUrl from "$lib/assets/models/snow3.glb?url";
 import colliderUrl from "$lib/assets/models/forest_scaled.glb?url";
 import treeModelUrl from "$lib/assets/models/tree0.glb?url";
-import groundModelUrl from "$lib/assets/models/ground-snow.glb?url";
-import zubeiaModelUrl from "$lib/assets/models/zubeia.glb?url";
+import zubeiaWalkModelUrl from "$lib/assets/models/zubeia-walk-lod.glb?url";
+import zubeiaPawSdfUrl from "$lib/assets/models/zubeia-paw-sdf.bin?url";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
+import {
+    ZUBEIA_GROUND_DOMAIN_BOUNDS,
+    ZUBEIA_GROUND_FINAL_PARTICLE_COUNT,
+    ZUBEIA_GROUND_GRID_RESOLUTION,
+    ZUBEIA_GROUND_PREVIEW_PARTICLE_COUNT,
+    type ZubeiaGroundProfile,
+} from "./zubeia/ZubeiaGround";
 
 export type SimulationSpawnSource =
     | {
@@ -18,6 +25,10 @@ export type SimulationSpawnSource =
     | {
         type: "proceduralForest",
         seed?: number,
+    }
+    | {
+        type: "zubeiaGround",
+        profile: ZubeiaGroundProfile,
     };
 
 export type SimulationColliderSource =
@@ -26,9 +37,9 @@ export type SimulationColliderSource =
         url: string,
     }
     | {
-        type: "animatedMesh",
-        url: string,
-        sdfResolution?: number,
+        type: "zubeiaWalk",
+        modelUrl: string,
+        rigidPawSdfUrl: string,
     }
     | null;
 
@@ -45,6 +56,16 @@ export type SimulationTimingConfig = {
     oneSimulationStepPerFrame?: boolean,
 };
 
+export type SimulationTimelineConfig = {
+    frameCount: number,
+    secondsPerFrame: number,
+};
+
+export type SimulationDomain = {
+    min: [number, number, number],
+    max: [number, number, number],
+};
+
 export type SimulationSceneConfig = {
     spawnSource: SimulationSpawnSource,
     colliderSource: SimulationColliderSource,
@@ -54,6 +75,10 @@ export type SimulationSceneConfig = {
     simulationMethodType: GpuSimulationMethodType,
     camera?: SimulationCameraDefaults,
     timing?: SimulationTimingConfig,
+    timeline?: SimulationTimelineConfig,
+    domain?: SimulationDomain,
+    colliderFriction?: number,
+    renderCollider?: boolean,
 };
 
 export const defaultSimulationScene: SimulationSceneConfig = {
@@ -96,35 +121,62 @@ export const environmentScene: SimulationSceneConfig = {
     },
 };
 
-export const groundScene: SimulationSceneConfig = {
+const createZubeiaGroundScene = ({
+    profile,
+    animated,
+}: {
+    profile: ZubeiaGroundProfile,
+    animated: boolean,
+}): SimulationSceneConfig => ({
     spawnSource: {
-        type: "mesh",
-        url: groundModelUrl,
+        type: "zubeiaGround",
+        profile,
     },
-    colliderSource: null,
-    nParticles: 180_000,
-    gridResolution: [128, 128, 128],
+    colliderSource: animated
+        ? {
+            type: "zubeiaWalk",
+            modelUrl: zubeiaWalkModelUrl,
+            rigidPawSdfUrl: zubeiaPawSdfUrl,
+        }
+        : null,
+    nParticles: profile === "final"
+        ? ZUBEIA_GROUND_FINAL_PARTICLE_COUNT
+        : ZUBEIA_GROUND_PREVIEW_PARTICLE_COUNT,
+    gridResolution: [...ZUBEIA_GROUND_GRID_RESOLUTION],
     renderMethodType: GpuRenderMethodType.Splats,
-    simulationMethodType: GpuSimulationMethodType.MlsMpm,
+    simulationMethodType: GpuSimulationMethodType.FusedMlsMpm,
     camera: {
-        radius: 8,
-        lat: Math.PI / 4.6,
-        long: Math.PI * 1.18,
-        offset: [0, 0, 0],
+        radius: 9,
+        lat: 0.75,
+        long: Math.PI * 0.5,
+        offset: [0, 0.9, 0.9],
     },
     timing: {
-        mlsMpmMaxSimulationTimestepS: 1 / 512,
+        mlsMpmMaxSimulationTimestepS: 1 / 240,
+        oneSimulationStepPerFrame: true,
     },
-};
+    timeline: {
+        frameCount: 109,
+        secondsPerFrame: 1 / 30,
+    },
+    domain: {
+        min: [...ZUBEIA_GROUND_DOMAIN_BOUNDS.min],
+        max: [...ZUBEIA_GROUND_DOMAIN_BOUNDS.max],
+    },
+    colliderFriction: 0.65,
+});
 
-export const kinematicGroundScene: SimulationSceneConfig = {
-    ...groundScene,
-    colliderSource: {
-        type: "animatedMesh",
-        url: zubeiaModelUrl,
-        sdfResolution: 32,
-    },
-    timing: {
-        mlsMpmMaxSimulationTimestepS: 1 / 30,
-    },
-};
+export const groundScene = createZubeiaGroundScene({
+    profile: "preview",
+    animated: false,
+});
+
+export const kinematicGroundScene = createZubeiaGroundScene({
+    profile: "preview",
+    animated: true,
+});
+
+export const kinematicGroundFinalScene = createZubeiaGroundScene({
+    profile: "final",
+    animated: true,
+});

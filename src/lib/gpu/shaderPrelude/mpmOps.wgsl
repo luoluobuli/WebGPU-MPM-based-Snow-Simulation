@@ -20,11 +20,12 @@ const PARTICLE_FLAG_DEFORMATION_DELTA_VALID = 1u;
 const PARTICLE_FLAG_ELASTIC_NON_IDENTITY = 2u;
 const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
 const PARTICLE_MATERIAL_SHIFT = 8u;
-const PARTICLE_MATERIAL_MASK = 3u << PARTICLE_MATERIAL_SHIFT;
+const PARTICLE_MATERIAL_MASK = 7u << PARTICLE_MATERIAL_SHIFT;
 const PARTICLE_MATERIAL_DEFAULT = 0u;
 const PARTICLE_MATERIAL_SOIL = 1u;
 const PARTICLE_MATERIAL_BARK = 2u;
 const PARTICLE_MATERIAL_LEAF = 3u;
+const PARTICLE_MATERIAL_CRUST = 4u;
 const PARTICLE_MATRIX_ELASTIC_CHANGED = 1u;
 const PARTICLE_MATRIX_PLASTIC_CHANGED = 2u;
 const MATERIAL_DAMPING_REFERENCE_TIMESTEP_S = 1.0 / 60.0;
@@ -36,11 +37,11 @@ struct QuadraticBSplineStencilVectors {
 }
 
 fn materialFlagFromId(material: u32) -> u32 {
-    return (material & 3u) << PARTICLE_MATERIAL_SHIFT;
+    return (material & 7u) << PARTICLE_MATERIAL_SHIFT;
 }
 
 fn particleMaterialFromSpawnPoint(encodedMaterial: f32) -> u32 {
-    return u32(clamp(round(encodedMaterial), 0.0, 3.0));
+    return u32(clamp(round(encodedMaterial), 0.0, 4.0));
 }
 
 fn particleFlagsFromSpawnPoint(encodedMaterial: f32) -> u32 {
@@ -121,6 +122,9 @@ fn materialBoundaryFriction(material: u32) -> f32 {
     }
     if material == PARTICLE_MATERIAL_LEAF {
         return 0.86;
+    }
+    if material == PARTICLE_MATERIAL_CRUST {
+        return 0.72;
     }
 
     return 0.35;

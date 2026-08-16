@@ -1,5 +1,4 @@
 export class ElapsedTime {
-    gpuColliderSdfCreationTimeNs = $state(0n);
     gpuComputeSimulationStepTimeNs = $state(0n);
     gpuComputeSimulationSubstepTimeNs = $state(0n);
     nSimulationSubsteps = $state(0);

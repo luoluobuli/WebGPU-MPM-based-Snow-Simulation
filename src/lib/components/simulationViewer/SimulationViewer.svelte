@@ -14,9 +14,11 @@ import { browser } from "$app/environment";
 let {
     scene = defaultSimulationScene,
     kinematicScene = null,
+    kinematicFinalScene = null,
 }: {
     scene?: SimulationSceneConfig,
     kinematicScene?: SimulationSceneConfig | null,
+    kinematicFinalScene?: SimulationSceneConfig | null,
 } = $props();
 
 let status = $state("loading javascript");
@@ -30,12 +32,52 @@ const urlSearchParams = browser
     : null;
 const timeline = urlSearchParams?.has("timeline") === true;
 const kinematic = timeline && urlSearchParams?.has("kinematic") === true;
-const getActiveScene = () => kinematic && kinematicScene !== null
-    ? kinematicScene
-    : scene;
+const final = kinematic && urlSearchParams?.has("final") === true;
+const noColliderControl =
+    final && urlSearchParams?.has("control") === true;
+const inspect = kinematic && urlSearchParams?.has("inspect") === true;
+const inspectContact = inspect
+    && urlSearchParams?.get("inspect") === "contact";
+const getActiveScene = (): SimulationSceneConfig => {
+    const inspectCollider = inspect
+        && urlSearchParams?.has("collider") === true;
+    const activeScene = final && kinematicFinalScene !== null
+        ? kinematicFinalScene
+        : kinematic && kinematicScene !== null
+            ? kinematicScene
+            : scene;
+    const simulationScene = noColliderControl
+        ? {
+            ...activeScene,
+            colliderSource: null,
+            renderCollider: false,
+        }
+        : activeScene;
+    if (!inspect) return simulationScene;
+
+    return {
+        ...simulationScene,
+        renderCollider: inspectCollider,
+        camera: inspectContact
+            ? {
+                radius: 0.65,
+                lat: Math.PI * 0.49,
+                long: Math.PI * 0.5,
+                offset: [0.28, 1.34, 0.04],
+            }
+            : {
+                radius: 2.7,
+                lat: Math.PI * 0.4,
+                long: Math.PI * 0.5,
+                offset: [0, 0.9, 0.05],
+            },
+    };
+};
 
 const simulationState = SimulationState.loadOntoCanvas({
     getScene: getActiveScene,
+    getPairedTimelineScene: () =>
+        final ? kinematicFinalScene : null,
     timeline,
     canvasPromise: canvasPromise.promise,
     onStatusChange: text => status = text,

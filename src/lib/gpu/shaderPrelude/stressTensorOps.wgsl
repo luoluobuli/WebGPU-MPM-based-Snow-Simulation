@@ -10,6 +10,14 @@ const BARK_SHEAR_RESISTANCE_SCALE = 6.0;
 const BARK_VOLUME_RESISTANCE_SCALE = 8.0;
 const LEAF_SHEAR_RESISTANCE_SCALE = 0.14;
 const LEAF_VOLUME_RESISTANCE_SCALE = 0.18;
+const DEFAULT_HARDENING_COEFFICIENT = 10.0;
+// The Disney walking-character example used a stiffer, crunchier top layer.
+const CRUST_STIFFNESS_SCALE = 1.5;
+const CRUST_HARDENING_COEFFICIENT = 25.0;
+// Preserve the paper's tensile weakening without allowing exactly zero stiffness,
+// which makes the constitutive update ill-conditioned.
+const MIN_HARDENING_SCALE = 0.001;
+const MAX_HARDENING_SCALE = 10.0;
 
 fn applyMaterialLameParameters(
     material: u32,
@@ -25,6 +33,9 @@ fn applyMaterialLameParameters(
     } else if material == PARTICLE_MATERIAL_LEAF {
         *shearResistance = SHEAR_RESISTANCE * LEAF_SHEAR_RESISTANCE_SCALE;
         *volumetricResistance = VOLUME_RESISTANCE * LEAF_VOLUME_RESISTANCE_SCALE;
+    } else if material == PARTICLE_MATERIAL_CRUST {
+        *shearResistance = SHEAR_RESISTANCE * CRUST_STIFFNESS_SCALE;
+        *volumetricResistance = VOLUME_RESISTANCE * CRUST_STIFFNESS_SCALE;
     }
 }
 
@@ -89,8 +100,6 @@ fn hardenLameParameters(
     baseShearResistance: ptr<function, f32>,
     baseVolumetricResistance: ptr<function, f32>,
 ) {
-    const HARDENING_COEFFICIENT = 5.;
-
     if material == PARTICLE_MATERIAL_BARK || material == PARTICLE_MATERIAL_LEAF {
         return;
     }
@@ -104,8 +113,17 @@ fn hardenLameParameters(
         return;
     }
 
+    let hardeningCoefficient = select(
+        DEFAULT_HARDENING_COEFFICIENT,
+        CRUST_HARDENING_COEFFICIENT,
+        material == PARTICLE_MATERIAL_CRUST,
+    );
     let volumeScaleFac = clamp(plastic_volume_scale, 0.2, 5.0);
-    let expFac = clamp(exp(HARDENING_COEFFICIENT * (1.0 - volumeScaleFac)), 0.1, 10.0);
+    let expFac = clamp(
+        exp(hardeningCoefficient * (1.0 - volumeScaleFac)),
+        MIN_HARDENING_SCALE,
+        MAX_HARDENING_SCALE,
+    );
     *baseShearResistance *= expFac;
     *baseVolumetricResistance *= expFac;
 }

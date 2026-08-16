@@ -34,6 +34,7 @@ const createMockOpfs = (
         estimate?: () => Promise<StorageEstimate>,
     } = {},
 ) => {
+    const cacheRootEntryNames = new Set(cacheRootEntries);
     const frameDirectory = {
         entries: async function* () {
             for (const entry of frameDirectoryEntries) {
@@ -55,12 +56,18 @@ const createMockOpfs = (
     };
     const cacheRootDirectory = {
         entries: async function* () {
-            for (const name of cacheRootEntries) {
+            for (const name of cacheRootEntryNames) {
                 yield [name, {}] as [string, unknown];
             }
         },
-        removeEntry: vi.fn(async () => {}),
-        getDirectoryHandle: vi.fn(async () => frameDirectory),
+        removeEntry: vi.fn(async (name: string) => {
+            cacheRootEntryNames.delete(name);
+        }),
+        getDirectoryHandle: vi.fn(async (name: string) => {
+            cacheRootEntryNames.add(name);
+
+            return frameDirectory;
+        }),
     };
     const rootDirectory = {
         entries: async function* () {},
@@ -219,6 +226,114 @@ describe("SimulationFrameFileCache", () => {
         expect(cacheRootDirectory.removeEntry).not.toHaveBeenCalledWith(
             "active-cache",
             { recursive: true },
+        );
+    });
+
+    for (const [label, cacheKeys] of [
+        [
+            "collider then control",
+            ["collider-cache", "control-cache"],
+        ],
+        [
+            "control then collider",
+            ["control-cache", "collider-cache"],
+        ],
+    ] as const) {
+        it(`retains an explicit cache pair when opening ${label}`, async () => {
+            const writable = {
+                write: vi.fn(async () => {}),
+                close: vi.fn(async () => {}),
+                abort: vi.fn(async () => {}),
+            };
+            const { cacheRootDirectory } = createMockOpfs(
+                writable,
+                {
+                    cacheRootEntries: [
+                        "unrelated-cache",
+                    ],
+                },
+            );
+
+            for (const cacheKey of cacheKeys) {
+                await createSimulationFrameFileCache({
+                    cacheKey,
+                    retainedCacheKeys: cacheKeys.filter(
+                        candidate => candidate !== cacheKey,
+                    ),
+                });
+            }
+
+            expect(cacheRootDirectory.removeEntry).toHaveBeenCalledWith(
+                "unrelated-cache",
+                { recursive: true },
+            );
+            expect(cacheRootDirectory.removeEntry).not.toHaveBeenCalledWith(
+                "collider-cache",
+                { recursive: true },
+            );
+            expect(cacheRootDirectory.removeEntry).not.toHaveBeenCalledWith(
+                "control-cache",
+                { recursive: true },
+            );
+            expect(cacheRootDirectory.getDirectoryHandle).toHaveBeenCalledWith(
+                "collider-cache",
+                { create: true },
+            );
+            expect(cacheRootDirectory.getDirectoryHandle).toHaveBeenCalledWith(
+                "control-cache",
+                { create: true },
+            );
+        });
+    }
+
+    it("does not alias paired caches to selected folders containing frame files", async () => {
+        const writable = {
+            write: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+            abort: vi.fn(async () => {}),
+        };
+        const {
+            cacheRootDirectory,
+            rootDirectory,
+        } = createMockSelectedDirectory(
+            writable,
+            {
+                rootEntries: [
+                    simulationFrameFileName(0),
+                ],
+            },
+        );
+
+        for (const cacheKey of ["collider-cache", "control-cache"]) {
+            await createSimulationFrameFileCache({
+                cacheKey,
+                retainedCacheKeys: [
+                    cacheKey === "collider-cache"
+                        ? "control-cache"
+                        : "collider-cache",
+                ],
+                rootDirectory,
+            });
+        }
+
+        expect(rootDirectory.getDirectoryHandle).toHaveBeenCalledTimes(2);
+        expect(rootDirectory.getDirectoryHandle).toHaveBeenCalledWith(
+            SIMULATION_FRAME_CACHE_DIRECTORY_NAME,
+            { create: true },
+        );
+        expect(rootDirectory.getDirectoryHandle).not.toHaveBeenCalledWith(
+            "collider-cache",
+        );
+        expect(rootDirectory.getDirectoryHandle).not.toHaveBeenCalledWith(
+            "control-cache",
+        );
+        expect(cacheRootDirectory.getDirectoryHandle).toHaveBeenCalledWith(
+            "collider-cache",
+            { create: true },
+        );
+        expect(cacheRootDirectory.getDirectoryHandle).toHaveBeenCalledWith(
+            "control-cache",
+            { create: true },
         );
     });
 

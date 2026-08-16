@@ -168,6 +168,15 @@ fn doGridUpdate(
         let cell_offset = cellOffsetWithinBlock(cell_index_within_block);
         cell_velocity = applyDomainBoundaryVelocity(cell_velocity, cell_offset);
     }
+
+    let cell_offset = cellOffsetWithinBlock(cell_index_within_block);
+    let world_position = uniforms.gridMinCoords
+        + cellCenterGridCoord(block_cell_base, cell_offset)
+        * uniforms.gridCellDims;
+    cell_velocity = projectVelocityAgainstKinematicCollider(
+        world_position,
+        cell_velocity,
+    );
     cell_velocity = clampVelocityToFixedPointRange(cell_velocity);
 
     grid_velocity[cell_index].velocity = cell_velocity;

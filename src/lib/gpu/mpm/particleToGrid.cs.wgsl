@@ -11,6 +11,15 @@ struct GridAccumulatorAtomic {
 
 @group(1) @binding(3) var<storage, read_write> grid_accumulator: array<GridAccumulatorAtomic>;
 
+struct GridTransferAccumulatorAtomic {
+    momentum_x: atomic<i32>,
+    momentum_y: atomic<i32>,
+    momentum_z: atomic<i32>,
+    _padding: atomic<i32>,
+}
+
+@group(1) @binding(7) var<storage, read_write> grid_transfer_accumulator: array<GridTransferAccumulatorAtomic>;
+
 @group(2) @binding(0) var<storage, read> particleDataIn: array<ParticleData>;
 @group(2) @binding(2) var<storage, read> particle_flags: array<u32>;
 @group(2) @binding(3) var<storage, read_write> active_block_dispatch_args: array<u32>;
@@ -18,6 +27,7 @@ struct GridAccumulatorAtomic {
 override N_PARTICLES: u32 = 0u;
 override USE_MLS_MPM: u32 = 0u;
 override SANITIZE_PARTICLES_IN_P2G: u32 = 0u;
+override WRITE_FLIP_TRANSFER: u32 = 0u;
 override PARTICLE_WORKGROUP_SIZE: u32 = 256u;
 
 fn clampMomentumFixedUnitsForAtomic(value: vec3f, max_component: f32) -> vec3f {
@@ -34,6 +44,21 @@ fn accumulateParticleToGridFixedUnits(
     atomicAdd(&grid_accumulator[cell_index].momentum_x, momentum_i.x);
     atomicAdd(&grid_accumulator[cell_index].momentum_y, momentum_i.y);
     atomicAdd(&grid_accumulator[cell_index].momentum_z, momentum_i.z);
+}
+
+fn accumulateParticleTransferMomentum(
+    cell_index: u32,
+    momentum_fixed_units: vec3f,
+) {
+    if WRITE_FLIP_TRANSFER == 0u { return; }
+
+    let momentum_i = vec3i(momentum_fixed_units);
+    atomicAdd(
+        &grid_transfer_accumulator[cell_index].momentum_x,
+        momentum_i.x,
+    );
+    atomicAdd(&grid_transfer_accumulator[cell_index].momentum_y, momentum_i.y);
+    atomicAdd(&grid_transfer_accumulator[cell_index].momentum_z, momentum_i.z);
 }
 
 fn writeActiveBlockDispatchArgs() {
@@ -160,6 +185,10 @@ fn doParticleToGrid(
                         cell_weight * particle_momentum_fixed_units,
                         cell_weight * particle_mass_fixed_units,
                     );
+                    accumulateParticleTransferMomentum(
+                        cell_index,
+                        cell_weight * particle_momentum_fixed_units,
+                    );
                 }
             }
         }
@@ -187,7 +216,8 @@ fn doParticleToGrid(
 
     if USE_MLS_MPM != 0u {
         let affine_velocity = deformation_displacement;
-        var mls_affine_fixed_units = particle_mass_fixed_units * affine_velocity;
+        let transfer_affine_fixed_units = particle_mass_fixed_units * affine_velocity;
+        var mls_affine_fixed_units = transfer_affine_fixed_units;
         let grid_cell_dims = uniforms.gridCellDims;
         let stencil_offset_x = (vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.x)) * grid_cell_dims.x;
         let stencil_offset_y = (vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.y)) * grid_cell_dims.y;
@@ -206,12 +236,16 @@ fn doParticleToGrid(
             let cell_z_bits = u32(cell_z & i32(BLOCK_MASK)) << (LOG_BLOCK_SIZE * 2u);
             let wz = stencil_weight_z[z_index];
             let mls_affine_z_contribution = mls_affine_fixed_units[2] * stencil_offset_z[z_index];
+            let transfer_affine_z_contribution =
+                transfer_affine_fixed_units[2] * stencil_offset_z[z_index];
             for (var offsetY = -1i; offsetY <= 1i; offsetY++) {
                 let cell_y = start_cell_number.y + offsetY;
                 let y_index = u32(offsetY + 1i);
                 let cell_yz_bits = (u32(cell_y & i32(BLOCK_MASK)) << LOG_BLOCK_SIZE) | cell_z_bits;
                 let wy_wz = stencil_weight_y[y_index] * wz;
                 let mls_affine_y_contribution = mls_affine_fixed_units[1] * stencil_offset_y[y_index];
+                let transfer_affine_y_contribution =
+                    transfer_affine_fixed_units[1] * stencil_offset_y[y_index];
                 for (var x_index = 0u; x_index < 3u; x_index++) {
                     let cell_x = stencil_cell_x[x_index];
                     let cell_weight = stencil_weight_x[x_index] * wy_wz;
@@ -238,6 +272,19 @@ fn doParticleToGrid(
                     );
 
                     accumulateParticleToGridFixedUnits(cell_index, momentum_fixed_units, weighted_mass_fixed_units);
+                    let transfer_affine_offset_fixed_units =
+                        transfer_affine_fixed_units[0] * stencil_offset_x[x_index]
+                        + transfer_affine_y_contribution
+                        + transfer_affine_z_contribution;
+                    let transfer_momentum_fixed_units =
+                        clampMomentumFixedUnitsForAtomic(
+                            cell_weight * (particle_momentum_fixed_units + transfer_affine_offset_fixed_units),
+                            max_particle_momentum_fixed_units,
+                        );
+                    accumulateParticleTransferMomentum(
+                        cell_index,
+                        transfer_momentum_fixed_units,
+                    );
                 }
             }
         }

@@ -14,13 +14,14 @@ struct ParticleData {
 const DEFAULT_PARTICLE_MASS = 1.0 / 3.0;
 const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
 const PARTICLE_MATERIAL_SHIFT = 8u;
-const PARTICLE_MATERIAL_MASK = 3u << PARTICLE_MATERIAL_SHIFT;
+const PARTICLE_MATERIAL_MASK = 7u << PARTICLE_MATERIAL_SHIFT;
 const PARTICLE_MATERIAL_SOIL = 1u;
 const PARTICLE_MATERIAL_BARK = 2u;
 const PARTICLE_MATERIAL_LEAF = 3u;
+const PARTICLE_MATERIAL_CRUST = 4u;
 
 fn materialFlagFromId(material: u32) -> u32 {
-    return (material & 3u) << PARTICLE_MATERIAL_SHIFT;
+    return (material & 7u) << PARTICLE_MATERIAL_SHIFT;
 }
 
 fn particleMaterialFromFlags(flags: u32) -> u32 {

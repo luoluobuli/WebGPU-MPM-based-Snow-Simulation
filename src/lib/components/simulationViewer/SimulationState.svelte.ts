@@ -5,7 +5,6 @@ import {
 } from "../../gpu/GpuSnowPipelineRunner.svelte";
 import { requestGpuDeviceAndContext } from "../../gpu/requestGpuDeviceAndContext";
 import { loadGltfScene } from "./loadScene";
-import { loadAnimatedGltfCollider } from "./loadAnimatedGltfCollider";
 import { CameraOrbit } from "./CameraOrbit.svelte";
 import { Camera } from "./Camera.svelte";
 import { ElapsedTime } from "./ElapsedTime.svelte";
@@ -20,6 +19,25 @@ import {
 } from "./SimulationScene";
 import { buildProceduralForest } from "./proceduralForest";
 import { loadTreeModelSpawnPoints } from "./loadTreeModel";
+import {
+    buildZubeiaGround,
+    ZUBEIA_GROUND_CELL_SIZE_M,
+    ZUBEIA_GROUND_STRIP_BOUNDS,
+    ZUBEIA_GROUND_SURFACE_Z_M,
+} from "./zubeia/ZubeiaGround";
+import {
+    analyzeZubeiaMatchedCachedFrameTopology,
+    type ZubeiaMatchedTopologyProof,
+} from "./zubeia/ZubeiaMatchedTopologyProof";
+import {
+    buildZubeiaPawContactMask,
+    type ZubeiaPawContactMask,
+} from "./zubeia/ZubeiaPawContactMask";
+import { loadZubeiaRigidPawWalkCollider } from "./zubeia/loadZubeiaRigidPawWalkCollider";
+import {
+    isAnimatedRigidPawSdfKinematicColliderGeometry,
+    type RigidPawSdfKinematicColliderAnimation,
+} from "$lib/gpu/kinematicCollider/RigidPawSdfKinematicCollider";
 import type { SpawnPointSource } from "$lib/gpu/particleInitialize/GpuSpawnVolumeBufferManager";
 import { vec3 } from "wgpu-matrix";
 import {
@@ -39,6 +57,19 @@ import {
     timelineStepDivisorFromSecondsPerFrame,
     timelineFrameSimulationTimeS,
 } from "./SimulationTimelineTiming";
+import {
+    combineCacheFingerprints,
+    fingerprintString,
+} from "./SimulationCacheFingerprint";
+import {
+    fingerprintLoadedSpawnSource,
+    loadZubeiaColliderContentFingerprint,
+} from "./SimulationContentFingerprint";
+import {
+    createPairedSimulationTimelineCacheKeys,
+    createSimulationTimelineCacheKey,
+    type SimulationTimelineCacheSettings,
+} from "./SimulationTimelineCacheKey";
 
 const TIMELINE_BACKGROUND_WORK_YIELD_MS = 250;
 const TIMELINE_MEMORY_CACHE_BYTE_LIMIT = 96 * 1024 * 1024;
@@ -95,17 +126,6 @@ const sleep = (ms: number) => new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
 });
 
-const hashString = (text: string) => {
-    let hash = 0x811c9dc5;
-
-    for (let i = 0; i < text.length; i++) {
-        hash ^= text.charCodeAt(i);
-        hash = Math.imul(hash, 0x01000193);
-    }
-
-    return (hash >>> 0).toString(16).padStart(8, "0");
-};
-
 const loadSpawnSource = async (
     scene: SimulationSceneConfig,
     nParticles: number,
@@ -156,50 +176,70 @@ const loadSpawnSource = async (
                 particleAppearances: forest.particleAppearances,
             };
         }
+
+        case "zubeiaGround": {
+            const ground = buildZubeiaGround(scene.spawnSource.profile);
+            const pointCount = ground.points.length / 4;
+            if (
+                pointCount !== nParticles
+                || ground.particleAppearances.length !== nParticles
+            ) {
+                throw new Error(
+                    `Zubeia ground produced ${pointCount} points and `
+                    + `${ground.particleAppearances.length} appearances; `
+                    + `scene requires ${nParticles}`,
+                );
+            }
+
+            return {
+                spawnSource: {
+                    type: "points",
+                    points: ground.points,
+                },
+                particleAppearances: ground.particleAppearances,
+            };
+        }
     }
-};
-
-const loadStaticGltfCollider = async (url: string): Promise<ColliderGeometry> => {
-    const {
-        positions,
-        normals,
-        uvs,
-        materialIndices,
-        textures,
-        indices,
-        objects,
-    } = await loadGltfScene(url);
-
-    return {
-        positions,
-        normals,
-        uvs,
-        materialIndices,
-        textures,
-        indices,
-        objects,
-    };
 };
 
 const loadCollider = async (
     scene: SimulationSceneConfig,
 ): Promise<ColliderGeometry | null> => {
-    const { colliderSource } = scene;
-    if (colliderSource === null) {
+    if (scene.colliderSource === null) {
         return null;
     }
 
-    switch (colliderSource.type) {
-        case "mesh":
-            return await loadStaticGltfCollider(colliderSource.url);
+    switch (scene.colliderSource.type) {
+        case "mesh": {
+            const {
+                positions,
+                normals,
+                uvs,
+                materialIndices,
+                textures,
+                indices,
+                objects,
+            } = await loadGltfScene(scene.colliderSource.url);
 
-        case "animatedMesh":
-            return await loadAnimatedGltfCollider({
-                url: colliderSource.url,
-                sdfResolution: colliderSource.sdfResolution,
+            return { positions, normals, uvs, materialIndices, textures, indices, objects };
+        }
+
+        case "zubeiaWalk":
+            return await loadZubeiaRigidPawWalkCollider({
+                modelUrl: scene.colliderSource.modelUrl,
+                rigidPawSdfUrl: scene.colliderSource.rigidPawSdfUrl,
             });
     }
 };
+
+const loadColliderSourceContentFingerprint = async (
+    colliderSource: SimulationSceneConfig["colliderSource"],
+) => colliderSource?.type === "zubeiaWalk"
+    ? await loadZubeiaColliderContentFingerprint({
+        modelUrl: colliderSource.modelUrl,
+        rigidPawSdfUrl: colliderSource.rigidPawSdfUrl,
+    })
+    : fingerprintString(JSON.stringify(colliderSource));
 
 export class SimulationState {
     width = $state(300);
@@ -235,12 +275,21 @@ export class SimulationState {
     private runner = $state<GpuSnowPipelineRunner | null>(null);
     prerenderElapsedTimes = $derived(this.runner?.prerenderElapsedTimes ?? null);
     actualSimulationTimestepS = $derived(this.runner?.selectedSimulationTimestepS ?? null);
+    zubeiaTopologyProof = $state<ZubeiaMatchedTopologyProof | null>(null);
+    zubeiaPawContactMask = $state<ZubeiaPawContactMask | null>(null);
+    zubeiaTopologyProofStatus = $state<string | null>(null);
+    private zubeiaRigidPawColliderAnimation:
+        RigidPawSdfKinematicColliderAnimation | null = null;
     private restartEpoch = 0;
 
     private onStatusChange: ((status: string) => void) | null = null;
     private onErr: ((err: string) => void) | null = null;
     private readonly scene: SimulationSceneConfig;
+    private readonly pairedTimelineScene: SimulationSceneConfig | null;
+    private simulationContentFingerprint =
+        "simulation-content-unloaded-v1";
     readonly timeline: boolean;
+    private readonly configuredTimelineFrameCount: number;
 
     timelineFrameCount = $state(TIMELINE_FRAME_COUNT);
     timelineFrame = $state(0);
@@ -263,6 +312,11 @@ export class SimulationState {
     private timelineCache: SimulationFrameFileCache | null = null;
     private timelineCacheRootDirectory: FileSystemDirectoryHandle | null = null;
     private timelineCacheKey = "";
+    private pairedTimelineColliderSimulationContentFingerprint = "";
+    private pairedTimelineControlSimulationContentFingerprint = "";
+    private pairedTimelineActiveCacheKey = "";
+    private counterpartTimelineCacheKey = "";
+    private retainedTimelineCacheKeys: readonly string[] = [];
     private readonly timelineMemoryFrames = new Map<number, ArrayBuffer>();
     private readonly timelinePendingFrameReads = new Map<number, Promise<ArrayBuffer | null>>();
     private timelineMemoryFrameReadEpoch = 0;
@@ -278,19 +332,34 @@ export class SimulationState {
 
     constructor({
         scene = defaultSimulationScene,
+        pairedTimelineScene = null,
         timeline = false,
         onStatusChange = null,
         onErr = null,
     }: {
         scene?: SimulationSceneConfig,
+        pairedTimelineScene?: SimulationSceneConfig | null,
         timeline?: boolean,
         onStatusChange?: ((status: string) => void) | null,
         onErr?: ((err: string) => void) | null,
     }) {
         this.scene = scene;
+        this.pairedTimelineScene = pairedTimelineScene;
+        if (
+            pairedTimelineScene !== null
+            && scene.colliderSource === null
+        ) {
+            this.zubeiaTopologyProofStatus =
+                "Matched control bake; proof is shown on the collider route.";
+        }
         this.timeline = timeline;
+        this.configuredTimelineFrameCount =
+            scene.timeline?.frameCount ?? TIMELINE_FRAME_COUNT;
         this.onStatusChange = onStatusChange;
         this.onErr = onErr;
+        this.timelineFrameCount = this.configuredTimelineFrameCount;
+        this.timelineSecondsPerFrame =
+            scene.timeline?.secondsPerFrame ?? TIMELINE_DEFAULT_SECONDS_PER_FRAME;
         this.nParticles = scene.nParticles;
         this.gridResolutionX = scene.gridResolution[0];
         this.gridResolutionY = scene.gridResolution[1];
@@ -305,6 +374,9 @@ export class SimulationState {
         }
         if (scene.timing?.oneSimulationStepPerFrame !== undefined) {
             this.oneSimulationStepPerFrame = scene.timing.oneSimulationStepPerFrame;
+        }
+        if (scene.colliderFriction !== undefined) {
+            this.colliderFriction = scene.colliderFriction;
         }
 
         if (scene.camera?.radius !== undefined) {
@@ -321,9 +393,9 @@ export class SimulationState {
         }
     }
 
-    private currentTimelineCacheKey() {
-        return hashString(JSON.stringify({
-            scene: this.scene,
+    private currentTimelineCacheSettings(): SimulationTimelineCacheSettings {
+        return {
+            colliderFriction: this.colliderFriction,
             nParticles: this.nParticles,
             gridResolution: [
                 this.gridResolutionX,
@@ -331,12 +403,54 @@ export class SimulationState {
                 this.gridResolutionZ,
             ],
             simulationMethodType: this.simulationMethodType,
-            explicitMpmMaxSimulationTimestepS: this.explicitMpmMaxSimulationTimestepS,
+            explicitMpmMaxSimulationTimestepS:
+                this.explicitMpmMaxSimulationTimestepS,
             mlsMpmMaxSimulationTimestepS: this.mlsMpmMaxSimulationTimestepS,
-            timelineFrameCount: TIMELINE_FRAME_COUNT,
+            timelineFrameCount: this.configuredTimelineFrameCount,
             timelineSecondsPerFrame: this.timelineSecondsPerFrame,
-            timelineFrameFormat: "position-material-v1",
-        }));
+        };
+    }
+
+    private refreshPairedTimelineCacheKeys() {
+        if (
+            this.pairedTimelineScene === null
+            || this.pairedTimelineColliderSimulationContentFingerprint === ""
+            || this.pairedTimelineControlSimulationContentFingerprint === ""
+        ) {
+            this.pairedTimelineActiveCacheKey = "";
+            this.counterpartTimelineCacheKey = "";
+            this.retainedTimelineCacheKeys = [];
+            return;
+        }
+
+        const keys = createPairedSimulationTimelineCacheKeys({
+            canonicalColliderScene: this.pairedTimelineScene,
+            colliderSimulationContentFingerprint:
+                this.pairedTimelineColliderSimulationContentFingerprint,
+            controlSimulationContentFingerprint:
+                this.pairedTimelineControlSimulationContentFingerprint,
+            activeHasCollider: this.scene.colliderSource !== null,
+            settings: this.currentTimelineCacheSettings(),
+        });
+        this.pairedTimelineActiveCacheKey = keys.activeCacheKey;
+        this.counterpartTimelineCacheKey = keys.counterpartCacheKey;
+        this.retainedTimelineCacheKeys = [
+            keys.activeCacheKey,
+            this.counterpartTimelineCacheKey,
+        ];
+    }
+
+    private currentTimelineCacheKey() {
+        this.refreshPairedTimelineCacheKeys();
+        if (this.pairedTimelineActiveCacheKey !== "") {
+            return this.pairedTimelineActiveCacheKey;
+        }
+
+        return createSimulationTimelineCacheKey({
+            scene: this.scene,
+            simulationContentFingerprint: this.simulationContentFingerprint,
+            settings: this.currentTimelineCacheSettings(),
+        });
     }
 
     private async updateTimelineCacheCapacity() {
@@ -345,28 +459,28 @@ export class SimulationState {
         const frameByteLength = this.runner.simulationPlaybackFrameLayout.byteLength;
         const capacity = await this.timelineCache.estimateFrameCapacity({
             frameByteLength,
-            requestedFrameCount: TIMELINE_FRAME_COUNT,
+            requestedFrameCount: this.configuredTimelineFrameCount,
         });
         const cappedFrameCount = Math.min(
-            TIMELINE_FRAME_COUNT,
+            this.configuredTimelineFrameCount,
             capacity.frameCount,
         );
 
         if (cappedFrameCount <= 0) {
-            this.timelineFrameCount = TIMELINE_FRAME_COUNT;
+            this.timelineFrameCount = this.configuredTimelineFrameCount;
             this.timelineStorageLabel = `${this.timelineCache.storageLabel} (capacity estimate low)`;
             this.timelineStatus = `browser storage estimate is below one ${formatCacheBytes(frameByteLength)} cache frame; caching until a write fails`;
 
             return true;
         }
 
-        this.timelineFrameCount = TIMELINE_FRAME_COUNT;
-        this.timelineStorageLabel = cappedFrameCount < TIMELINE_FRAME_COUNT
-            ? `${this.timelineCache.storageLabel} (storage estimate ${cappedFrameCount}/${TIMELINE_FRAME_COUNT} frames)`
+        this.timelineFrameCount = this.configuredTimelineFrameCount;
+        this.timelineStorageLabel = cappedFrameCount < this.configuredTimelineFrameCount
+            ? `${this.timelineCache.storageLabel} (storage estimate ${cappedFrameCount}/${this.configuredTimelineFrameCount} frames)`
             : this.timelineCache.storageLabel;
 
-        if (cappedFrameCount < TIMELINE_FRAME_COUNT) {
-            this.timelineStatus = `browser storage estimate allows ${cappedFrameCount}/${TIMELINE_FRAME_COUNT} frames; caching until a write fails`;
+        if (cappedFrameCount < this.configuredTimelineFrameCount) {
+            this.timelineStatus = `browser storage estimate allows ${cappedFrameCount}/${this.configuredTimelineFrameCount} frames; caching until a write fails`;
         }
 
         return true;
@@ -374,7 +488,7 @@ export class SimulationState {
 
     private async resetTimelineCache() {
         const cacheKey = this.currentTimelineCacheKey();
-        this.timelineFrameCount = TIMELINE_FRAME_COUNT;
+        this.timelineFrameCount = this.configuredTimelineFrameCount;
         this.timelineSolverFrame = 0;
 
         if (this.timelineCache === null || this.timelineCacheKey !== cacheKey) {
@@ -382,6 +496,7 @@ export class SimulationState {
             this.timelineCache = await createSimulationFrameFileCache({
                 cacheKey,
                 rootDirectory: this.timelineCacheRootDirectory,
+                retainedCacheKeys: this.retainedTimelineCacheKeys,
             });
             this.timelineCacheKey = cacheKey;
             this.timelineStorageLabel = this.timelineCache.storageLabel;
@@ -392,7 +507,7 @@ export class SimulationState {
             ? null
             : await this.timelineCache.findNextUncachedFrame?.({
                 frameByteLength,
-                requestedFrameCount: TIMELINE_FRAME_COUNT,
+                requestedFrameCount: this.configuredTimelineFrameCount,
             });
         this.timelineNextUncachedFrame = existingNextUncachedFrame ?? 0;
 
@@ -531,6 +646,7 @@ export class SimulationState {
 
         const frame = await this.runner.readSimulationPlaybackFrame();
         await this.timelineCache.writeFrame(frameIndex, frame);
+        await this.updateZubeiaMatchedTopologyProof(frameIndex);
         this.rememberTimelineMemoryFrame(frameIndex, frame);
         this.timelineNextUncachedFrame = Math.max(
             this.timelineNextUncachedFrame,
@@ -538,34 +654,122 @@ export class SimulationState {
         );
     }
 
-    private runnerHasAnimatedCollider() {
-        return (this.runner as {
-            hasAnimatedCollider?: boolean,
-        } | null)?.hasAnimatedCollider === true;
+    private clearZubeiaMatchedTopologyProof(status: string | null) {
+        this.zubeiaTopologyProof = null;
+        this.zubeiaPawContactMask = null;
+        this.zubeiaTopologyProofStatus = status;
     }
 
-    private updateAnimatedColliderRenderPoseAtTimeS(timeS: number) {
-        const runner = this.runner as {
-            updateAnimatedColliderRenderPoseAtTimeS?: (timeS: number) => void,
-        } | null;
-        if (runner?.updateAnimatedColliderRenderPoseAtTimeS === undefined) return;
-
-        runner.updateAnimatedColliderRenderPoseAtTimeS(timeS);
+    private isMatchedZubeiaControlRoute() {
+        return this.pairedTimelineScene !== null
+            && this.scene.spawnSource.type === "zubeiaGround"
+            && this.scene.colliderSource === null;
     }
 
-    private advanceTimelineSimulationSubsteps(nSubsteps: number) {
-        if (this.runner === null) return;
+    private isMatchedZubeiaColliderRoute() {
+        return this.pairedTimelineScene?.colliderSource?.type
+            === "zubeiaWalk"
+            && this.scene.spawnSource.type === "zubeiaGround"
+            && this.scene.colliderSource?.type === "zubeiaWalk";
+    }
 
-        const animatedColliderTimeS = this.runnerHasAnimatedCollider()
-            ? this.timelineSimulatedTimeS + nSubsteps * this.runner.selectedSimulationTimestepS
-            : undefined;
+    private async updateZubeiaMatchedTopologyProof(
+        frameIndex: number,
+        analyzeIntermediate = false,
+    ) {
+        if (this.isMatchedZubeiaControlRoute()) {
+            this.clearZubeiaMatchedTopologyProof(
+                "Matched control bake; proof is shown on the collider route.",
+            );
+            return;
+        }
+        if (
+            !this.isMatchedZubeiaColliderRoute()
+            || (!analyzeIntermediate
+                && frameIndex !== this.timelineFrameCount - 1)
+        ) {
+            this.clearZubeiaMatchedTopologyProof(null);
+            return;
+        }
+        if (this.zubeiaRigidPawColliderAnimation === null) {
+            this.clearZubeiaMatchedTopologyProof(
+                "Matched proof unavailable: rigid paw animation was not loaded.",
+            );
+            return;
+        }
+        if (
+            this.timelineCache === null
+            || this.counterpartTimelineCacheKey === ""
+            || this.retainedTimelineCacheKeys.length !== 2
+        ) {
+            this.clearZubeiaMatchedTopologyProof(
+                "Matched proof cache pair is unavailable.",
+            );
+            return;
+        }
 
-        const result = this.runner.advanceFixedSimulationSubsteps({
-            nSubsteps,
-            animatedColliderTimeS,
-            ...this.frameTimingCallbacks,
+        const [colliderBaselineFrame, colliderCurrentFrame] =
+            await Promise.all([
+                this.timelineCache.readFrame(0),
+                this.timelineCache.readFrame(frameIndex),
+            ]);
+        if (
+            colliderBaselineFrame === null
+            || colliderCurrentFrame === null
+        ) {
+            this.clearZubeiaMatchedTopologyProof(
+                `Bake collider through frame ${frameIndex}`,
+            );
+            return;
+        }
+
+        let controlBaselineFrame: ArrayBuffer | null = null;
+        let controlCurrentFrame: ArrayBuffer | null = null;
+        try {
+            const controlCache = await createSimulationFrameFileCache({
+                cacheKey: this.counterpartTimelineCacheKey,
+                rootDirectory: this.timelineCacheRootDirectory,
+                retainedCacheKeys: this.retainedTimelineCacheKeys,
+            });
+            [controlBaselineFrame, controlCurrentFrame] =
+                await Promise.all([
+                    controlCache.readFrame(0),
+                    controlCache.readFrame(frameIndex),
+                ]);
+        } catch (error) {
+            console.warn("Unable to read matched control cache", error);
+        }
+        if (
+            controlBaselineFrame === null
+            || controlCurrentFrame === null
+        ) {
+            this.clearZubeiaMatchedTopologyProof(
+                `Bake matched control through frame ${frameIndex}`,
+            );
+            return;
+        }
+
+        const pawContactMask = buildZubeiaPawContactMask({
+            animation: this.zubeiaRigidPawColliderAnimation,
+            groundStripBounds: ZUBEIA_GROUND_STRIP_BOUNDS,
+            cellSizeM: ZUBEIA_GROUND_CELL_SIZE_M,
+            groundSurfaceZM: ZUBEIA_GROUND_SURFACE_Z_M,
+            outputFrameIndex: frameIndex,
+            secondsPerFrame: this.timelineSecondsPerFrame,
         });
-        this.timelineSimulatedTimeS += result.simulatedTimeS;
+        const proof = analyzeZubeiaMatchedCachedFrameTopology({
+            colliderBaselineFrame,
+            colliderCurrentFrame,
+            controlBaselineFrame,
+            controlCurrentFrame,
+            gridCellSizeM: ZUBEIA_GROUND_CELL_SIZE_M,
+            structuralGroundMask: pawContactMask,
+        });
+
+        this.zubeiaPawContactMask = pawContactMask;
+        this.zubeiaTopologyProof = proof;
+        this.zubeiaTopologyProofStatus =
+            `Matched collider/control proof through frame ${frameIndex}.`;
     }
 
     private async restoreTimelineFrameFromCache(
@@ -574,10 +778,12 @@ export class SimulationState {
             render = true,
             measureRenderPerformance = false,
             prefetch = true,
+            analyzeTopology = false,
         }: {
             render?: boolean,
             measureRenderPerformance?: boolean,
             prefetch?: boolean,
+            analyzeTopology?: boolean,
         } = {},
     ) {
         if (this.runner === null || this.timelineCache === null) return false;
@@ -586,12 +792,18 @@ export class SimulationState {
         if (frame === null) {
             return false;
         }
+        await this.updateZubeiaMatchedTopologyProof(
+            frameIndex,
+            analyzeTopology,
+        );
 
         const targetTimeS = timelineFrameSimulationTimeS(
             frameIndex,
             this.timelineSecondsPerFrame,
         );
-        this.updateAnimatedColliderRenderPoseAtTimeS(targetTimeS);
+        if (this.runner.hasKinematicCollider) {
+            this.runner.updateKinematicColliderRenderPoseAtTimeS(targetTimeS);
+        }
 
         const renderOptions = {
             ...this.frameTimingCallbacks,
@@ -635,6 +847,9 @@ export class SimulationState {
 
         this.timelineStatus = `rebuilding solver state at frame ${targetFrame}...`;
         this.runner.scatterParticles();
+        if (this.runner.hasKinematicCollider) {
+            this.runner.updateKinematicColliderRenderPoseAtTimeS(0);
+        }
         this.timelineSolverFrame = 0;
         this.timelineSimulatedTimeS = 0;
         await waitForTimelineWorkYield();
@@ -649,7 +864,12 @@ export class SimulationState {
             });
 
             this.timelineStatus = `rebuilding solver frame ${frameIndex} (${nSubsteps} substeps)...`;
-            this.advanceTimelineSimulationSubsteps(nSubsteps);
+            const result = await this.runner.advanceFixedSimulationSubsteps({
+                nSubsteps,
+                kinematicColliderStartTimeS: this.timelineSimulatedTimeS,
+                ...this.frameTimingCallbacks,
+            });
+            this.timelineSimulatedTimeS += result.simulatedTimeS;
             this.timelineSolverFrame = frameIndex;
             if (runToken !== this.timelineRunToken) return false;
         }
@@ -669,7 +889,9 @@ export class SimulationState {
 
         try {
             const cacheHasRoom = await this.resetTimelineCache();
-            this.updateAnimatedColliderRenderPoseAtTimeS(0);
+            if (this.runner.hasKinematicCollider) {
+                this.runner.updateKinematicColliderRenderPoseAtTimeS(0);
+            }
             if (restartEpoch !== this.restartEpoch || runToken !== this.timelineRunToken) return;
             if (!cacheHasRoom) {
                 this.runner.renderStillFrame(this.frameTimingCallbacks);
@@ -747,7 +969,12 @@ export class SimulationState {
             });
 
             this.timelineStatus = `simulating frame ${frameIndex} (${nSubsteps} substeps)...`;
-            this.advanceTimelineSimulationSubsteps(nSubsteps);
+            const result = await this.runner.advanceFixedSimulationSubsteps({
+                nSubsteps,
+                kinematicColliderStartTimeS: this.timelineSimulatedTimeS,
+                ...this.frameTimingCallbacks,
+            });
+            this.timelineSimulatedTimeS += result.simulatedTimeS;
             this.timelineSolverFrame = frameIndex;
             if (runToken !== this.timelineRunToken) return;
 
@@ -789,7 +1016,10 @@ export class SimulationState {
                 this.timelineStatus = `restoring frame ${targetFrame}...`;
                 const restored = await this.restoreTimelineFrameFromCache(
                     targetFrame,
-                    { measureRenderPerformance },
+                    {
+                        measureRenderPerformance,
+                        analyzeTopology: !keepPlaying,
+                    },
                 );
                 if (!restored) {
                     throw new Error(`missing cached frame ${targetFrame}`);
@@ -870,7 +1100,7 @@ export class SimulationState {
         this.timelineFrameCount = Math.max(1, cachedFrameCount);
         this.timelineStorageLabel = this.timelineCache === null
             ? "file cache full"
-            : `${this.timelineCache.storageLabel} (${cachedFrameCount}/${TIMELINE_FRAME_COUNT} frames cached)`;
+            : `${this.timelineCache.storageLabel} (${cachedFrameCount}/${this.configuredTimelineFrameCount} frames cached)`;
 
         if (this.timelineNextUncachedFrame > 0) {
             const lastCachedFrame = this.timelineNextUncachedFrame - 1;
@@ -1046,7 +1276,6 @@ export class SimulationState {
     }
 
     private updateGpuTime(times: GpuFrameTiming) {
-        this.elapsedTime.gpuColliderSdfCreationTimeNs = times.colliderSdfCreationNs;
         this.elapsedTime.gpuComputeSimulationStepTimeNs = times.computeSimulationStepNs;
         this.elapsedTime.gpuComputeSimulationSubstepTimeNs = times.computeSimulationSubstepNs;
         this.elapsedTime.nSimulationSubsteps = times.nSimulationSubsteps;
@@ -1175,6 +1404,11 @@ export class SimulationState {
         if (restartEpoch !== this.restartEpoch) return;
         
         try {
+            this.clearZubeiaMatchedTopologyProof(
+                this.isMatchedZubeiaControlRoute()
+                    ? "Matched control bake; proof is shown on the collider route."
+                    : null,
+            );
             this.runner.scatterParticles();
 
             await this.device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
@@ -1243,10 +1477,13 @@ export class SimulationState {
         const len = Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
         const dirNorm = [dir[0]/len, dir[1]/len, dir[2]/len];
         
-        const minC = -5;
-        const maxC = 5;
-        const range = maxC - minC;
-        const res = this.gridResolutionX; 
+        const domainMin = this.scene.domain?.min ?? [-5, -5, -5];
+        const domainMax = this.scene.domain?.max ?? [5, 5, 5];
+        const gridResolution = [
+            this.gridResolutionX,
+            this.gridResolutionY,
+            this.gridResolutionZ,
+        ];
         
         if (isPointerDown) {
              let t = 20; 
@@ -1288,9 +1525,18 @@ export class SimulationState {
         ];
 
         // Convert World Pos to Grid Pos
-        const gridX = ((worldPos[0] - minC) / range) * res;
-        const gridY = ((worldPos[1] - minC) / range) * res;
-        const gridZ = ((worldPos[2] - minC) / range) * res;
+        const gridX = (
+            (worldPos[0] - domainMin[0])
+            / (domainMax[0] - domainMin[0])
+        ) * gridResolution[0];
+        const gridY = (
+            (worldPos[1] - domainMin[1])
+            / (domainMax[1] - domainMin[1])
+        ) * gridResolution[1];
+        const gridZ = (
+            (worldPos[2] - domainMin[2])
+            / (domainMax[2] - domainMin[2])
+        ) * gridResolution[2];
         
         this.runner.uniformsManager.writeInteractionPos([gridX, gridY, gridZ]);
         this.runner.uniformsManager.writeInteractionDir(dirNorm as [number, number, number]);
@@ -1315,18 +1561,21 @@ export class SimulationState {
 
     static loadOntoCanvas({
         getScene = () => defaultSimulationScene,
+        getPairedTimelineScene = () => null,
         timeline = false,
         canvasPromise,
         onStatusChange,
         onErr,
     }: {
         getScene?: () => SimulationSceneConfig,
+        getPairedTimelineScene?: () => SimulationSceneConfig | null,
         timeline?: boolean,
         canvasPromise: Promise<HTMLCanvasElement>,
         onStatusChange?: (status: string) => void,
         onErr?: (err: string) => void,
     }) {
         const scene = getScene();
+        const pairedTimelineScene = getPairedTimelineScene();
         let destroyed = false;
         const updateStatus = (status: string) => {
             if (!destroyed) {
@@ -1341,6 +1590,7 @@ export class SimulationState {
 
         const state = new SimulationState({
             scene,
+            pairedTimelineScene,
             timeline: timeline,
             onStatusChange: updateStatus,
             onErr: updateErr,
@@ -1369,11 +1619,71 @@ export class SimulationState {
 
                     updateStatus("loading particles...");
                     const { spawnSource, particleAppearances } = await loadSpawnSource(scene, state.nParticles);
+                    const spawnContentFingerprint =
+                        fingerprintLoadedSpawnSource(spawnSource);
                     if (destroyed) return;
 
                     updateStatus("loading collider...");
                     const collider = await loadCollider(scene);
                     if (destroyed) return;
+                    if (
+                        pairedTimelineScene !== null
+                        && isAnimatedRigidPawSdfKinematicColliderGeometry(
+                            collider,
+                        )
+                    ) {
+                        state.zubeiaRigidPawColliderAnimation =
+                            collider.kinematicCollider;
+                    }
+
+                    const colliderContentFingerprint =
+                        scene.colliderSource?.type === "zubeiaWalk"
+                            ? await loadZubeiaColliderContentFingerprint({
+                                modelUrl: scene.colliderSource.modelUrl,
+                                rigidPawSdfUrl:
+                                    scene.colliderSource.rigidPawSdfUrl,
+                            })
+                            : fingerprintString(JSON.stringify(
+                                scene.colliderSource,
+                            ));
+                    state.simulationContentFingerprint =
+                        combineCacheFingerprints([
+                            spawnContentFingerprint,
+                            colliderContentFingerprint,
+                        ]);
+
+                    if (pairedTimelineScene !== null) {
+                        if (
+                            pairedTimelineScene.colliderSource?.type
+                            !== "zubeiaWalk"
+                        ) {
+                            throw new Error(
+                                "Paired timeline scene must use the Zubeia walk collider",
+                            );
+                        }
+
+                        const pairedColliderContentFingerprint =
+                            scene.colliderSource === null
+                                ? await loadColliderSourceContentFingerprint(
+                                    pairedTimelineScene.colliderSource,
+                                )
+                                : colliderContentFingerprint;
+                        state.pairedTimelineColliderSimulationContentFingerprint =
+                            combineCacheFingerprints([
+                                spawnContentFingerprint,
+                                pairedColliderContentFingerprint,
+                            ]);
+                        state.pairedTimelineControlSimulationContentFingerprint =
+                            combineCacheFingerprints([
+                                spawnContentFingerprint,
+                                fingerprintString(JSON.stringify(null)),
+                            ]);
+                        state.simulationContentFingerprint =
+                            scene.colliderSource === null
+                                ? state.pairedTimelineControlSimulationContentFingerprint
+                                : state.pairedTimelineColliderSimulationContentFingerprint;
+                        state.refreshPairedTimelineCacheKeys();
+                    }
 
                     updateStatus("loading environment...");
                     const environmentImageBitmap = await loadEnvironmentMap();
@@ -1394,11 +1704,13 @@ export class SimulationState {
                         gridResolutionX: state.gridResolutionX,
                         gridResolutionY: state.gridResolutionY,
                         gridResolutionZ: state.gridResolutionZ,
+                        domain: scene.domain,
                         explicitMpmMaxSimulationTimestepS: () => state.explicitMpmMaxSimulationTimestepS,
                         mlsMpmMaxSimulationTimestepS: () => state.mlsMpmMaxSimulationTimestepS,
                         camera: state.camera,
                         spawnSource,
                         collider,
+                        renderCollider: scene.renderCollider ?? true,
                         particleAppearances,
                         getSimulationMethodType: () => state.simulationMethodType,
                         getRenderMethodType: () => state.renderMethodType,

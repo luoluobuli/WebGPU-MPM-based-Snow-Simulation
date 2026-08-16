@@ -1,0 +1,127 @@
+{
+    "source": "actual capped visible skinned Zubeia paw topology",
+    "representation": "four stationary metric SDFs with animated rigid transforms",
+    "collisionMethod": "Disney 2013 rigid level set, grid and particle Coulomb projection",
+    "pawCount": 4,
+    "sdfResolution": 80,
+    "packedChannelLayout": "two float16 metric phi values per u32",
+    "assetByteLength": 4096784,
+    "maximumAllowedCellSizeM": 0.0125,
+    "maximumSoleAlignmentErrorM": 0,
+    "fieldMetrics": [
+        {
+            "name": "hindLeft",
+            "motionBoneName": "DEF-foot.L.001",
+            "referenceFrameIndex": 0,
+            "referenceTimeS": 0,
+            "cellSizeM": [
+                0.009195640351198896,
+                0.010556139191494713,
+                0.009306336409306223
+            ],
+            "maximumCellSizeM": 0.010556139191494713,
+            "negativeVoxelCount": 45649,
+            "negativeBoundaryVoxelCount": 0,
+            "visibleSurfaceSampleCount": 501,
+            "maximumVisibleSurfaceMismatchM": 0.004768335034512716
+        },
+        {
+            "name": "hindRight",
+            "motionBoneName": "DEF-foot.R.001",
+            "referenceFrameIndex": 18,
+            "referenceTimeS": 0.6,
+            "cellSizeM": [
+                0.009195565279526046,
+                0.010556136173538016,
+                0.00930648608109619
+            ],
+            "maximumCellSizeM": 0.010556136173538016,
+            "negativeVoxelCount": 45648,
+            "negativeBoundaryVoxelCount": 0,
+            "visibleSurfaceSampleCount": 501,
+            "maximumVisibleSurfaceMismatchM": 0.004767998810058833
+        },
+        {
+            "name": "frontLeft",
+            "motionBoneName": "DEF-toe.L.001",
+            "referenceFrameIndex": 9,
+            "referenceTimeS": 0.3,
+            "cellSizeM": [
+                0.008475210987314392,
+                0.012155569474908371,
+                0.009534075288455696
+            ],
+            "maximumCellSizeM": 0.012155569474908371,
+            "negativeVoxelCount": 34712,
+            "negativeBoundaryVoxelCount": 0,
+            "visibleSurfaceSampleCount": 456,
+            "maximumVisibleSurfaceMismatchM": 0.005063274313941702
+        },
+        {
+            "name": "frontRight",
+            "motionBoneName": "DEF-toe.R.001",
+            "referenceFrameIndex": 27,
+            "referenceTimeS": 0.9,
+            "cellSizeM": [
+                0.008477177563347394,
+                0.011232194689255726,
+                0.009739740455075155
+            ],
+            "maximumCellSizeM": 0.011232194689255726,
+            "negativeVoxelCount": 36833,
+            "negativeBoundaryVoxelCount": 0,
+            "visibleSurfaceSampleCount": 456,
+            "maximumVisibleSurfaceMismatchM": 0.004260330727540106
+        }
+    ],
+    "cappedPawMeshValidation": {
+        "validatedFrameCount": 37,
+        "validatedMeshFrameCount": 148,
+        "capLoopCountPerFrame": 4,
+        "minimumCapZM": 0.5020345449447632,
+        "minimumRequiredCapZM": 0.355,
+        "minimumCapClearanceM": 0.1470345449447632,
+        "minimumTriangleDoubleAreaM2": 0.00004624052206715222,
+        "minimumComponentVolumeM3": 0.030735983972801518,
+        "thresholds": {
+            "minimumTriangleDoubleAreaM2": 1e-10,
+            "minimumClosedComponentVolumeM3": 1e-9,
+            "capHeightToleranceM": 0.000001,
+            "minimumNearSurfaceGradientLength": 0.25,
+            "minimumSoleNormalDot": 0.5,
+            "maximumSurfaceVelocityErrorMPerS": 0.35,
+            "minimumSignedProbeMagnitudeM": 0.001,
+            "minimumSignedProbesPerPawSample": 2,
+            "maximumSignedProbesPerPawSample": 16,
+            "maximumSoleOutwardNormalZ": -0.25,
+            "signedProbeOffsetCellFractions": [
+                1.25,
+                0.875,
+                0.625
+            ],
+            "surfaceBarycentricSamples": [
+                [
+                    0.3333333333333333,
+                    0.3333333333333333,
+                    0.3333333333333333
+                ],
+                [
+                    0.6,
+                    0.2,
+                    0.2
+                ],
+                [
+                    0.2,
+                    0.6,
+                    0.2
+                ],
+                [
+                    0.2,
+                    0.2,
+                    0.6
+                ]
+            ]
+        }
+    },
+    "fnv1a": "a6cd48e8"
+}

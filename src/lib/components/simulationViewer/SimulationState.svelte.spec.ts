@@ -5,6 +5,7 @@ import {
     TIMELINE_FRAME_COUNT,
     TIMELINE_FRAME_INTERVAL_MS,
 } from "./SimulationTimelineTiming";
+import { kinematicGroundScene } from "./SimulationScene";
 import {
     SIMULATION_FRAME_CACHE_DIRECTORY_NAME,
     simulationFrameFileName,
@@ -14,7 +15,6 @@ const TIMELINE_BACKGROUND_WORK_YIELD_MS = 250;
 
 type MockFrameTimingCallbacks = {
     onGpuTimeUpdate?: (times: {
-        colliderSdfCreationNs: bigint,
         computeSimulationStepNs: bigint,
         computeSimulationSubstepNs: bigint,
         nSimulationSubsteps: number,
@@ -29,8 +29,16 @@ type MockRunner = {
     renderStillFrame: (callbacks?: MockFrameTimingCallbacks) => void | Promise<void>,
 };
 
+type MockFixedSimulationStepResult = {
+    nSimulationSubsteps: number,
+    simulationTimestepS: number,
+    simulatedTimeS: number,
+};
+
 type MockTimelineRunner = MockRunner & {
     selectedSimulationTimestepS: number,
+    hasKinematicCollider?: boolean,
+    updateKinematicColliderRenderPoseAtTimeS?: (timeS: number) => void,
     scatterParticles?: () => void,
     restoreSimulationPlaybackFrame?: (frame: ArrayBuffer) => void,
     renderSimulationPlaybackFrame?: (
@@ -39,12 +47,9 @@ type MockTimelineRunner = MockRunner & {
     ) => void,
     advanceFixedSimulationSubsteps: (args: MockFrameTimingCallbacks & {
         nSubsteps: number,
-        animatedColliderTimeS?: number,
-    }) => {
-        nSimulationSubsteps: number,
-        simulationTimestepS: number,
-        simulatedTimeS: number,
-    },
+        kinematicColliderStartTimeS?: number,
+    }) => MockFixedSimulationStepResult
+        | Promise<MockFixedSimulationStepResult>,
     readSimulationPlaybackFrame: () => Promise<ArrayBuffer>,
 };
 
@@ -113,6 +118,12 @@ const attachCurrentTimelineCacheKey = (state: SimulationState) => {
         }
     ).currentTimelineCacheKey();
 };
+
+const readCurrentTimelineCacheKey = (state: SimulationState) => (
+    state as unknown as {
+        currentTimelineCacheKey: () => string,
+    }
+).currentTimelineCacheKey();
 
 const installAnimationFrameQueue = () => {
     const callbacks: FrameRequestCallback[] = [];
@@ -223,6 +234,92 @@ const createMockSelectedCacheDirectory = ({
 };
 
 describe("SimulationState camera still-frame rendering", () => {
+    it("keeps camera-only changes out of the physics cache key", () => {
+        const baseline = new SimulationState({
+            scene: kinematicGroundScene,
+            timeline: true,
+        });
+        const cameraOnly = new SimulationState({
+            scene: {
+                ...kinematicGroundScene,
+                camera: {
+                    ...kinematicGroundScene.camera,
+                    radius: 11,
+                },
+            },
+            timeline: true,
+        });
+        const renderOnly = new SimulationState({
+            scene: {
+                ...kinematicGroundScene,
+                renderCollider: false,
+            },
+            timeline: true,
+        });
+        const differentFriction = new SimulationState({
+            scene: {
+                ...kinematicGroundScene,
+                colliderFriction: 0.7,
+            },
+            timeline: true,
+        });
+
+        expect(readCurrentTimelineCacheKey(cameraOnly)).toBe(
+            readCurrentTimelineCacheKey(baseline),
+        );
+        expect(readCurrentTimelineCacheKey(renderOnly)).toBe(
+            readCurrentTimelineCacheKey(baseline),
+        );
+        expect(readCurrentTimelineCacheKey(differentFriction)).not.toBe(
+            readCurrentTimelineCacheKey(baseline),
+        );
+    });
+
+    it("uses the Zubeia scene timeline, friction, and cache capacity", async () => {
+        const state = new SimulationState({
+            scene: kinematicGroundScene,
+            timeline: true,
+        });
+        const estimateFrameCapacity = vi.fn(async () => ({
+            frameCount: 109,
+            availableByteLength: null,
+            quotaByteLength: null,
+            usageByteLength: null,
+        }));
+        const runner = {
+            renderStillFrame: vi.fn(() => {}),
+            simulationPlaybackFrameLayout: {
+                byteLength: 8,
+            },
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity,
+            readFrame: vi.fn(async () => null),
+            writeFrame: vi.fn(async () => {}),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        attachCurrentTimelineCacheKey(state);
+
+        await (
+            state as unknown as {
+                resetTimelineCache: () => Promise<boolean>,
+            }
+        ).resetTimelineCache();
+
+        expect(state.timelineFrameCount).toBe(109);
+        expect(state.timelineSecondsPerFrame).toBe(1 / 30);
+        expect(state.timelineDurationS).toBeCloseTo(3.6);
+        expect(state.colliderFriction).toBe(0.65);
+        expect(estimateFrameCapacity).toHaveBeenCalledWith({
+            frameByteLength: 8,
+            requestedFrameCount: 109,
+        });
+    });
+
     afterEach(() => {
         vi.useRealTimers();
         vi.restoreAllMocks();
@@ -347,7 +444,6 @@ describe("SimulationState camera still-frame rendering", () => {
             renderStillFrame: vi.fn((callbacks?: MockFrameTimingCallbacks) => {
                 callbacks?.onAnimationFrameTimeUpdate?.(3.5);
                 callbacks?.onGpuTimeUpdate?.({
-                    colliderSdfCreationNs: 0n,
                     computeSimulationStepNs: 0n,
                     computeSimulationSubstepNs: 0n,
                     nSimulationSubsteps: 0,
@@ -363,7 +459,6 @@ describe("SimulationState camera still-frame rendering", () => {
         await animationFrames.flushNextFrame();
 
         expect(state.elapsedTime.animationFrameTimeNs).toBe(3_500_000n);
-        expect(state.elapsedTime.gpuColliderSdfCreationTimeNs).toBe(0n);
         expect(state.elapsedTime.gpuComputeSimulationStepTimeNs).toBe(0n);
         expect(state.elapsedTime.gpuComputeSimulationSubstepTimeNs).toBe(0n);
         expect(state.elapsedTime.nSimulationSubsteps).toBe(0);
@@ -546,6 +641,53 @@ describe("SimulationState camera still-frame rendering", () => {
         expect(timelineCache.writeFrame).toHaveBeenCalledTimes(2);
         expect(state.timelineFrame).toBe(2);
         expect(state.timelineNextUncachedFrame).toBe(3);
+    });
+
+    it("waits for submitted GPU work before caching a timeline frame", async () => {
+        const simulationTimestepS = 0.01;
+        let finishAdvance = (_result: MockFixedSimulationStepResult) => {};
+        const advancePromise = new Promise<MockFixedSimulationStepResult>((resolve) => {
+            finishAdvance = resolve;
+        });
+        const state = new SimulationState({ timeline: true });
+        const runner: MockTimelineRunner = {
+            selectedSimulationTimestepS: simulationTimestepS,
+            renderStillFrame: vi.fn(() => {}),
+            advanceFixedSimulationSubsteps: vi.fn(() => advancePromise),
+            readSimulationPlaybackFrame: vi.fn(async () => new ArrayBuffer(8)),
+        };
+        const timelineCache: MockTimelineCache = {
+            storageLabel: "test file cache",
+            clear: vi.fn(async () => {}),
+            estimateFrameCapacity: estimateFullTimelineCapacity,
+            readFrame: vi.fn(async () => null),
+            writeFrame: vi.fn(async () => {}),
+        };
+
+        attachRunner(state, runner);
+        attachTimelineCache(state, timelineCache);
+        state.timelineNextUncachedFrame = 1;
+        state.timelineFrame = 0;
+
+        const bakePromise = state.setTimelineFrame(1);
+        await flushMicrotasks();
+
+        expect(runner.advanceFixedSimulationSubsteps).toHaveBeenCalledTimes(1);
+        expect(runner.readSimulationPlaybackFrame).not.toHaveBeenCalled();
+        expect(timelineCache.writeFrame).not.toHaveBeenCalled();
+        expect(state.timelineFrame).toBe(0);
+
+        finishAdvance({
+            nSimulationSubsteps: 4,
+            simulationTimestepS,
+            simulatedTimeS: 4 * simulationTimestepS,
+        });
+        await bakePromise;
+
+        expect(runner.readSimulationPlaybackFrame).toHaveBeenCalledTimes(1);
+        expect(timelineCache.writeFrame).toHaveBeenCalledTimes(1);
+        expect(state.timelineFrame).toBe(1);
+        expect(state.timelineNextUncachedFrame).toBe(2);
     });
 
     it("bakes timeline frames by simulated seconds instead of one solver max step per frame", async () => {

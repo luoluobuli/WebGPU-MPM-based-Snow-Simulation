@@ -7,12 +7,7 @@ import { GpuMpmBufferManager } from "./mpm/GpuMpmBufferManager";
 import { GpuRenderMethodType, type GpuRenderMethod } from "./GpuRenderMethod";
 import { GpuPerformanceMeasurementBufferManager } from "./performanceMeasurement/GpuPerformanceMeasurementBufferManager";
 import { GpuSpawnVolumeBufferManager, type SpawnPointSource } from "./particleInitialize/GpuSpawnVolumeBufferManager";
-import {
-    GpuColliderBufferManager,
-    isAnimatedColliderGeometry,
-    type AnimatedColliderGeometry,
-    type ColliderGeometry,
-} from "./collider/GpuColliderBufferManager";
+import { GpuColliderBufferManager } from "./collider/GpuColliderBufferManager";
 import { GpuParticleInitializePipelineManager } from "./particleInitialize/GpuParticleInitializePipelineManager";
 import { GpuRasterizeRenderPipelineManager } from "./collider/GpuRasterizeRenderPipelineManager";
 import { GpuMpmGridRenderPipelineManager } from "./mpmGridRender/GpuMpmGridRenderPipelineMager";
@@ -22,6 +17,17 @@ import { GpuRaymarchingSurfaceRenderPipelineManager } from "./raymarching/GpuRay
 import { GpuSsfrRenderPipelineManager } from "./ssfr/GpuSsfrRenderPipelineManager";
 import { GpuMarchingCubesRenderPipelineManager } from "./marchingCubes/GpuMarchingCubesRenderPipelineManager";
 import { GpuSplatsRenderPipelineManager } from "./splats/GpuSplatsRenderPipelineManager";
+import type { ColliderGeometry } from "./collider/GpuColliderBufferManager";
+import {
+    isAnimatedRigidPawSdfKinematicColliderGeometry,
+    type AnimatedRigidPawSdfKinematicColliderGeometry,
+} from "./kinematicCollider/RigidPawSdfKinematicCollider";
+import { GpuRigidPawSdfKinematicColliderManager } from "./kinematicCollider/GpuRigidPawSdfKinematicColliderManager";
+import { GpuKinematicColliderIntervalBatchBuffer } from "./kinematicCollider/GpuKinematicColliderIntervalBatchBuffer";
+import {
+    calculateKinematicColliderSubmissionRanges,
+    submitKinematicColliderSubmissionRangesInWindows,
+} from "./kinematicCollider/kinematicColliderSubmissionSchedule";
 import { GpuSimulationMethodType } from "./GpuSimulationMethod";
 import { GpuEnvironmentRenderPipelineManager } from "./environmentMap/GpuEnvironmentRenderPipelineManager";
 import { GpuEnvironmentTextureManager } from "./environmentMap/GpuEnvironmentTextureManager";
@@ -30,7 +36,6 @@ import { PrerenderPassElapsedTime } from "$lib/components/simulationViewer/Prere
 import { GpuSsaoPipelineManager } from "./ssao/GpuSsaoPipelineManager";
 import { GpuDepthPicker } from "./GpuDepthPicker";
 import { GpuParticleSpeedReductionPipelineManager } from "./mpm/GpuParticleSpeedReductionPipelineManager";
-import { GpuColliderSdfPipelineManager } from "./collider/GpuColliderSdfPipelineManager";
 import { GpuParticleAppearanceBufferManager } from "./particleAppearance/GpuParticleAppearanceBufferManager";
 import { GRAVITATIONAL_ACCELERATION_M_PER_S2 } from "./gravity";
 import { GpuSimulationPlaybackFrameCacheManager } from "./simulationFrameCache/GpuSimulationPlaybackFrameCacheManager";
@@ -49,7 +54,6 @@ import {
 } from "./simulationTimestep";
 
 export type GpuFrameTiming = {
-    colliderSdfCreationNs: bigint,
     computeSimulationStepNs: bigint,
     computeSimulationSubstepNs: bigint,
     nSimulationSubsteps: number,
@@ -72,6 +76,11 @@ export type GpuFixedSimulationStepResult = {
     simulatedTimeS: number,
 };
 
+export type GpuSimulationDomain = {
+    min: [number, number, number],
+    max: [number, number, number],
+};
+
 const FP_SCALE = 65536;
 const MAX_FIXED_POINT_I32 = 2_147_483_000;
 const MAX_FIXED_POINT_GRID_SPEED = MAX_FIXED_POINT_I32 / FP_SCALE;
@@ -84,6 +93,7 @@ const PARTICLE_SPEED_RELAXED_CFL_HEADROOM = 0.8;
 const MOVING_COLLIDER_SPEED_EPSILON = 1e-3;
 const COLLIDER_VELOCITY_ZERO_EPSILON_SQUARED = 1e-20;
 const COLLIDER_TRANSFORM_IDENTITY_EPSILON = 1e-6;
+const COLLIDER_SDF_LAST_COORD = 63;
 
 const IDENTITY_MAT4_VALUES = [
     1, 0, 0, 0,
@@ -164,9 +174,8 @@ export class GpuSnowPipelineRunner {
     private readonly interactionStrength: () => number;
     private readonly minGridCellDim: number;
     private readonly elasticWaveSpeed: number;
-    private colliderMinCoords: [number, number, number];
-    private colliderMaxCoords: [number, number, number];
-    private colliderSdfLastCoord = 63;
+    private readonly colliderMinCoords: [number, number, number];
+    private readonly colliderMaxCoords: [number, number, number];
     private colliderSdfMaxCellSize = 1;
     private depthTextureView: GPUTextureView;
 
@@ -178,7 +187,6 @@ export class GpuSnowPipelineRunner {
     private readonly rasterizeRenderPipelineManager: GpuRasterizeRenderPipelineManager | null;
     private readonly mpmGridRenderPipelineManager: GpuMpmGridRenderPipelineManager;
     private readonly particleInitializePipelineManager: GpuParticleInitializePipelineManager;
-    private readonly colliderSdfPipelineManager: GpuColliderSdfPipelineManager;
     private readonly environmentRenderPipelineManager: GpuEnvironmentRenderPipelineManager;
     private readonly ssaoPipelineManager: GpuSsaoPipelineManager;
     private readonly depthPicker: GpuDepthPicker;
@@ -198,7 +206,6 @@ export class GpuSnowPipelineRunner {
     private colliderTransformIsIdentity = true;
     private colliderVelocityIsZero = true;
     private colliderSdfValid = false;
-    private colliderTransformMat: Mat4 = mat4.identity();
     private lastWrittenSimulationTimestepS = Number.NaN;
     private lastWrittenMaxStableParticleSpeed = Number.NaN;
 
@@ -207,7 +214,9 @@ export class GpuSnowPipelineRunner {
     private readonly spawnVolumeManager: GpuSpawnVolumeBufferManager;
     private readonly particleAppearanceManager: GpuParticleAppearanceBufferManager;
     private readonly colliderManager: GpuColliderBufferManager;
-    private readonly animatedCollider: AnimatedColliderGeometry | null;
+    private readonly kinematicColliderManager: GpuRigidPawSdfKinematicColliderManager;
+    private readonly kinematicColliderIntervalBatch: GpuKinematicColliderIntervalBatchBuffer;
+    private readonly animatedKinematicCollider: AnimatedRigidPawSdfKinematicColliderGeometry | null;
     private readonly environmentTextureManager: GpuEnvironmentTextureManager;
 
     private readonly measurePerf: boolean;
@@ -231,6 +240,7 @@ export class GpuSnowPipelineRunner {
         gridResolutionX,
         gridResolutionY,
         gridResolutionZ,
+        domain,
         mcGridResolutionX,
         mcGridResolutionY,
         mcGridResolutionZ,
@@ -239,6 +249,7 @@ export class GpuSnowPipelineRunner {
         camera,
         spawnSource,
         collider,
+        renderCollider = true,
         particleAppearances,
         getSimulationMethodType,
         getRenderMethodType,
@@ -258,6 +269,7 @@ export class GpuSnowPipelineRunner {
         gridResolutionX: number,
         gridResolutionY: number,
         gridResolutionZ: number,
+        domain?: GpuSimulationDomain,
         mcGridResolutionX?: number,
         mcGridResolutionY?: number,
         mcGridResolutionZ?: number,
@@ -266,6 +278,7 @@ export class GpuSnowPipelineRunner {
         camera: Camera,
         spawnSource: SpawnPointSource,
         collider?: ColliderGeometry | null,
+        renderCollider?: boolean,
         particleAppearances?: Uint32Array | null,
         getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
@@ -300,8 +313,21 @@ export class GpuSnowPipelineRunner {
         const uniformsManager = new GpuUniformsBufferManager({device});
         this.uniformsManager = uniformsManager;
 
-        const gridMinCoords: [number, number, number] = [-5, -5, -5];
-        const gridMaxCoords: [number, number, number] = [5, 5, 5];
+        const gridMinCoords: [number, number, number] = domain === undefined
+            ? [-5, -5, -5]
+            : [...domain.min];
+        const gridMaxCoords: [number, number, number] = domain === undefined
+            ? [5, 5, 5]
+            : [...domain.max];
+        if (
+            gridMinCoords.some((value, axis) => (
+                !Number.isFinite(value)
+                || !Number.isFinite(gridMaxCoords[axis])
+                || gridMaxCoords[axis] <= value
+            ))
+        ) {
+            throw new Error("simulation domain bounds must be finite and ordered");
+        }
         const gridCellDims: [number, number, number] = [
             (gridMaxCoords[0] - gridMinCoords[0]) / gridResolutionX,
             (gridMaxCoords[1] - gridMinCoords[1]) / gridResolutionY,
@@ -382,9 +408,25 @@ export class GpuSnowPipelineRunner {
         this.particleAppearanceManager = particleAppearanceManager;
 
         const colliderGeometry = collider ?? emptyColliderGeometry();
-        this.animatedCollider = isAnimatedColliderGeometry(collider)
-            ? collider
-            : null;
+        const animatedKinematicCollider =
+            isAnimatedRigidPawSdfKinematicColliderGeometry(collider)
+                ? collider
+                : null;
+        this.animatedKinematicCollider = animatedKinematicCollider;
+        const kinematicColliderManager =
+            new GpuRigidPawSdfKinematicColliderManager({
+                device,
+                animation: animatedKinematicCollider?.kinematicCollider ?? null,
+            });
+        this.kinematicColliderManager = kinematicColliderManager;
+        const kinematicColliderIntervalBatch =
+            new GpuKinematicColliderIntervalBatchBuffer({
+                device,
+                intervalPoseByteLength:
+                    kinematicColliderManager.intervalPoseByteLength,
+            });
+        this.kinematicColliderIntervalBatch =
+            kinematicColliderIntervalBatch;
         const colliderManager = new GpuColliderBufferManager({
             device,
             vertices: colliderGeometry.positions,
@@ -393,22 +435,15 @@ export class GpuSnowPipelineRunner {
             materialIndices: colliderGeometry.materialIndices,
             textures: colliderGeometry.textures,
             indices: colliderGeometry.indices,
-            sdfResolution: colliderGeometry.sdfResolution,
-            buildInitialSdf: this.animatedCollider === null,
+            buildCollisionSdf: animatedKinematicCollider === null,
         });
         this.colliderManager = colliderManager;
-        this.colliderSdfPipelineManager = new GpuColliderSdfPipelineManager({
-            device,
-            colliderManager,
-        });
-        this.colliderSdfLastCoord = colliderManager.sdfResolution - 1;
         this.colliderMinCoords = colliderManager.minCoords;
         this.colliderMaxCoords = colliderManager.maxCoords;
         uniformsManager.writeColliderMinCoords(colliderManager.minCoords);
         uniformsManager.writeColliderMaxCoords(colliderManager.maxCoords);
         this.writeColliderSdfMetadata(colliderManager.minCoords, colliderManager.maxCoords);
         const colliderTransform = mat4.identity();
-        this.colliderTransformMat = colliderTransform;
         uniformsManager.writeColliderTransformMat(colliderTransform);
         uniformsManager.writeColliderTransformInv(colliderTransform);
         uniformsManager.writeColliderTransformIsIdentity(true);
@@ -440,6 +475,7 @@ export class GpuSnowPipelineRunner {
             gridAccumulatorBuffer: mpmManager.gridAccumulatorBuffer,
             nextGridAccumulatorBuffer: mpmManager.nextGridAccumulatorBuffer,
             gridVelocityBuffer: mpmManager.gridVelocityBuffer,
+            nextGridVelocityBuffer: mpmManager.nextGridVelocityBuffer,
             maxParticleSpeedBuffer: this.particleSpeedReductionPipelineManager.maxSpeedBuffer,
             activeBlockDispatchBuffer: mpmManager.activeBlockDispatchBuffer,
             nextActiveBlockDispatchBuffer: mpmManager.nextActiveBlockDispatchBuffer,
@@ -453,12 +489,13 @@ export class GpuSnowPipelineRunner {
             bukkitThreadGroupCountBuffer: mpmManager.bukkitThreadGroupCountBuffer,
             uniformsManager,
             colliderManager,
+            kinematicColliderManager,
         });
 
         this.mpmPipelineManager = mpmPipelineManager;
 
         // Render
-        const rasterizeRenderPipeline = colliderGeometry.indices.length > 0
+        const rasterizeRenderPipeline = renderCollider && colliderGeometry.indices.length > 0
             ? new GpuRasterizeRenderPipelineManager({
                 device,
                 format,
@@ -691,7 +728,8 @@ export class GpuSnowPipelineRunner {
         this.mpmGridRenderPipelineManager.destroy();
         this.simulationPlaybackFrameCacheManager.destroy();
         this.particleSpeedReductionPipelineManager.destroy();
-        this.colliderSdfPipelineManager.destroy();
+        this.kinematicColliderIntervalBatch.destroy();
+        this.kinematicColliderManager.destroy();
         this.colliderManager.destroy();
         this.particleAppearanceManager.destroy();
         this.spawnVolumeManager.destroy();
@@ -715,7 +753,6 @@ export class GpuSnowPipelineRunner {
             commandEncoder,
             nParticles: this.nParticles,
         });
-
         this.device.queue.submit([commandEncoder.finish()]);
     }
 
@@ -723,25 +760,15 @@ export class GpuSnowPipelineRunner {
         this.scatterParticles();
     }
 
-    private frameTimestampMetadata({
-        includeColliderSdfCreation = false,
-    }: {
-        includeColliderSdfCreation?: boolean,
-    } = {}) {
+    private frameTimestampMetadata() {
         const frameRenderUsesSsao = this.renderUsesSsao;
-        const renderTimestampEndIndex = frameRenderUsesSsao ? 6 : 4;
-        const colliderSdfTimestampBaseIndex = includeColliderSdfCreation
-            ? renderTimestampEndIndex
-            : null;
-        const framePrerenderTimestampBaseIndex = renderTimestampEndIndex
-            + (includeColliderSdfCreation ? 2 : 0);
+        const framePrerenderTimestampBaseIndex = frameRenderUsesSsao ? 6 : 4;
         const framePrerenderPassCount = this.renderHasPrerenderPasses
             ? (this.prerenderPasses?.length ?? 0)
             : 0;
         const timestampQueryCount = framePrerenderTimestampBaseIndex + 2 * framePrerenderPassCount;
 
         return {
-            colliderSdfTimestampBaseIndex,
             frameRenderUsesSsao,
             framePrerenderTimestampBaseIndex,
             timestampQueryCount,
@@ -770,14 +797,12 @@ export class GpuSnowPipelineRunner {
 
     private mapSubmittedGpuTimes({
         nSimulationSubsteps,
-        colliderSdfTimestampBaseIndex,
         frameRenderUsesSsao,
         framePrerenderTimestampBaseIndex,
         onGpuTimeUpdate,
         onError,
     }: {
         nSimulationSubsteps: number,
-        colliderSdfTimestampBaseIndex: number | null,
         frameRenderUsesSsao: boolean,
         framePrerenderTimestampBaseIndex: number,
         onGpuTimeUpdate?: (times: GpuFrameTiming) => void,
@@ -786,9 +811,6 @@ export class GpuSnowPipelineRunner {
         if (this.performanceMeasurementManager === null) return;
 
         this.performanceMeasurementManager.mapTime(timestamps => {
-            const colliderSdfCreationNs = colliderSdfTimestampBaseIndex !== null
-                ? timestamps[colliderSdfTimestampBaseIndex + 1] - timestamps[colliderSdfTimestampBaseIndex]
-                : 0n;
             const computeSimulationStepNs = timestamps[1] - timestamps[0];
             const computeSimulationSubstepNs = nSimulationSubsteps > 0
                 ? computeSimulationStepNs / BigInt(nSimulationSubsteps)
@@ -806,7 +828,6 @@ export class GpuSnowPipelineRunner {
             }
 
             onGpuTimeUpdate?.({
-                colliderSdfCreationNs,
                 computeSimulationStepNs,
                 computeSimulationSubstepNs,
                 nSimulationSubsteps,
@@ -895,7 +916,6 @@ export class GpuSnowPipelineRunner {
         const shouldMeasureGpuTimestamps = measureGpuTimestamps && this.canMeasureGpuTimestamps();
         this.performanceMeasurementManager?.setEnabled(shouldMeasureGpuTimestamps);
         const {
-            colliderSdfTimestampBaseIndex,
             frameRenderUsesSsao,
             framePrerenderTimestampBaseIndex,
             timestampQueryCount,
@@ -910,11 +930,7 @@ export class GpuSnowPipelineRunner {
             this.addNoopComputeTimestampPass(commandEncoder);
         }
 
-        this.addRender(
-            commandEncoder,
-            shouldMeasureGpuTimestamps,
-            framePrerenderTimestampBaseIndex,
-        );
+        this.addRender(commandEncoder, shouldMeasureGpuTimestamps);
 
         if (shouldMeasureGpuTimestamps && this.performanceMeasurementManager !== null) {
             this.performanceMeasurementManager.addResolve(commandEncoder, timestampQueryCount);
@@ -928,7 +944,6 @@ export class GpuSnowPipelineRunner {
         if (shouldMeasureGpuTimestamps) {
             this.mapSubmittedGpuTimes({
                 nSimulationSubsteps: 0,
-                colliderSdfTimestampBaseIndex,
                 frameRenderUsesSsao,
                 framePrerenderTimestampBaseIndex,
                 onGpuTimeUpdate,
@@ -947,7 +962,6 @@ export class GpuSnowPipelineRunner {
         const shouldMeasureGpuTimestamps = measureGpuTimestamps && this.canMeasureGpuTimestamps();
         this.performanceMeasurementManager?.setEnabled(shouldMeasureGpuTimestamps);
         const {
-            colliderSdfTimestampBaseIndex,
             frameRenderUsesSsao,
             framePrerenderTimestampBaseIndex,
             timestampQueryCount,
@@ -960,11 +974,7 @@ export class GpuSnowPipelineRunner {
             this.addNoopComputeTimestampPass(commandEncoder);
         }
 
-        this.addRender(
-            commandEncoder,
-            shouldMeasureGpuTimestamps,
-            framePrerenderTimestampBaseIndex,
-        );
+        this.addRender(commandEncoder, shouldMeasureGpuTimestamps);
 
         if (shouldMeasureGpuTimestamps && this.performanceMeasurementManager !== null) {
             this.performanceMeasurementManager.addResolve(commandEncoder, timestampQueryCount);
@@ -976,7 +986,6 @@ export class GpuSnowPipelineRunner {
         if (shouldMeasureGpuTimestamps) {
             this.mapSubmittedGpuTimes({
                 nSimulationSubsteps: 0,
-                colliderSdfTimestampBaseIndex,
                 frameRenderUsesSsao,
                 framePrerenderTimestampBaseIndex,
                 onGpuTimeUpdate,
@@ -984,15 +993,15 @@ export class GpuSnowPipelineRunner {
         }
     }
 
-    advanceFixedSimulationSubsteps({
+    async advanceFixedSimulationSubsteps({
         nSubsteps,
-        animatedColliderTimeS,
+        kinematicColliderStartTimeS,
         onGpuTimeUpdate,
         onAnimationFrameTimeUpdate,
     }: GpuFrameTimingCallbacks & {
         nSubsteps: number,
-        animatedColliderTimeS?: number,
-    }): GpuFixedSimulationStepResult {
+        kinematicColliderStartTimeS?: number,
+    }): Promise<GpuFixedSimulationStepResult> {
         const simulationTimestepS = this.selectedSimulationTimestepS;
         const safeNSubsteps = Number.isFinite(nSubsteps)
             ? Math.max(0, Math.floor(nSubsteps))
@@ -1007,6 +1016,11 @@ export class GpuSnowPipelineRunner {
         }
 
         if (safeNSubsteps === 0) {
+            if (Number.isFinite(kinematicColliderStartTimeS)) {
+                this.updateKinematicColliderRenderPoseAtTimeS(
+                    kinematicColliderStartTimeS!,
+                );
+            }
             this.renderStillFrame({
                 onGpuTimeUpdate,
                 onAnimationFrameTimeUpdate,
@@ -1019,45 +1033,51 @@ export class GpuSnowPipelineRunner {
             };
         }
 
+        if (this.animatedKinematicCollider !== null) {
+            if (!Number.isFinite(kinematicColliderStartTimeS)) {
+                throw new Error(
+                    "kinematic collider simulation requires a finite start time",
+                );
+            }
+
+            return this.advanceKinematicColliderSubsteps({
+                nSubsteps: safeNSubsteps,
+                startTimeS: kinematicColliderStartTimeS!,
+                simulationTimestepS,
+                onAnimationFrameTimeUpdate,
+            });
+        }
+
+        const submissionRanges =
+            calculateKinematicColliderSubmissionRanges({
+                nSubsteps: safeNSubsteps,
+                nParticles: this.nParticles,
+            });
+        if (submissionRanges.length > 1) {
+            return this.advanceBatchedFixedSubsteps({
+                nSubsteps: safeNSubsteps,
+                simulationTimestepS,
+                onAnimationFrameTimeUpdate,
+            });
+        }
+
+
         const frameStartMs = performance.now();
-        const shouldCreateAnimatedColliderSdf = this.animatedCollider !== null
-            && animatedColliderTimeS !== undefined
-            && Number.isFinite(animatedColliderTimeS);
         const commandEncoder = this.device.createCommandEncoder({
             label: "fixed simulation frame command encoder",
         });
         const enableInteraction = this.isInteracting();
         const shouldSampleParticleSpeed =
-            safeNSubsteps > 0
-            && this.particleSpeedReductionPipelineManager.canScheduleReadback();
-        const measureGpuTimestamps = safeNSubsteps > 0 && this.canMeasureGpuTimestamps();
+            this.particleSpeedReductionPipelineManager.canScheduleReadback();
+        const measureGpuTimestamps = this.canMeasureGpuTimestamps();
         this.performanceMeasurementManager?.setEnabled(measureGpuTimestamps);
         const {
-            colliderSdfTimestampBaseIndex,
             frameRenderUsesSsao,
             framePrerenderTimestampBaseIndex,
             timestampQueryCount,
-        } = this.frameTimestampMetadata({
-            includeColliderSdfCreation: shouldCreateAnimatedColliderSdf,
-        });
+        } = this.frameTimestampMetadata();
 
         this.writeSimulationTimingUniforms(simulationTimestepS);
-
-        if (shouldCreateAnimatedColliderSdf) {
-            this.addAnimatedColliderSdfCreationPass({
-                commandEncoder,
-                timeS: animatedColliderTimeS,
-                timestampWrites: this.performanceMeasurementManager !== null
-                    && measureGpuTimestamps
-                    && colliderSdfTimestampBaseIndex !== null
-                    ? {
-                        querySet: this.performanceMeasurementManager.querySet,
-                        beginningOfPassWriteIndex: colliderSdfTimestampBaseIndex,
-                        endOfPassWriteIndex: colliderSdfTimestampBaseIndex + 1,
-                    }
-                    : undefined,
-            });
-        }
 
         if (shouldSampleParticleSpeed) {
             this.particleSpeedReductionPipelineManager.reset({ commandEncoder });
@@ -1072,35 +1092,33 @@ export class GpuSnowPipelineRunner {
         });
 
         if (shouldSampleParticleSpeed) {
-            this.particleSpeedReductionPipelineManager.copyToReadback({ commandEncoder });
+            this.particleSpeedReductionPipelineManager.copyToReadback({
+                commandEncoder,
+            });
         }
 
-        this.addRender(
-            commandEncoder,
-            measureGpuTimestamps,
-            framePrerenderTimestampBaseIndex,
-        );
+        this.addRender(commandEncoder, measureGpuTimestamps);
 
-        if (measureGpuTimestamps && this.performanceMeasurementManager !== null) {
-            this.performanceMeasurementManager.addResolve(commandEncoder, timestampQueryCount);
+        if (
+            measureGpuTimestamps
+            && this.performanceMeasurementManager !== null
+        ) {
+            this.performanceMeasurementManager.addResolve(
+                commandEncoder,
+                timestampQueryCount,
+            );
         }
 
         this.device.queue.submit([commandEncoder.finish()]);
         onAnimationFrameTimeUpdate?.(performance.now() - frameStartMs);
 
         if (shouldSampleParticleSpeed) {
-            this.particleSpeedReductionPipelineManager.mapMaxSpeed(maxSpeed => {
-                this.latestMaxParticleSpeed = maxSpeed;
-            })
-                .catch(error => {
-                    console.error(error);
-                });
+            this.mapSubmittedParticleSpeed();
         }
 
         if (measureGpuTimestamps) {
             this.mapSubmittedGpuTimes({
                 nSimulationSubsteps: safeNSubsteps,
-                colliderSdfTimestampBaseIndex,
                 frameRenderUsesSsao,
                 framePrerenderTimestampBaseIndex,
                 onGpuTimeUpdate,
@@ -1114,21 +1132,210 @@ export class GpuSnowPipelineRunner {
         };
     }
 
-    advanceFixedSimulationFrame(callbacks: GpuFrameTimingCallbacks = {}) {
-        return this.advanceFixedSimulationSubsteps({
-            nSubsteps: this.selectedSimulationSubstepsPerMaxStep,
-            ...callbacks,
+    private async advanceBatchedFixedSubsteps({
+        nSubsteps,
+        simulationTimestepS,
+        onAnimationFrameTimeUpdate,
+    }: {
+        nSubsteps: number,
+        simulationTimestepS: number,
+        onAnimationFrameTimeUpdate?: (ms: number) => void,
+    }): Promise<GpuFixedSimulationStepResult> {
+        const frameStartMs = performance.now();
+        const enableInteraction = this.isInteracting();
+        const shouldSampleParticleSpeed =
+            this.particleSpeedReductionPipelineManager.canScheduleReadback();
+        const submissionRanges =
+            calculateKinematicColliderSubmissionRanges({
+                nSubsteps,
+                nParticles: this.nParticles,
+            });
+        this.performanceMeasurementManager?.setEnabled(false);
+        this.writeSimulationTimingUniforms(simulationTimestepS);
+
+        // Preserve the watchdog-sized command buffers while letting the CPU
+        // encode ahead of the GPU by one bounded submission window.
+        const completedSubsteps =
+            await submitKinematicColliderSubmissionRangesInWindows({
+                ranges: submissionRanges,
+                submitRange: ({ startSubstep, endSubstep }) => {
+                    if (this.destroyed) return false;
+
+                    const isLastSubmission = endSubstep === nSubsteps;
+                    const commandEncoder = this.device.createCommandEncoder({
+                        label: "fixed simulation batch command encoder",
+                    });
+                    if (isLastSubmission && shouldSampleParticleSpeed) {
+                        this.particleSpeedReductionPipelineManager.reset({
+                            commandEncoder,
+                        });
+                    }
+                    this.addSimulationStepsComputePass({
+                        commandEncoder,
+                        nSimulationSteps: endSubstep - startSubstep,
+                        measureGpuTimestamps: false,
+                        recordParticleSpeed: isLastSubmission
+                            && shouldSampleParticleSpeed,
+                        enableInteraction,
+                    });
+                    if (isLastSubmission) {
+                        if (shouldSampleParticleSpeed) {
+                            this.particleSpeedReductionPipelineManager.copyToReadback({
+                                commandEncoder,
+                            });
+                        }
+                        this.addRender(commandEncoder, false);
+                    }
+
+                    this.device.queue.submit([commandEncoder.finish()]);
+                    return true;
+                },
+                waitForSubmittedWork: () =>
+                    this.device.queue.onSubmittedWorkDone(),
+            });
+
+        onAnimationFrameTimeUpdate?.(performance.now() - frameStartMs);
+        if (
+            completedSubsteps === nSubsteps
+            && shouldSampleParticleSpeed
+        ) {
+            this.mapSubmittedParticleSpeed();
+        }
+
+        return {
+            nSimulationSubsteps: completedSubsteps,
+            simulationTimestepS,
+            simulatedTimeS: completedSubsteps * simulationTimestepS,
+        };
+    }
+
+
+    private async advanceKinematicColliderSubsteps({
+        nSubsteps,
+        startTimeS,
+        simulationTimestepS,
+        onAnimationFrameTimeUpdate,
+    }: {
+        nSubsteps: number,
+        startTimeS: number,
+        simulationTimestepS: number,
+        onAnimationFrameTimeUpdate?: (ms: number) => void,
+    }): Promise<GpuFixedSimulationStepResult> {
+        const frameStartMs = performance.now();
+        const enableInteraction = this.isInteracting();
+        const shouldSampleParticleSpeed =
+            this.particleSpeedReductionPipelineManager.canScheduleReadback();
+        this.performanceMeasurementManager?.setEnabled(false);
+        this.writeSimulationTimingUniforms(simulationTimestepS);
+
+        this.kinematicColliderIntervalBatch.writeIntervals({
+            intervalCount: nSubsteps,
+            startTimeS,
+            simulationTimestepS,
+            writeInterval: ({
+                previousTimeS,
+                currentTimeS,
+                target,
+            }) => {
+                this.kinematicColliderManager.packInterval({
+                    previousTimeS,
+                    currentTimeS,
+                    target,
+                });
+            },
         });
+
+        const submissionRanges =
+            calculateKinematicColliderSubmissionRanges({
+                nSubsteps,
+                nParticles: this.nParticles,
+            });
+        const completedSubsteps =
+            await submitKinematicColliderSubmissionRangesInWindows({
+                ranges: submissionRanges,
+                submitRange: ({ startSubstep, endSubstep }) => {
+                    if (this.destroyed) return false;
+
+                    const commandEncoder = this.device.createCommandEncoder({
+                        label: "kinematic collider simulation batch command encoder",
+                    });
+                    for (
+                        let substep = startSubstep;
+                        substep < endSubstep;
+                        substep++
+                    ) {
+                        const currentTimeS = startTimeS
+                            + (substep + 1) * simulationTimestepS;
+                        const isLastSubstep = substep === nSubsteps - 1;
+
+                        this.kinematicColliderIntervalBatch.copyIntervalTo({
+                            commandEncoder,
+                            intervalIndex: substep,
+                            targetBuffer: this.kinematicColliderManager.poseBuffer,
+                        });
+                        if (isLastSubstep && shouldSampleParticleSpeed) {
+                            this.particleSpeedReductionPipelineManager.reset({
+                                commandEncoder,
+                            });
+                        }
+                        this.addSimulationStepsComputePass({
+                            commandEncoder,
+                            nSimulationSteps: 1,
+                            measureGpuTimestamps: false,
+                            recordParticleSpeed: isLastSubstep
+                                && shouldSampleParticleSpeed,
+                            enableInteraction,
+                        });
+
+                        if (isLastSubstep) {
+                            if (shouldSampleParticleSpeed) {
+                                this.particleSpeedReductionPipelineManager.copyToReadback({
+                                    commandEncoder,
+                                });
+                            }
+                            this.updateKinematicColliderRenderPoseAtTimeS(currentTimeS);
+                            this.addRender(commandEncoder, false);
+                        }
+                    }
+
+                    this.device.queue.submit([commandEncoder.finish()]);
+                    return true;
+                },
+                waitForSubmittedWork: () =>
+                    this.device.queue.onSubmittedWorkDone(),
+            });
+
+        onAnimationFrameTimeUpdate?.(performance.now() - frameStartMs);
+        if (
+            completedSubsteps === nSubsteps
+            && shouldSampleParticleSpeed
+        ) {
+            this.mapSubmittedParticleSpeed();
+        }
+
+        return {
+            nSimulationSubsteps: completedSubsteps,
+            simulationTimestepS,
+            simulatedTimeS: completedSubsteps * simulationTimestepS,
+        };
+    }
+    private mapSubmittedParticleSpeed() {
+        this.particleSpeedReductionPipelineManager.mapMaxSpeed(maxSpeed => {
+            this.latestMaxParticleSpeed = maxSpeed;
+        })
+            .catch(error => {
+                console.error(error);
+            });
     }
 
-    get hasAnimatedCollider() {
-        return this.animatedCollider !== null;
+    get hasKinematicCollider() {
+        return this.animatedKinematicCollider !== null;
     }
 
-    updateAnimatedColliderRenderPoseAtTimeS(timeS: number) {
-        if (this.animatedCollider === null) return;
+    updateKinematicColliderRenderPoseAtTimeS(timeS: number) {
+        if (this.animatedKinematicCollider === null) return;
 
-        const pose = this.animatedCollider.sampleAtTimeS(timeS);
+        const pose = this.animatedKinematicCollider.sampleAtTimeS(timeS);
         this.colliderManager.updateRenderGeometry({
             device: this.device,
             vertices: pose.positions,
@@ -1137,61 +1344,14 @@ export class GpuSnowPipelineRunner {
         });
     }
 
-    updateAnimatedColliderCollisionAtTimeS(timeS: number) {
-        if (this.animatedCollider === null) return;
-
-        const commandEncoder = this.device.createCommandEncoder({
-            label: "animated collider SDF creation command encoder",
+    advanceFixedSimulationFrame(callbacks: GpuFrameTimingCallbacks = {}) {
+        return this.advanceFixedSimulationSubsteps({
+            nSubsteps: this.selectedSimulationSubstepsPerMaxStep,
+            ...callbacks,
         });
-        this.addAnimatedColliderSdfCreationPass({
-            commandEncoder,
-            timeS,
-        });
-        this.device.queue.submit([commandEncoder.finish()]);
-    }
-
-    private addAnimatedColliderSdfCreationPass({
-        commandEncoder,
-        timeS,
-        timestampWrites,
-    }: {
-        commandEncoder: GPUCommandEncoder,
-        timeS: number,
-        timestampWrites?: GPUComputePassTimestampWrites,
-    }) {
-        if (!this.updateAnimatedColliderGpuSdfSourceAtTimeS(timeS)) return;
-
-        this.colliderSdfPipelineManager.addDispatch({
-            commandEncoder,
-            colliderManager: this.colliderManager,
-            timestampWrites,
-        });
-    }
-
-    private updateAnimatedColliderGpuSdfSourceAtTimeS(timeS: number) {
-        if (this.animatedCollider === null) return false;
-
-        const pose = this.animatedCollider.sampleAtTimeS(timeS);
-        const bounds = this.colliderManager.updateGeometryForGpuSdf({
-            device: this.device,
-            vertices: pose.positions,
-            normals: pose.normals,
-            indices: pose.indices,
-        });
-
-        this.colliderMinCoords = bounds.minCoords;
-        this.colliderMaxCoords = bounds.maxCoords;
-        this.uniformsManager.writeColliderMinCoords(bounds.minCoords);
-        this.uniformsManager.writeColliderMaxCoords(bounds.maxCoords);
-        this.writeColliderSdfMetadata(bounds.minCoords, bounds.maxCoords);
-        this.writeColliderWorldBounds(this.colliderTransformMat);
-        this.updateColliderVel([0, 0, 0]);
-
-        return true;
     }
 
     updateColliderTransformMat(transformMat: Mat4) {
-        this.colliderTransformMat = transformMat;
         const colliderTransformIsIdentity = mat4IsIdentity(transformMat);
         this.colliderTransformIsIdentity = colliderTransformIsIdentity;
         this.uniformsManager.writeColliderTransformMat(transformMat);
@@ -1224,16 +1384,16 @@ export class GpuSnowPipelineRunner {
         const valid = extent.every(dimension => Number.isFinite(dimension) && dimension > 1e-6);
         const gridScale: [number, number, number] = valid
             ? [
-                this.colliderSdfLastCoord / extent[0],
-                this.colliderSdfLastCoord / extent[1],
-                this.colliderSdfLastCoord / extent[2],
+                COLLIDER_SDF_LAST_COORD / extent[0],
+                COLLIDER_SDF_LAST_COORD / extent[1],
+                COLLIDER_SDF_LAST_COORD / extent[2],
             ]
             : [0, 0, 0];
         const cellSize: [number, number, number] = valid
             ? [
-                extent[0] / this.colliderSdfLastCoord,
-                extent[1] / this.colliderSdfLastCoord,
-                extent[2] / this.colliderSdfLastCoord,
+                extent[0] / COLLIDER_SDF_LAST_COORD,
+                extent[1] / COLLIDER_SDF_LAST_COORD,
+                extent[2] / COLLIDER_SDF_LAST_COORD,
             ]
             : [1, 1, 1];
         this.colliderSdfMaxCellSize = Math.max(...cellSize);
@@ -1392,16 +1552,12 @@ export class GpuSnowPipelineRunner {
         computePassEncoder.end();
     }
 
-    addRender(
-        commandEncoder: GPUCommandEncoder,
-        measureGpuTimestamps: boolean,
-        framePrerenderTimestampBaseIndex: number,
-    ) {
+    addRender(commandEncoder: GPUCommandEncoder, measureGpuTimestamps: boolean) {
         const renderMethod = this.renderMethod;
         if (renderMethod === null) return;
 
         this.uniformsManager.writeTime(Date.now());
-        this.performanceMeasurementManager?.setPrerenderTimestampBaseIndex(framePrerenderTimestampBaseIndex);
+        this.performanceMeasurementManager?.setPrerenderTimestampBaseIndex(this.renderUsesSsao ? 6 : 4);
 
         if (this.renderHasPrerenderPasses) {
             renderMethod.addPrerenderPasses(commandEncoder, this.depthTextureView);
@@ -1558,12 +1714,12 @@ export class GpuSnowPipelineRunner {
                 && !shouldSampleParticleSpeed;
             this.performanceMeasurementManager?.setEnabled(measureGpuTimestamps);
 
-            const {
-                colliderSdfTimestampBaseIndex,
-                frameRenderUsesSsao,
-                framePrerenderTimestampBaseIndex,
-                timestampQueryCount,
-            } = this.frameTimestampMetadata();
+            const frameRenderUsesSsao = this.renderUsesSsao;
+            const framePrerenderTimestampBaseIndex = frameRenderUsesSsao ? 6 : 4;
+            const framePrerenderPassCount = this.renderHasPrerenderPasses
+                ? (this.prerenderPasses?.length ?? 0)
+                : 0;
+            const timestampQueryCount = framePrerenderTimestampBaseIndex + 2 * framePrerenderPassCount;
 
             if (shouldSampleParticleSpeed) {
                 hasRequestedParticleSpeedSample = true;
@@ -1601,11 +1757,7 @@ export class GpuSnowPipelineRunner {
                 }
             }
 
-            this.addRender(
-                commandEncoder,
-                measureGpuTimestamps,
-                framePrerenderTimestampBaseIndex,
-            );
+            this.addRender(commandEncoder, measureGpuTimestamps);
 
             if (measureGpuTimestamps && this.performanceMeasurementManager !== null) {
                 this.performanceMeasurementManager.addResolve(commandEncoder, timestampQueryCount);
@@ -1624,9 +1776,6 @@ export class GpuSnowPipelineRunner {
 
             if (measureGpuTimestamps && this.performanceMeasurementManager !== null) {
                 this.performanceMeasurementManager.mapTime(timestamps => {
-                    const colliderSdfCreationNs = colliderSdfTimestampBaseIndex !== null
-                        ? timestamps[colliderSdfTimestampBaseIndex + 1] - timestamps[colliderSdfTimestampBaseIndex]
-                        : 0n;
                     const computeSimulationStepNs = timestamps[1] - timestamps[0];
                     const computeSimulationSubstepNs = nSubsteps > 0
                         ? computeSimulationStepNs / BigInt(nSubsteps)
@@ -1644,7 +1793,6 @@ export class GpuSnowPipelineRunner {
                     }
                     
                     onGpuTimeUpdate?.({
-                        colliderSdfCreationNs,
                         computeSimulationStepNs,
                         computeSimulationSubstepNs,
                         nSimulationSubsteps: nSubsteps,

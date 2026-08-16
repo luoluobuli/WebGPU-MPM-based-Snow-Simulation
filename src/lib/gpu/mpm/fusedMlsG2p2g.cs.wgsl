@@ -9,7 +9,16 @@ struct GridAccumulatorAtomic {
     momentum_z: atomic<i32>,
 }
 
+
+struct GridTransferAtomic {
+    momentum_x: atomic<i32>,
+    momentum_y: atomic<i32>,
+    momentum_z: atomic<i32>,
+    _pad: atomic<i32>,
+}
+
 @group(1) @binding(3) var<storage, read_write> grid_accumulator: array<GridAccumulatorAtomic>;
+@group(1) @binding(7) var<storage, read_write> grid_transfer_accumulator: array<GridTransferAtomic>;
 
 @group(2) @binding(0) var<storage, read_write> particle_data: array<ParticleData>;
 @group(2) @binding(1) var<storage, read_write> max_particle_speed_bits: atomic<u32>;
@@ -41,6 +50,7 @@ struct BukkitThreadGroupCountRead {
 
 @group(3) @binding(3) var<storage, read_write> next_grid_accumulator: array<GridAccumulatorAtomic>;
 @group(3) @binding(5) var<storage, read_write> bukkit_thread_data: array<BukkitThreadData>;
+@group(3) @binding(7) var<storage, read_write> next_grid_transfer_accumulator: array<GridTransferAtomic>;
 @group(3) @binding(6) var<storage, read_write> bukkit_particle_data: array<u32>;
 @group(3) @binding(9) var<storage, read_write> bukkit_thread_group_count: BukkitThreadGroupCountRead;
 
@@ -55,6 +65,7 @@ override GRID_BOUNDARY_HIGH_BLOCK_Y: i32 = 95i;
 override GRID_BOUNDARY_HIGH_BLOCK_Z: i32 = 95i;
 override RECORD_PARTICLE_SPEED: u32 = 0u;
 override PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE: u32 = 256u;
+const FUSED_MLS_FLIP_RATIO = 0.95;
 
 const GRID_BOUNDARY_WIDTH = 2i;
 const FUSED_BUKKIT_SIZE = 2u;
@@ -65,13 +76,22 @@ const FUSED_TILE_ACCUMULATOR_SIZE = FUSED_TILE_CELL_COUNT * 4u;
 const BUKKIT_DISPATCH_WIDTH = 256u;
 
 var<workgroup> tile_velocity: array<vec4f, FUSED_TILE_CELL_COUNT>;
+var<workgroup> tile_velocity_delta: array<vec4f, FUSED_TILE_CELL_COUNT>;
 var<workgroup> tile_accumulator: array<atomic<i32>, FUSED_TILE_ACCUMULATOR_SIZE>;
+var<workgroup> tile_transfer_accumulator: array<atomic<i32>, FUSED_TILE_ACCUMULATOR_SIZE>;
 var<workgroup> workgroup_local_grid_origin: vec3i;
 var<workgroup> workgroup_has_thread_data: bool;
 var<workgroup> workgroup_max_particle_speed_bits: array<u32, PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE>;
 
-struct FusedGatherResult {
+struct FusedTileVelocity {
     velocity: vec3f,
+    velocity_delta: vec3f,
+    has_mass: bool,
+}
+
+struct FusedGatherResult {
+    pic_velocity: vec3f,
+    velocity_delta: vec3f,
     deformation_displacement: mat3x3f,
     has_velocity_contribution: bool,
 }
@@ -179,22 +199,27 @@ fn clampVelocityToFixedPointRange(velocity: vec3f) -> vec3f {
     );
 }
 
-fn loadTileVelocity(cell_number: vec3i) -> vec3f {
+fn loadTileVelocity(cell_number: vec3i) -> FusedTileVelocity {
     if !cellNumberInSparseGridRange(cell_number) {
-        return vec3f(0.0);
+        return FusedTileVelocity(vec3f(0.0), vec3f(0.0), false);
     }
 
     let cell_index = calculateCellIndexFromCellNumber(cell_number);
     if cell_index == GRID_BLOCK_INDEX_EMPTY {
-        return vec3f(0.0);
+        return FusedTileVelocity(vec3f(0.0), vec3f(0.0), false);
     }
 
     let cell_mass_fixed_i32 = atomicLoad(&grid_accumulator[cell_index].mass);
     if cell_mass_fixed_i32 <= 0i {
-        return vec3f(0.0);
+        return FusedTileVelocity(vec3f(0.0), vec3f(0.0), false);
     }
 
     let inv_cell_mass_fixed = 1.0 / f32(cell_mass_fixed_i32);
+    let pre_force_velocity = vec3f(vec3i(
+        atomicLoad(&grid_transfer_accumulator[cell_index].momentum_x),
+        atomicLoad(&grid_transfer_accumulator[cell_index].momentum_y),
+        atomicLoad(&grid_transfer_accumulator[cell_index].momentum_z),
+    )) * inv_cell_mass_fixed;
     var cell_velocity = vec3f(vec3i(
         atomicLoad(&grid_accumulator[cell_index].momentum_x),
         atomicLoad(&grid_accumulator[cell_index].momentum_y),
@@ -222,7 +247,20 @@ fn loadTileVelocity(cell_number: vec3i) -> vec3f {
         );
     }
 
-    return clampVelocityToFixedPointRange(cell_velocity);
+    let world_position = uniforms.gridMinCoords
+        + cellCenterGridCoord(cell_number) * uniforms.gridCellDims;
+    cell_velocity = projectVelocityAgainstKinematicCollider(
+        world_position,
+        cell_velocity,
+    );
+    let post_force_velocity =
+        clampVelocityToFixedPointRange(cell_velocity);
+
+    return FusedTileVelocity(
+        post_force_velocity,
+        post_force_velocity - pre_force_velocity,
+        true,
+    );
 }
 
 fn velocityFromTile(cell_number: vec3i, local_grid_origin: vec3i) -> vec3f {
@@ -232,6 +270,41 @@ fn velocityFromTile(cell_number: vec3i, local_grid_origin: vec3i) -> vec3f {
     }
 
     return tile_velocity[tileIndexFromOffset(tile_offset)].xyz;
+}
+
+fn velocityDeltaFromTile(
+    cell_number: vec3i,
+    local_grid_origin: vec3i,
+) -> vec3f {
+    let tile_offset = cell_number - local_grid_origin;
+    if !tileOffsetIsInRange(tile_offset) {
+        return vec3f(0.0);
+    }
+
+    return tile_velocity_delta[tileIndexFromOffset(tile_offset)].xyz;
+}
+
+fn tileCellHasMass(
+    cell_number: vec3i,
+    local_grid_origin: vec3i,
+) -> bool {
+    let tile_offset = cell_number - local_grid_origin;
+    if !tileOffsetIsInRange(tile_offset) {
+        return false;
+    }
+
+    return tile_velocity[tileIndexFromOffset(tile_offset)].w > 0.0;
+}
+
+fn blendFusedMlsParticleVelocity(
+    particle_velocity: vec3f,
+    pic_velocity: vec3f,
+    weighted_grid_velocity_delta: vec3f,
+) -> vec3f {
+    let flip_velocity =
+        particle_velocity + weighted_grid_velocity_delta;
+    return FUSED_MLS_FLIP_RATIO * flip_velocity
+        + (1.0 - FUSED_MLS_FLIP_RATIO) * pic_velocity;
 }
 
 fn retrieveBlockIndexFromNextGrid(block_number: vec3i, target_generation: u32) -> u32 {
@@ -304,6 +377,7 @@ fn allocateBlockInNextGridAndGetIndex(block_number: vec3i) -> u32 {
 fn accumulateFixedUnitsToNextGridCell(
     cell_number: vec3i,
     momentum_i: vec3i,
+    transfer_momentum_i: vec3i,
     mass_i: i32,
 ) {
     if !cellNumberInSparseGridRange(cell_number) { return; }
@@ -318,17 +392,24 @@ fn accumulateFixedUnitsToNextGridCell(
     atomicAdd(&next_grid_accumulator[cell_index].momentum_x, momentum_i.x);
     atomicAdd(&next_grid_accumulator[cell_index].momentum_y, momentum_i.y);
     atomicAdd(&next_grid_accumulator[cell_index].momentum_z, momentum_i.z);
+    atomicAdd(&next_grid_transfer_accumulator[cell_index].momentum_x, transfer_momentum_i.x);
+    atomicAdd(&next_grid_transfer_accumulator[cell_index].momentum_y, transfer_momentum_i.y);
+    atomicAdd(&next_grid_transfer_accumulator[cell_index].momentum_z, transfer_momentum_i.z);
 }
 
 fn accumulateFixedUnitsToTileOrNextGrid(
     cell_number: vec3i,
     local_grid_origin: vec3i,
     momentum_fixed_units: vec3f,
+    transfer_momentum_fixed_units: vec3f,
     mass_fixed_units: f32,
 ) {
     let momentum_i = vec3i(momentum_fixed_units);
+    let transfer_momentum_i = vec3i(transfer_momentum_fixed_units);
     let mass_i = i32(mass_fixed_units);
-    if mass_i == 0i && all(momentum_i == vec3i(0)) {
+    if mass_i == 0i
+        && all(momentum_i == vec3i(0))
+        && all(transfer_momentum_i == vec3i(0)) {
         return;
     }
 
@@ -339,10 +420,18 @@ fn accumulateFixedUnitsToTileOrNextGrid(
         atomicAdd(&tile_accumulator[base_index + 1u], momentum_i.x);
         atomicAdd(&tile_accumulator[base_index + 2u], momentum_i.y);
         atomicAdd(&tile_accumulator[base_index + 3u], momentum_i.z);
+        atomicAdd(&tile_transfer_accumulator[base_index], transfer_momentum_i.x);
+        atomicAdd(&tile_transfer_accumulator[base_index + 1u], transfer_momentum_i.y);
+        atomicAdd(&tile_transfer_accumulator[base_index + 2u], transfer_momentum_i.z);
         return;
     }
 
-    accumulateFixedUnitsToNextGridCell(cell_number, momentum_i, mass_i);
+    accumulateFixedUnitsToNextGridCell(
+        cell_number,
+        momentum_i,
+        transfer_momentum_i,
+        mass_i,
+    );
 }
 
 fn clampMomentumFixedUnitsForAtomic(value: vec3f, max_component: f32) -> vec3f {
@@ -352,7 +441,12 @@ fn clampMomentumFixedUnitsForAtomic(value: vec3f, max_component: f32) -> vec3f {
 fn gatherMlsFromTile(particle_pos: vec3f, local_grid_origin: vec3i) -> FusedGatherResult {
     let particle_grid_coord = calculateGridCoordinate(particle_pos);
     if !gridCoordinateCanTouchGrid(particle_grid_coord) {
-        return FusedGatherResult(vec3f(0.0), mat3x3f(), false);
+        return FusedGatherResult(
+            vec3f(0.0),
+            vec3f(0.0),
+            mat3x3f(),
+            false,
+        );
     }
 
     let start_cell_number = vec3i(floor(particle_grid_coord));
@@ -365,7 +459,8 @@ fn gatherMlsFromTile(particle_pos: vec3f, local_grid_origin: vec3i) -> FusedGath
     let stencil_offset_y = vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.y);
     let stencil_offset_z = vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.z);
 
-    var new_particle_velocity = vec3f(0.0);
+    var pic_particle_velocity = vec3f(0.0);
+    var weighted_grid_velocity_delta = vec3f(0.0);
     var b_matrix = mat3x3f();
     var has_velocity_contribution = false;
 
@@ -382,16 +477,28 @@ fn gatherMlsFromTile(particle_pos: vec3f, local_grid_origin: vec3i) -> FusedGath
             for (var offset_x = -1i; offset_x <= 1i; offset_x = offset_x + 1i) {
                 let x_index = u32(offset_x + 1i);
                 let cell_weight = stencil_weight_x[x_index] * wy_wz;
+                let cell_number =
+                    vec3i(start_cell_number.x + offset_x, cell_y, cell_z);
+                if !tileCellHasMass(cell_number, local_grid_origin) {
+                    continue;
+                }
                 let cell_velocity = velocityFromTile(
-                    vec3i(start_cell_number.x + offset_x, cell_y, cell_z),
+                    cell_number,
                     local_grid_origin,
                 );
-                if all(cell_velocity == vec3f(0.0)) { continue; }
+                let cell_velocity_delta = velocityDeltaFromTile(
+                    cell_number,
+                    local_grid_origin,
+                );
                 has_velocity_contribution = true;
 
                 let weighted_cell_velocity = cell_weight * cell_velocity;
-                new_particle_velocity += weighted_cell_velocity;
+                pic_particle_velocity += weighted_cell_velocity;
+                weighted_grid_velocity_delta +=
+                    cell_weight * cell_velocity_delta;
 
+                // The FLIP blend changes only translational velocity. APIC B
+                // and deformation continue to follow post-force grid motion.
                 b_matrix += mat3x3f(
                     weighted_cell_velocity * stencil_offset_x[x_index],
                     weighted_cell_velocity * stencil_offset_y_value,
@@ -401,8 +508,8 @@ fn gatherMlsFromTile(particle_pos: vec3f, local_grid_origin: vec3i) -> FusedGath
         }
     }
 
-    let clamped_velocity = clampVec3LengthWithMaxSquared(
-        new_particle_velocity,
+    let clamped_pic_velocity = clampVec3LengthWithMaxSquared(
+        pic_particle_velocity,
         maxFixedPointGridSpeed(),
         maxFixedPointGridSpeedSquared(),
     );
@@ -414,7 +521,12 @@ fn gatherMlsFromTile(particle_pos: vec3f, local_grid_origin: vec3i) -> FusedGath
         ));
     }
 
-    return FusedGatherResult(clamped_velocity, deformation_displacement, has_velocity_contribution);
+    return FusedGatherResult(
+        clamped_pic_velocity,
+        weighted_grid_velocity_delta,
+        deformation_displacement,
+        has_velocity_contribution,
+    );
 }
 
 fn applySimulationDomainBoundary(
@@ -480,9 +592,30 @@ fn integrateFusedParticle(
         uniforms.maxStableParticleSpeed,
         uniforms.maxStableParticleSpeedSquared,
     );
+    (*particle).vel = projectVelocityAgainstKinematicCollider(
+        (*particle).pos,
+        (*particle).vel,
+    );
 
+    let pre_advection_position = (*particle).pos;
     (*particle).pos_displacement = (*particle).vel * uniforms.simulationTimestep;
     (*particle).pos += (*particle).pos_displacement;
+    // Disney applies particle collision before advection. This optional
+    // Taichi-style cleanup recovers residual penetration and projects the
+    // velocity against that same final contact before the next P2G scatter.
+    let final_contact_sample = sampleKinematicColliderUnion(
+        (*particle).pos,
+    );
+    if final_contact_sample.signedDistance <= 0.0 {
+        (*particle).pos -= final_contact_sample.signedDistance
+            * final_contact_sample.normal;
+    }
+    (*particle).vel = projectVelocityAgainstKinematicColliderSample(
+        final_contact_sample,
+        (*particle).vel,
+    );
+    (*particle).pos_displacement =
+        (*particle).pos - pre_advection_position;
 
     let deformation_matrices_changed = ((*flags) & PARTICLE_FLAG_DEFORMATION_DELTA_VALID) != 0u;
     var deformation_delta_remains_valid = deformation_matrices_changed;
@@ -580,6 +713,7 @@ fn scatterMlsParticleToGrid(
                         vec3i(start_cell_number.x + offset_x, cell_y, cell_z),
                         local_grid_origin,
                         cell_weight * particle_momentum_fixed_units,
+                        cell_weight * particle_momentum_fixed_units,
                         cell_weight * particle_mass_fixed_units,
                     );
                 }
@@ -608,7 +742,8 @@ fn scatterMlsParticleToGrid(
     }
 
     let affine_velocity = deformation_displacement;
-    var mls_affine_fixed_units = particle_mass_fixed_units * affine_velocity;
+    let transfer_affine_fixed_units = particle_mass_fixed_units * affine_velocity;
+    var mls_affine_fixed_units = transfer_affine_fixed_units;
     let grid_cell_dims = uniforms.gridCellDims;
     let stencil_offset_x = (vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.x)) * grid_cell_dims.x;
     let stencil_offset_y = (vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.y)) * grid_cell_dims.y;
@@ -626,11 +761,15 @@ fn scatterMlsParticleToGrid(
         let z_index = u32(offset_z + 1i);
         let wz = stencil_weight_z[z_index];
         let mls_affine_z_contribution = mls_affine_fixed_units[2] * stencil_offset_z[z_index];
+        let transfer_affine_z_contribution =
+            transfer_affine_fixed_units[2] * stencil_offset_z[z_index];
         for (var offset_y = -1i; offset_y <= 1i; offset_y = offset_y + 1i) {
             let cell_y = start_cell_number.y + offset_y;
             let y_index = u32(offset_y + 1i);
             let wy_wz = stencil_weight_y[y_index] * wz;
             let mls_affine_y_contribution = mls_affine_fixed_units[1] * stencil_offset_y[y_index];
+            let transfer_affine_y_contribution =
+                transfer_affine_fixed_units[1] * stencil_offset_y[y_index];
             for (var offset_x = -1i; offset_x <= 1i; offset_x = offset_x + 1i) {
                 let x_index = u32(offset_x + 1i);
                 let cell_weight = stencil_weight_x[x_index] * wy_wz;
@@ -642,11 +781,23 @@ fn scatterMlsParticleToGrid(
                     cell_weight * (particle_momentum_fixed_units + affine_offset_fixed_units),
                     max_particle_momentum_fixed_units,
                 );
+                let transfer_affine_offset_fixed_units =
+                    transfer_affine_fixed_units[0] * stencil_offset_x[x_index]
+                    + transfer_affine_y_contribution
+                    + transfer_affine_z_contribution;
+                let transfer_momentum_fixed_units = clampMomentumFixedUnitsForAtomic(
+                    cell_weight * (
+                        particle_momentum_fixed_units
+                        + transfer_affine_offset_fixed_units
+                    ),
+                    max_particle_momentum_fixed_units,
+                );
 
                 accumulateFixedUnitsToTileOrNextGrid(
                     vec3i(start_cell_number.x + offset_x, cell_y, cell_z),
                     local_grid_origin,
                     momentum_fixed_units,
+                    transfer_momentum_fixed_units,
                     weighted_mass_fixed_units,
                 );
             }
@@ -662,12 +813,24 @@ fn flushTileCellToNextGrid(tile_index: u32, local_grid_origin: vec3i) {
         atomicLoad(&tile_accumulator[base_index + 2u]),
         atomicLoad(&tile_accumulator[base_index + 3u]),
     );
-    if mass_i == 0i && all(momentum_i == vec3i(0)) {
+    let transfer_momentum_i = vec3i(
+        atomicLoad(&tile_transfer_accumulator[base_index]),
+        atomicLoad(&tile_transfer_accumulator[base_index + 1u]),
+        atomicLoad(&tile_transfer_accumulator[base_index + 2u]),
+    );
+    if mass_i == 0i
+        && all(momentum_i == vec3i(0))
+        && all(transfer_momentum_i == vec3i(0)) {
         return;
     }
 
     let cell_number = local_grid_origin + tileOffsetFromIndex(tile_index);
-    accumulateFixedUnitsToNextGridCell(cell_number, momentum_i, mass_i);
+    accumulateFixedUnitsToNextGridCell(
+        cell_number,
+        momentum_i,
+        transfer_momentum_i,
+        mass_i,
+    );
 }
 
 fn recordWorkgroupMaxParticleSpeed(local_index: u32, speed_squared: f32) {
@@ -722,12 +885,21 @@ fn doFusedMlsG2p2g(
     let local_grid_origin = workgroup_local_grid_origin;
 
     for (var tile_index = local_index; tile_index < FUSED_TILE_CELL_COUNT; tile_index = tile_index + PARTICLE_WORKGROUP_SIZE) {
-        var cell_velocity = vec3f(0.0);
+        var cell_velocity = FusedTileVelocity(
+            vec3f(0.0),
+            vec3f(0.0),
+            false,
+        );
         if workgroup_has_thread_data {
             let cell_number = local_grid_origin + tileOffsetFromIndex(tile_index);
             cell_velocity = loadTileVelocity(cell_number);
         }
-        tile_velocity[tile_index] = vec4f(cell_velocity, 0.0);
+        tile_velocity[tile_index] = vec4f(
+            cell_velocity.velocity,
+            select(0.0, 1.0, cell_velocity.has_mass),
+        );
+        tile_velocity_delta[tile_index] =
+            vec4f(cell_velocity.velocity_delta, 0.0);
     }
 
     workgroupBarrier();
@@ -744,7 +916,11 @@ fn doFusedMlsG2p2g(
 
                 let gather_result = gatherMlsFromTile(particle.pos, local_grid_origin);
                 if gather_result.has_velocity_contribution {
-                    particle.vel = gather_result.velocity;
+                    particle.vel = blendFusedMlsParticleVelocity(
+                        particle.vel,
+                        gather_result.pic_velocity,
+                        gather_result.velocity_delta,
+                    );
                     if mat3x3IsZero(gather_result.deformation_displacement) {
                         flags = flags & ~PARTICLE_FLAG_DEFORMATION_DELTA_VALID;
                     } else {

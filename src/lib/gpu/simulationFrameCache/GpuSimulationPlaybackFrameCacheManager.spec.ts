@@ -18,6 +18,12 @@ describe("GpuSimulationPlaybackFrameCacheManager", () => {
         expect(shaderSrc).toContain("material: u32");
     });
 
+    it("round-trips the three-bit crust material id", () => {
+        expect(shaderSrc).toContain("PARTICLE_MATERIAL_MASK = 7u << PARTICLE_MATERIAL_SHIFT");
+        expect(shaderSrc).toContain("PARTICLE_MATERIAL_CRUST = 4u");
+        expect(shaderSrc).toContain("return (material & 7u) << PARTICLE_MATERIAL_SHIFT;");
+    });
+
     it("marks restored particles as cached identity-determinant frames", () => {
         expect(shaderSrc).toContain("PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u");
         expect(shaderSrc).toContain("| PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS");

@@ -26,8 +26,16 @@ describe("mpmOps material damping", () => {
 
     it("keeps spawn material values as direct material ids", () => {
         expect(mpmOpsSrc).toContain("fn particleFlagsFromSpawnPoint");
-        expect(mpmOpsSrc).toContain("return u32(clamp(round(encodedMaterial), 0.0, 3.0));");
+        expect(mpmOpsSrc).toContain("PARTICLE_MATERIAL_MASK = 7u << PARTICLE_MATERIAL_SHIFT");
+        expect(mpmOpsSrc).toContain("PARTICLE_MATERIAL_CRUST = 4u");
+        expect(mpmOpsSrc).toContain("return (material & 7u) << PARTICLE_MATERIAL_SHIFT;");
+        expect(mpmOpsSrc).toContain("return u32(clamp(round(encodedMaterial), 0.0, 4.0));");
         expect(mpmOpsSrc).toContain("return materialFlagFromId(material);");
+    });
+
+    it("gives the crust its own domain-boundary friction", () => {
+        expect(mpmOpsSrc).toContain("if material == PARTICLE_MATERIAL_CRUST");
+        expect(mpmOpsSrc).toContain("return 0.72");
     });
 
     it("lets cached playback frames bypass deformation determinants", () => {

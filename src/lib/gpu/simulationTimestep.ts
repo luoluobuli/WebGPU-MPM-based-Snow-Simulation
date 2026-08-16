@@ -15,6 +15,7 @@ export type ElasticMaterial = {
     shearResistance: number,
     volumetricResistance: number,
     density: number,
+    maxHardeningScale?: number,
 };
 
 const MPM_YOUNGS_MODULUS_PA = 1.4e5;
@@ -28,33 +29,47 @@ const MPM_PARTICLE_MATERIAL_DEFAULT = 0;
 const MPM_PARTICLE_MATERIAL_SOIL = 1;
 const MPM_PARTICLE_MATERIAL_BARK = 2;
 const MPM_PARTICLE_MATERIAL_LEAF = 3;
+const MPM_PARTICLE_MATERIAL_CRUST = 4;
 const MPM_SOIL_SHEAR_RESISTANCE_SCALE = 0.1;
 const MPM_SOIL_VOLUME_RESISTANCE_SCALE = 0.14;
 const MPM_BARK_SHEAR_RESISTANCE_SCALE = 6.0;
 const MPM_BARK_VOLUME_RESISTANCE_SCALE = 8.0;
 const MPM_LEAF_SHEAR_RESISTANCE_SCALE = 0.14;
 const MPM_LEAF_VOLUME_RESISTANCE_SCALE = 0.18;
+const MPM_CRUST_STIFFNESS_SCALE = 1.5;
+export const MPM_MAX_HARDENING_SCALE = 10;
+
 
 export const MPM_ELASTIC_MATERIALS: ElasticMaterial[] = [
     {
         shearResistance: MPM_SHEAR_RESISTANCE,
         volumetricResistance: MPM_VOLUME_RESISTANCE,
         density: MPM_PARTICLE_DENSITY,
+        maxHardeningScale: MPM_MAX_HARDENING_SCALE,
     },
     {
         shearResistance: MPM_SHEAR_RESISTANCE * MPM_SOIL_SHEAR_RESISTANCE_SCALE,
         volumetricResistance: MPM_VOLUME_RESISTANCE * MPM_SOIL_VOLUME_RESISTANCE_SCALE,
         density: MPM_PARTICLE_DENSITY,
+        maxHardeningScale: MPM_MAX_HARDENING_SCALE,
     },
     {
         shearResistance: MPM_SHEAR_RESISTANCE * MPM_BARK_SHEAR_RESISTANCE_SCALE,
         volumetricResistance: MPM_VOLUME_RESISTANCE * MPM_BARK_VOLUME_RESISTANCE_SCALE,
         density: MPM_PARTICLE_DENSITY,
+        maxHardeningScale: 1,
     },
     {
         shearResistance: MPM_SHEAR_RESISTANCE * MPM_LEAF_SHEAR_RESISTANCE_SCALE,
         volumetricResistance: MPM_VOLUME_RESISTANCE * MPM_LEAF_VOLUME_RESISTANCE_SCALE,
         density: MPM_PARTICLE_DENSITY,
+        maxHardeningScale: 1,
+    },
+    {
+        shearResistance: MPM_SHEAR_RESISTANCE * MPM_CRUST_STIFFNESS_SCALE,
+        volumetricResistance: MPM_VOLUME_RESISTANCE * MPM_CRUST_STIFFNESS_SCALE,
+        density: MPM_PARTICLE_DENSITY,
+        maxHardeningScale: MPM_MAX_HARDENING_SCALE,
     },
 ];
 
@@ -62,19 +77,26 @@ export const calculateElasticWaveSpeed = ({
     shearResistance,
     volumetricResistance,
     density,
+    maxHardeningScale = 1,
 }: ElasticMaterial) => {
     if (
         !Number.isFinite(shearResistance)
         || !Number.isFinite(volumetricResistance)
         || !Number.isFinite(density)
+        || !Number.isFinite(maxHardeningScale)
         || shearResistance < 0
         || volumetricResistance < 0
         || density <= 0
+        || maxHardeningScale <= 0
     ) {
         return 0;
     }
 
-    return Math.sqrt((volumetricResistance + 2 * shearResistance) / density);
+    return Math.sqrt(
+        maxHardeningScale
+        * (volumetricResistance + 2 * shearResistance)
+        / density,
+    );
 };
 
 export const calculateMaxElasticWaveSpeed = (materials: ElasticMaterial[]) => {
@@ -94,7 +116,7 @@ export const particleMaterialFromSpawnValue = (encodedMaterial: number) => {
     return Math.max(
         MPM_PARTICLE_MATERIAL_DEFAULT,
         Math.min(
-            MPM_PARTICLE_MATERIAL_LEAF,
+            MPM_PARTICLE_MATERIAL_CRUST,
             Math.round(encodedMaterial),
         ),
     );
