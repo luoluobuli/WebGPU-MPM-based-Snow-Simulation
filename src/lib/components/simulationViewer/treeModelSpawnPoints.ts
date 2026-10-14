@@ -9,7 +9,7 @@ import {
 import {
     buildProceduralGround,
     DEFAULT_GROUND_BASE_Z,
-} from "./proceduralForest";
+} from "./proceduralGround";
 
 export type Vec3 = [number, number, number];
 

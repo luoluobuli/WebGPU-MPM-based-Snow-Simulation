@@ -17,7 +17,6 @@ import {
     defaultSimulationScene,
     type SimulationSceneConfig,
 } from "./SimulationScene";
-import { buildProceduralForest } from "./proceduralForest";
 import { loadTreeModelSpawnPoints } from "./loadTreeModel";
 import {
     buildZubeiaGround,
@@ -159,21 +158,6 @@ const loadSpawnSource = async (
                     points: tree.spawnPoints,
                 },
                 particleAppearances: tree.particleAppearances,
-            };
-        }
-
-        case "proceduralForest": {
-            const forest = buildProceduralForest({
-                nParticles,
-                seed: scene.spawnSource.seed,
-            });
-
-            return {
-                spawnSource: {
-                    type: "points",
-                    points: forest.spawnPoints,
-                },
-                particleAppearances: forest.particleAppearances,
             };
         }
 

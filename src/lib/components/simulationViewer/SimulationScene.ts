@@ -23,10 +23,6 @@ export type SimulationSpawnSource =
         url: string,
     }
     | {
-        type: "proceduralForest",
-        seed?: number,
-    }
-    | {
         type: "zubeiaGround",
         profile: ZubeiaGroundProfile,
     };
