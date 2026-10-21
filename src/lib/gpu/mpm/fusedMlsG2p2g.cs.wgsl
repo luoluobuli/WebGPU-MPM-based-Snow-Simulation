@@ -451,58 +451,36 @@ fn gatherMlsFromTile(particle_pos: vec3f, local_grid_origin: vec3i) -> FusedGath
 
     let start_cell_number = vec3i(floor(particle_grid_coord));
     let cell_frac_pos = particle_grid_coord - vec3f(start_cell_number);
-    let cell_weights = calculateQuadraticBSplineCellWeightVectors(cell_frac_pos);
-    let stencil_weight_x = cell_weights.x;
-    let stencil_weight_y = cell_weights.y;
-    let stencil_weight_z = cell_weights.z;
-    let stencil_offset_x = vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.x);
-    let stencil_offset_y = vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.y);
-    let stencil_offset_z = vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.z);
+    let cell_weights = calculateQuadraticBSplineCellWeights(cell_frac_pos);
 
     var pic_particle_velocity = vec3f(0.0);
     var weighted_grid_velocity_delta = vec3f(0.0);
     var b_matrix = mat3x3f();
     var has_velocity_contribution = false;
 
-    for (var offset_z = -1i; offset_z <= 1i; offset_z = offset_z + 1i) {
-        let cell_z = start_cell_number.z + offset_z;
-        let z_index = u32(offset_z + 1i);
-        let wz = stencil_weight_z[z_index];
-        let stencil_offset_z_value = stencil_offset_z[z_index];
-        for (var offset_y = -1i; offset_y <= 1i; offset_y = offset_y + 1i) {
-            let cell_y = start_cell_number.y + offset_y;
-            let y_index = u32(offset_y + 1i);
-            let wy_wz = stencil_weight_y[y_index] * wz;
-            let stencil_offset_y_value = stencil_offset_y[y_index];
-            for (var offset_x = -1i; offset_x <= 1i; offset_x = offset_x + 1i) {
-                let x_index = u32(offset_x + 1i);
-                let cell_weight = stencil_weight_x[x_index] * wy_wz;
-                let cell_number =
-                    vec3i(start_cell_number.x + offset_x, cell_y, cell_z);
-                if !tileCellHasMass(cell_number, local_grid_origin) {
-                    continue;
-                }
-                let cell_velocity = velocityFromTile(
-                    cell_number,
-                    local_grid_origin,
-                );
-                let cell_velocity_delta = velocityDeltaFromTile(
-                    cell_number,
-                    local_grid_origin,
-                );
+    for (var z = 0u; z < 3u; z++) {
+        for (var y = 0u; y < 3u; y++) {
+            for (var x = 0u; x < 3u; x++) {
+                let cell_offset = vec3i(vec3u(x, y, z)) - vec3i(1);
+                let cell_number = start_cell_number + cell_offset;
+                if !tileCellHasMass(cell_number, local_grid_origin) { continue; }
+
+                let cell_velocity = velocityFromTile(cell_number, local_grid_origin);
+                let cell_velocity_delta = velocityDeltaFromTile(cell_number, local_grid_origin);
                 has_velocity_contribution = true;
 
+                let cell_weight = cell_weights[x].x * (cell_weights[y].y * cell_weights[z].z);
                 let weighted_cell_velocity = cell_weight * cell_velocity;
                 pic_particle_velocity += weighted_cell_velocity;
-                weighted_grid_velocity_delta +=
-                    cell_weight * cell_velocity_delta;
+                weighted_grid_velocity_delta += cell_weight * cell_velocity_delta;
 
                 // The FLIP blend changes only translational velocity. APIC B
                 // and deformation continue to follow post-force grid motion.
+                let cell_particle_offset = vec3f(cell_offset) + vec3f(0.5) - cell_frac_pos;
                 b_matrix += mat3x3f(
-                    weighted_cell_velocity * stencil_offset_x[x_index],
-                    weighted_cell_velocity * stencil_offset_y_value,
-                    weighted_cell_velocity * stencil_offset_z_value,
+                    weighted_cell_velocity * cell_particle_offset.x,
+                    weighted_cell_velocity * cell_particle_offset.y,
+                    weighted_cell_velocity * cell_particle_offset.z,
                 );
             }
         }
@@ -686,41 +664,14 @@ fn scatterMlsParticleToGrid(
 
     let start_cell_number = vec3i(floor(particle_grid_coord));
     let cell_frac_pos = particle_grid_coord - vec3f(start_cell_number);
-    let cell_weights = calculateQuadraticBSplineCellWeightVectors(cell_frac_pos);
-    let stencil_weight_x = cell_weights.x;
-    let stencil_weight_y = cell_weights.y;
-    let stencil_weight_z = cell_weights.z;
+    let cell_weights = calculateQuadraticBSplineCellWeights(cell_frac_pos);
     let particle_mass_fixed_units = (*particle).mass * FIXED_POINT_SCALE;
     let particle_momentum_fixed_units = particle_mass_fixed_units * (*particle).vel;
     let max_particle_momentum_fixed_units = particle_mass_fixed_units * maxFixedPointGridSpeed();
     let has_deformation_delta = (flags & PARTICLE_FLAG_DEFORMATION_DELTA_VALID) != 0u;
     let elastic_is_identity = (flags & PARTICLE_FLAG_ELASTIC_NON_IDENTITY) == 0u;
+    let simple_transfer = elastic_is_identity && !has_deformation_delta;
     let material = particleMaterial(flags);
-
-    if elastic_is_identity && !has_deformation_delta {
-        for (var offset_z = -1i; offset_z <= 1i; offset_z = offset_z + 1i) {
-            let cell_z = start_cell_number.z + offset_z;
-            let z_index = u32(offset_z + 1i);
-            let wz = stencil_weight_z[z_index];
-            for (var offset_y = -1i; offset_y <= 1i; offset_y = offset_y + 1i) {
-                let cell_y = start_cell_number.y + offset_y;
-                let y_index = u32(offset_y + 1i);
-                let wy_wz = stencil_weight_y[y_index] * wz;
-                for (var offset_x = -1i; offset_x <= 1i; offset_x = offset_x + 1i) {
-                    let x_index = u32(offset_x + 1i);
-                    let cell_weight = stencil_weight_x[x_index] * wy_wz;
-                    accumulateFixedUnitsToTileOrNextGrid(
-                        vec3i(start_cell_number.x + offset_x, cell_y, cell_z),
-                        local_grid_origin,
-                        cell_weight * particle_momentum_fixed_units,
-                        cell_weight * particle_momentum_fixed_units,
-                        cell_weight * particle_mass_fixed_units,
-                    );
-                }
-            }
-        }
-        return;
-    }
 
     var deformation_displacement = mat3x3f();
     if has_deformation_delta {
@@ -732,7 +683,12 @@ fn scatterMlsParticleToGrid(
         var shear_resistance = SHEAR_RESISTANCE;
         var volumetric_resistance = VOLUME_RESISTANCE;
         applyMaterialLameParameters(material, &shear_resistance, &volumetric_resistance);
-        hardenLameParameters(material, (*particle).deformationPlastic, &shear_resistance, &volumetric_resistance);
+        hardenLameParameters(
+            material,
+            (*particle).deformationPlastic,
+            &shear_resistance,
+            &volumetric_resistance,
+        );
         let stress = calculateStressFirstPiolaKirchhoffNonIdentity(
             (*particle).deformationElastic,
             shear_resistance,
@@ -741,64 +697,50 @@ fn scatterMlsParticleToGrid(
         stress_force_matrix = stress * transpose((*particle).deformationElastic);
     }
 
-    let affine_velocity = deformation_displacement;
-    let transfer_affine_fixed_units = particle_mass_fixed_units * affine_velocity;
+    let transfer_affine_fixed_units = particle_mass_fixed_units * deformation_displacement;
     var mls_affine_fixed_units = transfer_affine_fixed_units;
-    let grid_cell_dims = uniforms.gridCellDims;
-    let stencil_offset_x = (vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.x)) * grid_cell_dims.x;
-    let stencil_offset_y = (vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.y)) * grid_cell_dims.y;
-    let stencil_offset_z = (vec3f(-0.5, 0.5, 1.5) - vec3f(cell_frac_pos.z)) * grid_cell_dims.z;
     if !elastic_is_identity {
-        let mls_stress_affine_fixed_units = scaleMatrixColumns(
+        mls_affine_fixed_units += scaleMatrixColumns(
             (*particle).mass * stress_force_matrix,
             uniforms.mlsStressAffineScale,
         );
-        mls_affine_fixed_units = mls_affine_fixed_units + mls_stress_affine_fixed_units;
     }
 
-    for (var offset_z = -1i; offset_z <= 1i; offset_z = offset_z + 1i) {
-        let cell_z = start_cell_number.z + offset_z;
-        let z_index = u32(offset_z + 1i);
-        let wz = stencil_weight_z[z_index];
-        let mls_affine_z_contribution = mls_affine_fixed_units[2] * stencil_offset_z[z_index];
-        let transfer_affine_z_contribution =
-            transfer_affine_fixed_units[2] * stencil_offset_z[z_index];
-        for (var offset_y = -1i; offset_y <= 1i; offset_y = offset_y + 1i) {
-            let cell_y = start_cell_number.y + offset_y;
-            let y_index = u32(offset_y + 1i);
-            let wy_wz = stencil_weight_y[y_index] * wz;
-            let mls_affine_y_contribution = mls_affine_fixed_units[1] * stencil_offset_y[y_index];
-            let transfer_affine_y_contribution =
-                transfer_affine_fixed_units[1] * stencil_offset_y[y_index];
-            for (var offset_x = -1i; offset_x <= 1i; offset_x = offset_x + 1i) {
-                let x_index = u32(offset_x + 1i);
-                let cell_weight = stencil_weight_x[x_index] * wy_wz;
-                let weighted_mass_fixed_units = cell_weight * particle_mass_fixed_units;
-                let affine_offset_fixed_units = mls_affine_fixed_units[0] * stencil_offset_x[x_index]
-                    + mls_affine_y_contribution
-                    + mls_affine_z_contribution;
-                let momentum_fixed_units = clampMomentumFixedUnitsForAtomic(
-                    cell_weight * (particle_momentum_fixed_units + affine_offset_fixed_units),
-                    max_particle_momentum_fixed_units,
-                );
-                let transfer_affine_offset_fixed_units =
-                    transfer_affine_fixed_units[0] * stencil_offset_x[x_index]
-                    + transfer_affine_y_contribution
-                    + transfer_affine_z_contribution;
-                let transfer_momentum_fixed_units = clampMomentumFixedUnitsForAtomic(
-                    cell_weight * (
-                        particle_momentum_fixed_units
-                        + transfer_affine_offset_fixed_units
-                    ),
-                    max_particle_momentum_fixed_units,
-                );
+    for (var z = 0u; z < 3u; z++) {
+        for (var y = 0u; y < 3u; y++) {
+            for (var x = 0u; x < 3u; x++) {
+                let cell_offset = vec3i(vec3u(x, y, z)) - vec3i(1);
+                let cell_number = start_cell_number + cell_offset;
+                let cell_weight = cell_weights[x].x * (cell_weights[y].y * cell_weights[z].z);
+                var momentum_fixed_units = cell_weight * particle_momentum_fixed_units;
+                var transfer_momentum_fixed_units = momentum_fixed_units;
+
+                if !simple_transfer {
+                    let cell_particle_offset = (
+                        vec3f(cell_offset) + vec3f(0.5) - cell_frac_pos
+                    ) * uniforms.gridCellDims;
+                    momentum_fixed_units = clampMomentumFixedUnitsForAtomic(
+                        cell_weight * (
+                            particle_momentum_fixed_units
+                            + mls_affine_fixed_units * cell_particle_offset
+                        ),
+                        max_particle_momentum_fixed_units,
+                    );
+                    transfer_momentum_fixed_units = clampMomentumFixedUnitsForAtomic(
+                        cell_weight * (
+                            particle_momentum_fixed_units
+                            + transfer_affine_fixed_units * cell_particle_offset
+                        ),
+                        max_particle_momentum_fixed_units,
+                    );
+                }
 
                 accumulateFixedUnitsToTileOrNextGrid(
-                    vec3i(start_cell_number.x + offset_x, cell_y, cell_z),
+                    cell_number,
                     local_grid_origin,
                     momentum_fixed_units,
                     transfer_momentum_fixed_units,
-                    weighted_mass_fixed_units,
+                    cell_weight * particle_mass_fixed_units,
                 );
             }
         }

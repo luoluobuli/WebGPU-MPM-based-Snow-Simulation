@@ -30,12 +30,6 @@ const PARTICLE_MATRIX_ELASTIC_CHANGED = 1u;
 const PARTICLE_MATRIX_PLASTIC_CHANGED = 2u;
 const MATERIAL_DAMPING_REFERENCE_TIMESTEP_S = 1.0 / 60.0;
 
-struct QuadraticBSplineStencilVectors {
-    x: vec3f,
-    y: vec3f,
-    z: vec3f,
-}
-
 fn materialFlagFromId(material: u32) -> u32 {
     return (material & 7u) << PARTICLE_MATERIAL_SHIFT;
 }
@@ -413,20 +407,6 @@ fn calculateQuadraticBSplineCellWeights(fractionalPosFromCellMin: vec3f) -> arra
     return weights;
 }
 
-fn calculateQuadraticBSplineCellWeightVectors(fractionalPosFromCellMin: vec3f) -> QuadraticBSplineStencilVectors {
-    let one_minus_pos = vec3f(1.0) - fractionalPosFromCellMin;
-    let centered_pos = fractionalPosFromCellMin - vec3f(0.5);
-    let weight0 = 0.5 * one_minus_pos * one_minus_pos;
-    let weight1 = vec3f(0.75) - centered_pos * centered_pos;
-    let weight2 = 0.5 * fractionalPosFromCellMin * fractionalPosFromCellMin;
-
-    return QuadraticBSplineStencilVectors(
-        vec3f(weight0.x, weight1.x, weight2.x),
-        vec3f(weight0.y, weight1.y, weight2.y),
-        vec3f(weight0.z, weight1.z, weight2.z),
-    );
-}
-
 fn calculateQuadraticBSplineCellWeightDerivatives(fractionalPosFromCellMin: vec3f) -> array<vec3f, 3> {
     var derivatives: array<vec3f, 3>;
 
@@ -436,19 +416,4 @@ fn calculateQuadraticBSplineCellWeightDerivatives(fractionalPosFromCellMin: vec3
     derivatives[2] = fractionalPosFromCellMin;
 
     return derivatives;
-}
-
-fn calculateQuadraticBSplineCellWeightDerivativeVectors(
-    fractionalPosFromCellMin: vec3f,
-    inv_grid_cell_dims: vec3f,
-) -> QuadraticBSplineStencilVectors {
-    let derivative0 = (fractionalPosFromCellMin - vec3f(1.0)) * inv_grid_cell_dims;
-    let derivative1 = (vec3f(1.0) - 2.0 * fractionalPosFromCellMin) * inv_grid_cell_dims;
-    let derivative2 = fractionalPosFromCellMin * inv_grid_cell_dims;
-
-    return QuadraticBSplineStencilVectors(
-        vec3f(derivative0.x, derivative1.x, derivative2.x),
-        vec3f(derivative0.y, derivative1.y, derivative2.y),
-        vec3f(derivative0.z, derivative1.z, derivative2.z),
-    );
 }

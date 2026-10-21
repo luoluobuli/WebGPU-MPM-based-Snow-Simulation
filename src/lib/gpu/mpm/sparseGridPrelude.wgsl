@@ -193,10 +193,8 @@ fn calculateCellIndexFromCellNumber(cell_number: vec3i) -> u32 {
     return (block_index << LOG_BLOCK_SIZE_CUBED) + cell_index_within_block;
 }
 
-fn loadThreeCellStencilBlockNeighborhoodForGeneration(
-    start_cell_number: vec3i,
-    current_generation: u32,
-) -> BlockNeighborhood {
+fn loadParticleBlockNeighborhood(start_cell_number: vec3i) -> BlockNeighborhood {
+    let current_generation = sparse_grid.current_generation;
     let start_block = calculateBlockNumberContainingCell(start_cell_number);
     let cell_offset = start_cell_number & vec3i(i32(BLOCK_MASK));
     let lower_block_delta = vec3i(
@@ -251,69 +249,27 @@ fn loadThreeCellStencilBlockNeighborhoodForGeneration(
     return neighborhood;
 }
 
-fn loadThreeCellStencilBlockNeighborhood(start_cell_number: vec3i) -> BlockNeighborhood {
-    return loadThreeCellStencilBlockNeighborhoodForGeneration(
-        start_cell_number,
-        sparse_grid.current_generation,
-    );
-}
-
 fn calculateCellIndexFromLoadedBlockNeighborhood(
     cell_number: vec3i,
-    neighborhood: ptr<function, BlockNeighborhood>,
-) -> u32 {
-    let cell_index_within_block = calculateCellIndexWithinBlock(cell_number);
-    return calculateCellIndexFromLoadedBlockNeighborhoodWithLocalIndex(
-        cell_number,
-        cell_index_within_block,
-        neighborhood,
-    );
-}
-
-fn calculateCellIndexFromLoadedBlockNeighborhoodWithLocalIndex(
-    cell_number: vec3i,
-    cell_index_within_block: u32,
     neighborhood: ptr<function, BlockNeighborhood>,
 ) -> u32 {
     if (*neighborhood).check_cell_range != 0u && !cellNumberInSparseGridRange(cell_number) {
         return GRID_BLOCK_INDEX_EMPTY;
     }
 
+    let cell_index_within_block = calculateCellIndexWithinBlock(cell_number);
     let single_block_cell_index_base = (*neighborhood).single_block_cell_index_base;
     if single_block_cell_index_base != GRID_BLOCK_INDEX_EMPTY {
         return single_block_cell_index_base + cell_index_within_block;
     }
 
     let block_number = calculateBlockNumberContainingCell(cell_number);
-    let block_offset = block_number - (*neighborhood).min_block;
-
-    // Callers use cells bounded by the same min/max range used to load the
-    // neighborhood, so the block offset is already in range here.
-    let block_offset_u = vec3u(block_offset);
-    let cache_index = block_offset_u.x + 2u * (block_offset_u.y + 2u * block_offset_u.z);
+    let block_offset = vec3u(block_number - (*neighborhood).min_block);
+    let cache_index = block_offset.x + 2u * (block_offset.y + 2u * block_offset.z);
     let block_index = (*neighborhood).block_indices[cache_index];
     if block_index == GRID_BLOCK_INDEX_EMPTY {
         return GRID_BLOCK_INDEX_EMPTY;
     }
 
     return (block_index << LOG_BLOCK_SIZE_CUBED) + cell_index_within_block;
-}
-
-fn calculateCellIndexFromLoadedBlockNeighborhoodFast(
-    cell_x: i32,
-    cell_y: i32,
-    cell_z: i32,
-    cell_index_within_block: u32,
-    neighborhood: ptr<function, BlockNeighborhood>,
-) -> u32 {
-    let single_block_cell_index_base = (*neighborhood).single_block_cell_index_base;
-    if single_block_cell_index_base != GRID_BLOCK_INDEX_EMPTY {
-        return single_block_cell_index_base + cell_index_within_block;
-    }
-
-    return calculateCellIndexFromLoadedBlockNeighborhoodWithLocalIndex(
-        vec3i(cell_x, cell_y, cell_z),
-        cell_index_within_block,
-        neighborhood,
-    );
 }
