@@ -1,3 +1,4 @@
+import loadDepthModuleSrc from "./load_depth.wgsl?raw";
 
 export class GpuDepthPicker {
     private readonly device: GPUDevice;
@@ -31,16 +32,6 @@ export class GpuDepthPicker {
             ],
         });
 
-        const shader = `
-@group(0) @binding(0) var depthTex: texture_depth_2d;
-@group(0) @binding(1) var<storage, read_write> output: array<f32>;
-@group(0) @binding(2) var<uniform> coords: vec2<u32>;
-
-@compute @workgroup_size(1)
-fn main() {
-    output[0] = textureLoad(depthTex, vec2<i32>(coords), 0);
-}
-`;
 
         this.pipeline = device.createComputePipeline({
             label: "DepthPicker pipeline",
@@ -48,7 +39,7 @@ fn main() {
                 bindGroupLayouts: [this.bindGroupLayout],
             }),
             compute: {
-                module: device.createShaderModule({ code: shader }),
+                module: device.createShaderModule({ code: loadDepthModuleSrc }),
                 entryPoint: "main",
             },
         });
@@ -67,8 +58,6 @@ fn main() {
     async pick(depthTextureView: GPUTextureView, x: number, y: number): Promise<number | null> {
         if (this.destroyed) return null;
 
-        // Validation?
-        // x, y are integers.
         const ix = Math.floor(x);
         const iy = Math.floor(y);
 
