@@ -13,6 +13,7 @@ fn mapAffectedBlocks(@builtin(global_invocation_id) gid: vec3u) {
     let threadIndex = gid.x;
     if threadIndex >= N_PARTICLES { return; }
 
+    // allocate every cell that this particle is going to affect in the p2g step
     let particle_pos = particleData[threadIndex].pos;
     mapParticleAffectedBlocks(particle_pos, sparse_grid.current_generation);
 }

@@ -1670,6 +1670,7 @@ export class GpuSnowPipelineRunner {
 
             this.writeSimulationTimingUniforms(simulationTimestepS);
 
+            // catch up the simulation to the current time
             const nowMs = performance.now();
             const timeToSimulate = Math.max(0, nowMs - simulatedThroughTimeMs);
             const {
@@ -1729,6 +1730,7 @@ export class GpuSnowPipelineRunner {
             }
 
             if (shouldDropSimulationBacklog) {
+                // if drifting too much, drop simulation steps
                 simulatedThroughTimeMs = nowMs;
             }
             else {

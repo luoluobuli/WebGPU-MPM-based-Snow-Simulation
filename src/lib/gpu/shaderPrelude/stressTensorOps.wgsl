@@ -1,16 +1,16 @@
 const YOUNGS_MODULUS_PA = 1.4e5;
 const POISSONS_RATIO = 0.2;
 
-// Lame parameters
-const SHEAR_RESISTANCE = YOUNGS_MODULUS_PA / (2 * (1 + POISSONS_RATIO));
-const VOLUME_RESISTANCE = YOUNGS_MODULUS_PA * POISSONS_RATIO / ((1 + POISSONS_RATIO) * (1 - 2 * POISSONS_RATIO));
+// Lamé parameters
+const SHEAR_RESISTANCE = YOUNGS_MODULUS_PA / (2 * (1 + POISSONS_RATIO)); // μ
+const VOLUME_RESISTANCE = YOUNGS_MODULUS_PA * POISSONS_RATIO / ((1 + POISSONS_RATIO) * (1 - 2 * POISSONS_RATIO)); // λ
 const SOIL_SHEAR_RESISTANCE_SCALE = 0.1;
 const SOIL_VOLUME_RESISTANCE_SCALE = 0.14;
 const BARK_SHEAR_RESISTANCE_SCALE = 6.0;
 const BARK_VOLUME_RESISTANCE_SCALE = 8.0;
 const LEAF_SHEAR_RESISTANCE_SCALE = 0.14;
 const LEAF_VOLUME_RESISTANCE_SCALE = 0.18;
-const DEFAULT_HARDENING_COEFFICIENT = 10.0;
+const DEFAULT_HARDENING_COEFFICIENT = 10.0; // ξ
 // The Disney walking-character example used a stiffer, crunchier top layer.
 const CRUST_STIFFNESS_SCALE = 1.5;
 const CRUST_HARDENING_COEFFICIENT = 25.0;
@@ -39,10 +39,11 @@ fn applyMaterialLameParameters(
     }
 }
 
-fn calculateStressFirstPiolaKirchhoff(
-    deformation: mat3x3f,
-    shearResistance: f32,
-    volumetricResistance: f32,
+// first Piola-Kirchhoff stress tensor
+fn calculateStressFirstPiolaKirchhoff( // P
+    deformation: mat3x3f, // F
+    shearResistance: f32, // μ
+    volumetricResistance: f32, // λ
 ) -> mat3x3f {
     if mat3x3IsIdentity(deformation) {
         return mat3x3f();
@@ -55,18 +56,20 @@ fn calculateStressFirstPiolaKirchhoff(
     );
 }
 
-fn calculateStressFirstPiolaKirchhoffNonIdentity(
-    deformation: mat3x3f,
-    shearResistance: f32,
-    volumetricResistance: f32,
+fn calculateStressFirstPiolaKirchhoffNonIdentity( // P
+    deformation: mat3x3f, // F
+    shearResistance: f32, // μ
+    volumetricResistance: f32, // λ
 ) -> mat3x3f {
-    let volumeScaleFac = determinant(deformation);
+    let volumeScaleFac = determinant(deformation); // J
     if volumeScaleFac != volumeScaleFac || volumeScaleFac < 0.05 || volumeScaleFac > 20.0 {
         return mat3x3f();
     }
 
-    let rotation = calculatePolarDecompositionRotation(deformation);
+    // corotation to separate out rotation from scaling
+    let rotation = calculatePolarDecompositionRotation(deformation); // R
 
+    // P = 2 μ (F - R) + λ (J - 1) J (F⁻¹)ᵀ
     return 2 * shearResistance * (deformation - rotation)
         + volumetricResistance
             * (volumeScaleFac - 1.0)
@@ -74,31 +77,34 @@ fn calculateStressFirstPiolaKirchhoffNonIdentity(
             * transpose(mat3x3InverseWithDeterminant(deformation, volumeScaleFac));
 }
 
-fn calculateStressNeoHookean(
-    deformation: mat3x3f,
-    shearResistance: f32,
-    volumetricResistance: f32,
+// Neo-Hookean constitutive model
+fn calculateStressNeoHookean( // P
+    deformation: mat3x3f, // F
+    shearResistance: f32, // μ
+    volumetricResistance: f32, // λ
 ) -> mat3x3f {
     if mat3x3IsIdentity(deformation) {
         return mat3x3f();
     }
 
-    let volumeScaleFac = determinant(deformation);
+    let volumeScaleFac = determinant(deformation); // J
     if volumeScaleFac != volumeScaleFac || volumeScaleFac <= 0.05 || volumeScaleFac > 20.0 {
         return mat3x3f();
     }
 
     let deformationInverseTranspose = transpose(mat3x3InverseWithDeterminant(deformation, volumeScaleFac));
 
+    // P = μ (F - (F⁻¹)ᵀ) + λ log(J) (F⁻¹)ᵀ
     return shearResistance * (deformation - deformationInverseTranspose)
         + volumetricResistance * log(volumeScaleFac) * deformationInverseTranspose;
 }
 
+// from Stomakhin
 fn hardenLameParameters(
     material: u32,
-    deformationPlastic: mat3x3f,
-    baseShearResistance: ptr<function, f32>,
-    baseVolumetricResistance: ptr<function, f32>,
+    deformationPlastic: mat3x3f, // F_p
+    baseShearResistance: ptr<function, f32>, // μ_0
+    baseVolumetricResistance: ptr<function, f32>, // λ_0
 ) {
     if material == PARTICLE_MATERIAL_BARK || material == PARTICLE_MATERIAL_LEAF {
         return;
@@ -108,7 +114,7 @@ fn hardenLameParameters(
         return;
     }
 
-    let plastic_volume_scale = determinant(deformationPlastic);
+    let plastic_volume_scale = determinant(deformationPlastic); // J
     if plastic_volume_scale == 1.0 {
         return;
     }
@@ -124,6 +130,8 @@ fn hardenLameParameters(
         MIN_HARDENING_SCALE,
         MAX_HARDENING_SCALE,
     );
+    // μ = μ_0 exp(ξ (1 - J))
+    // λ = λ_0 exp(ξ (1 - J))
     *baseShearResistance *= expFac;
     *baseVolumetricResistance *= expFac;
 }

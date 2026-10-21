@@ -7,8 +7,8 @@ struct Svd3x3 {
 const SVD_JACOBI_SWEEPS = 6u;
 const SVD_RELATIVE_TOLERANCE = 1e-6;
 const SVD_MIN_NORMALIZED_SINGULAR = 1e-7;
-const DEFAULT_CRITICAL_COMPRESSION = 2.5e-2;
-const DEFAULT_CRITICAL_STRETCH = 7.5e-3;
+const DEFAULT_CRITICAL_COMPRESSION = 2.5e-2; // θ_c
+const DEFAULT_CRITICAL_STRETCH = 7.5e-3; // θ_s
 const CRUST_CRITICAL_COMPRESSION = 6.0e-2;
 const CRUST_CRITICAL_STRETCH = 2.0e-2;
 
@@ -152,6 +152,11 @@ fn calculateSvd3x3(deformation: mat3x3f) -> Svd3x3 {
 }
 
 /**
+ * Checks whether a particle's elastic deformation indicates that the particle should undergo permanent (plastic)
+ * deformation. This check is done by comparing the amount of stretching (non-uniform scaling) to a minimum stretch
+ * factor and maximum stretch factor. If an actual stretch factor in some direction lies outside of this range, the
+ * deformation matrices are updated to use a clamped amount of stretching in that direction.
+ *
  * Projects the elastic singular values into the material's yield interval,
  * then transfers the rejected deformation into F_p while preserving F_e F_p.
  */
@@ -159,8 +164,8 @@ fn applyPlasticity(
     particle: ptr<function, ParticleData>,
     material: u32,
 ) -> bool {
-    let deformationElastic = (*particle).deformationElastic;
-    let deformationPlastic = (*particle).deformationPlastic;
+    let deformationElastic = (*particle).deformationElastic; // F_e
+    let deformationPlastic = (*particle).deformationPlastic; // F_p
     if mat3x3IsIdentity(deformationElastic) {
         return false;
     }
@@ -174,10 +179,13 @@ fn applyPlasticity(
     let stretchDeltaFrobeniusSquared = dot(stretchDelta[0], stretchDelta[0])
         + dot(stretchDelta[1], stretchDelta[1])
         + dot(stretchDelta[2], stretchDelta[2]);
+    // If F^T F is very close to identity, all stretch factors are safely inside
+    // the plastic yield window and the SVD below is unnecessary.
     if stretchDeltaFrobeniusSquared <= 1e-4 {
         return false;
     }
 
+    // thresholds of compression/stretching until yielding
     var minStretchFactor = 1.0 - DEFAULT_CRITICAL_COMPRESSION;
     var maxStretchFactor = 1.0 + DEFAULT_CRITICAL_STRETCH;
     if material == PARTICLE_MATERIAL_SOIL {
@@ -188,7 +196,9 @@ fn applyPlasticity(
         maxStretchFactor = 1.0 + CRUST_CRITICAL_STRETCH;
     }
 
-    let svd = calculateSvd3x3(deformationElastic);
+    // singulars = individual scale factors extracted from the elastic deformation
+    let svd = calculateSvd3x3(deformationElastic); // σ_0, σ_1, σ_2 in svd.singulars
+    // compare the singulars to the range to know whether the material yields
     if (
         all(vec3f(minStretchFactor) <= svd.singulars)
         && all(svd.singulars <= vec3f(maxStretchFactor))
@@ -196,20 +206,24 @@ fn applyPlasticity(
         return false;
     }
 
+    // clamped scale factors represent how much of the compression or stretching can actually be restored later
     let clampedSingulars = clamp(
         svd.singulars,
         vec3f(minStretchFactor),
         vec3f(maxStretchFactor),
     );
+    // assuming the rotation stays the same, we can reconstruct the new elastic deformation
     let newDeformationElastic =
         scaleMatrixColumns(svd.left, clampedSingulars)
         * transpose(svd.right);
+    // assuming the overall deformation stays the same, we can also derive the new plastic deformation
     let newDeformationElasticInverse =
         scaleMatrixColumns(svd.right, vec3f(1.0) / clampedSingulars)
         * transpose(svd.left);
     let deformation = deformationElastic * deformationPlastic;
 
     (*particle).deformationElastic = newDeformationElastic;
+    // F_p = (F_e)⁻¹ F  (<=  F = F_e F_p)
     (*particle).deformationPlastic = newDeformationElasticInverse * deformation;
     return true;
 }

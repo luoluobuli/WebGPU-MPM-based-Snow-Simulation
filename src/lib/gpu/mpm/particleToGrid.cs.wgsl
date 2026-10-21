@@ -125,6 +125,7 @@ fn doParticleToGrid(
 
     let start_cell_number = vec3i(floor(particle_grid_coord));
 
+    // enumerate the 3x3x3 neighborhood of cells around the cell that contains the particle
     var block_neighborhood = loadThreeCellStencilBlockNeighborhoodForGeneration(
         start_cell_number,
         sparse_grid.current_generation,
@@ -152,7 +153,7 @@ fn doParticleToGrid(
     }
 
     let particle_mass_fixed_units = particle_mass * FIXED_POINT_SCALE;
-    let particle_momentum_fixed_units = particle_mass_fixed_units * particle_vel;
+    let particle_momentum_fixed_units = particle_mass_fixed_units * particle_vel; // p = m v
 
     if elastic_is_identity && (USE_MLS_MPM == 0u || !has_deformation_delta) {
         for (var offsetZ = -1i; offsetZ <= 1i; offsetZ++) {
@@ -200,11 +201,11 @@ fn doParticleToGrid(
         if SANITIZE_PARTICLES_IN_P2G == 0u {
             deformation_plastic = particleDataIn[thread_index].deformationPlastic;
         }
-        var shear_resistance = SHEAR_RESISTANCE;
-        var volumetric_resistance = VOLUME_RESISTANCE;
+        var shear_resistance = SHEAR_RESISTANCE; // μ
+        var volumetric_resistance = VOLUME_RESISTANCE; // λ
         applyMaterialLameParameters(material, &shear_resistance, &volumetric_resistance);
         hardenLameParameters(material, deformation_plastic, &shear_resistance, &volumetric_resistance);
-        let stress = calculateStressFirstPiolaKirchhoffNonIdentity(
+        let stress = calculateStressFirstPiolaKirchhoffNonIdentity( // P
             deformation_elastic,
             shear_resistance,
             volumetric_resistance,
@@ -290,6 +291,7 @@ fn doParticleToGrid(
         }
     }
     else {
+        // ∇w (gradient wrt world position)
         let cell_weight_derivs = calculateQuadraticBSplineCellWeightDerivativeVectors(
             cell_frac_pos,
             uniforms.invGridCellDims,

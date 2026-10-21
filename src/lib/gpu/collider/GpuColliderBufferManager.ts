@@ -376,6 +376,7 @@ export class GpuColliderBufferManager {
             };
         }
 
+        // Build triangle data with centroids and bounds
         const triangles: Triangle[] = [];
         for (let i = 0; i < numTriangles; i++) {
             const idx0 = indices[i * 3 + 0];
@@ -408,6 +409,7 @@ export class GpuColliderBufferManager {
         const nodes: SdfBvhNode[] = [];
         const triangleIndices: number[] = Array.from({ length: numTriangles }, (_, i) => i);
 
+        // Build BVH recursively
         this.buildSdfBvhRecursive(triangles, triangleIndices, 0, numTriangles, nodes);
 
         return { triangles, triangleIndices, nodes };
@@ -423,6 +425,7 @@ export class GpuColliderBufferManager {
         const nodeIndex = nodes.length;
         const count = end - start;
 
+        // Compute bounds for this node
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
@@ -436,6 +439,7 @@ export class GpuColliderBufferManager {
             maxZ = Math.max(maxZ, tri.maxBounds[2]);
         }
 
+        // Leaf node threshold
         const MAX_LEAF_SIZE = 4;
         if (count <= MAX_LEAF_SIZE) {
             nodes.push({
@@ -458,14 +462,17 @@ export class GpuColliderBufferManager {
         if (extentY > extentX && extentY > extentZ) splitAxis = 1;
         else if (extentZ > extentX && extentZ > extentY) splitAxis = 2;
 
+        // Sort triangles by centroid along split axis
         const subIndices = triangleIndices.slice(start, end);
         subIndices.sort((a, b) => triangles[a].centroid[splitAxis] - triangles[b].centroid[splitAxis]);
         for (let i = 0; i < subIndices.length; i++) {
             triangleIndices[start + i] = subIndices[i];
         }
 
+        // Split at median
         const mid = start + Math.floor(count / 2);
 
+        // Create internal node (placeholder, will update children after recursion)
         nodes.push({
             minBounds: [minX, minY, minZ],
             maxBounds: [maxX, maxY, maxZ],
@@ -476,9 +483,11 @@ export class GpuColliderBufferManager {
             isLeaf: false,
         });
 
+        // Build children - left child is always the next node after this one
         const leftChild = this.buildSdfBvhRecursive(triangles, triangleIndices, start, mid, nodes);
         const rightChild = this.buildSdfBvhRecursive(triangles, triangleIndices, mid, end, nodes);
 
+        // Update internal node with child indices
         nodes[nodeIndex].leftChild = leftChild;
         nodes[nodeIndex].rightChild = rightChild;
 

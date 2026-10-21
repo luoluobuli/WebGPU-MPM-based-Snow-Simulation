@@ -1469,9 +1469,12 @@ export class GpuMpmPipelineManager {
     ) {
         let particleReadBindGroupBound = false;
         if (!this.activeBlocksPrepared) {
+            // clear cells
             this.encodeFusedGridAccumulatorClearDispatch(computePassEncoder, 0);
+            // clear bukkit table
             this.encodeBukkitResetDispatch(computePassEncoder);
 
+            // determine which blocks in a grid are populated
             computePassEncoder.setPipeline(this.mapAffectedBlocksPipeline);
             computePassEncoder.setBindGroup(2, this.particleReadBindGroup);
             particleReadBindGroupBound = true;
@@ -1492,7 +1495,7 @@ export class GpuMpmPipelineManager {
         computePassEncoder.setBindGroup(2, this.activeBlockDispatchArgsReadBindGroup);
         computePassEncoder.dispatchWorkgroupsIndirect(activeBlockDispatchBuffer, 0);
 
-        // grid-to-particle
+        // grid-to-particle (needs global synchronization)
 
         computePassEncoder.setPipeline(g2pPipeline);
         computePassEncoder.setBindGroup(2, this.particleDataBindGroup);
@@ -1500,6 +1503,7 @@ export class GpuMpmPipelineManager {
 
         this.encodeBukkitResetDispatch(computePassEncoder);
 
+        // Integrate Particles (Update Pos + Deformation + Handle Collision)
         // G2P left group 2 bound to particle data, and the bukkit reset above
         // only uses groups 0-1. Reuse it here to avoid a bind command per substep.
         computePassEncoder.setPipeline(integratePipeline);

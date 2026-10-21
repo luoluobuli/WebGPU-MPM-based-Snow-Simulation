@@ -157,6 +157,7 @@ fn integrateParticles(
             }
         }
 
+        // Boundary conditions
         applySimulationDomainBoundary(&particle, material);
 
         // SDF collision

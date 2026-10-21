@@ -89,9 +89,13 @@ fn computeVertexDensityAndGradient(vertCoord: vec3i) -> vec4f {
         return vec4f(grad, density);
     }
 
+    // Determine world position of this vertex
     let worldPos = mcVertexToWorld(vertCoord);
+    // Sample density at this vertex position
     let density = sampleDensityAtWorldPos(worldPos);
 
+    // Compute gradient using finite differences in world space
+    // Using a small epsilon related to density grid size
     let gridRange = uniforms.gridMaxCoords - uniforms.gridMinCoords;
     let densityRes = vec3f(mcParams.densityGridRes);
     let densityCellSize = gridRange / densityRes;

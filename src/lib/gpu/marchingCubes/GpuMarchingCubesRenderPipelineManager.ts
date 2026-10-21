@@ -143,7 +143,7 @@ export class GpuMarchingCubesRenderPipelineManager implements GpuRenderMethod {
         const [densX, densY, densZ] = this.bufferManager.densityGridResolution;
         device.queue.writeBuffer(mcParamsBuffer, 0, new Uint32Array([
             mcX, mcY, mcZ, 1,           // mcGridRes + downsampleFactor
-            densX, densY, densZ, this.bufferManager.maxVertices,
+            densX, densY, densZ, this.bufferManager.maxVertices, // densityGridRes + maxVertices
         ]));
         
         const mcPrelude = `${preludeSrc}\n${triTableSrc}`;
