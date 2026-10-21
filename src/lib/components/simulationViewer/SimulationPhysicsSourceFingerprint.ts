@@ -6,7 +6,8 @@ import clearGridAccumulatorSource from "../../gpu/mpm/clearGridAccumulator.wgsl?
 import gridUpdateSource from "../../gpu/mpm/gridUpdate.cs.wgsl?raw";
 import gridToParticleSource from "../../gpu/mpm/gridToParticle.cs.wgsl?raw";
 import integrateParticlesSource from "../../gpu/mpm/integrateParticles.wgsl?raw";
-import fusedMlsSource from "../../gpu/mpm/fusedMlsG2p2g.cs.wgsl?raw";
+import pbmpmSource from "../../gpu/mpm/pbmpmOps.wgsl?raw";
+import pbmpmSettingsSource from "../../gpu/mpm/pbmpmSettings.ts?raw";
 import sparseGridSource from "../../gpu/mpm/sparseGridPrelude.wgsl?raw";
 import particleScatterSource from "../../gpu/particleInitialize/particleScatter.cs.wgsl?raw";
 import constantsSource from "../../gpu/shaderPrelude/constants.wgsl?raw";
@@ -41,7 +42,8 @@ export const SIMULATION_PHYSICS_SOURCE_FINGERPRINT = fingerprintString([
     clearGridAccumulatorSource,
     gridToParticleSource,
     integrateParticlesSource,
-    fusedMlsSource,
+    pbmpmSource,
+    pbmpmSettingsSource,
     sparseGridSource,
     particleScatterSource,
     constantsSource,

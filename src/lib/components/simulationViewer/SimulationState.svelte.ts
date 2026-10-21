@@ -235,6 +235,8 @@ export class SimulationState {
     gridResolutionZ = $state(384);
     explicitMpmMaxSimulationTimestepS = $state(1 / 192);
     mlsMpmMaxSimulationTimestepS = $state(1 / 1024);
+    pbmpmMaxSimulationTimestepS = $state(1 / 240);
+    pbmpmSolveIterations = $state(4);
 
     oneSimulationStepPerFrame = $state(true);
 
@@ -356,6 +358,12 @@ export class SimulationState {
         if (scene.timing?.mlsMpmMaxSimulationTimestepS !== undefined) {
             this.mlsMpmMaxSimulationTimestepS = scene.timing.mlsMpmMaxSimulationTimestepS;
         }
+        if (scene.timing?.pbmpmMaxSimulationTimestepS !== undefined) {
+            this.pbmpmMaxSimulationTimestepS = scene.timing.pbmpmMaxSimulationTimestepS;
+        }
+        if (scene.timing?.pbmpmSolveIterations !== undefined) {
+            this.pbmpmSolveIterations = scene.timing.pbmpmSolveIterations;
+        }
         if (scene.timing?.oneSimulationStepPerFrame !== undefined) {
             this.oneSimulationStepPerFrame = scene.timing.oneSimulationStepPerFrame;
         }
@@ -390,6 +398,8 @@ export class SimulationState {
             explicitMpmMaxSimulationTimestepS:
                 this.explicitMpmMaxSimulationTimestepS,
             mlsMpmMaxSimulationTimestepS: this.mlsMpmMaxSimulationTimestepS,
+            pbmpmMaxSimulationTimestepS: this.pbmpmMaxSimulationTimestepS,
+            pbmpmSolveIterations: this.pbmpmSolveIterations,
             timelineFrameCount: this.configuredTimelineFrameCount,
             timelineSecondsPerFrame: this.timelineSecondsPerFrame,
         };
@@ -1691,6 +1701,8 @@ export class SimulationState {
                         domain: scene.domain,
                         explicitMpmMaxSimulationTimestepS: () => state.explicitMpmMaxSimulationTimestepS,
                         mlsMpmMaxSimulationTimestepS: () => state.mlsMpmMaxSimulationTimestepS,
+                        pbmpmMaxSimulationTimestepS: () => state.pbmpmMaxSimulationTimestepS,
+                        pbmpmSolveIterations: () => state.pbmpmSolveIterations,
                         camera: state.camera,
                         spawnSource,
                         collider,

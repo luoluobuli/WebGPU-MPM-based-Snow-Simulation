@@ -168,6 +168,8 @@ export class GpuSnowPipelineRunner {
     private readonly nParticles: number;
     private readonly explicitMpmMaxSimulationTimestepS: () => number;
     private readonly mlsMpmMaxSimulationTimestepS: () => number;
+    private readonly pbmpmMaxSimulationTimestepS: () => number;
+    private readonly pbmpmSolveIterations: () => number;
     private readonly camera: Camera;
     private readonly colliderFriction: () => number;
     private readonly isInteracting: () => boolean;
@@ -246,6 +248,8 @@ export class GpuSnowPipelineRunner {
         mcGridResolutionZ,
         explicitMpmMaxSimulationTimestepS,
         mlsMpmMaxSimulationTimestepS,
+        pbmpmMaxSimulationTimestepS,
+        pbmpmSolveIterations,
         camera,
         spawnSource,
         collider,
@@ -275,6 +279,8 @@ export class GpuSnowPipelineRunner {
         mcGridResolutionZ?: number,
         explicitMpmMaxSimulationTimestepS: () => number,
         mlsMpmMaxSimulationTimestepS: () => number,
+        pbmpmMaxSimulationTimestepS: () => number,
+        pbmpmSolveIterations: () => number,
         camera: Camera,
         spawnSource: SpawnPointSource,
         collider?: ColliderGeometry | null,
@@ -296,6 +302,8 @@ export class GpuSnowPipelineRunner {
         this.nParticles = nParticles;
         this.explicitMpmMaxSimulationTimestepS = explicitMpmMaxSimulationTimestepS;
         this.mlsMpmMaxSimulationTimestepS = mlsMpmMaxSimulationTimestepS;
+        this.pbmpmMaxSimulationTimestepS = pbmpmMaxSimulationTimestepS;
+        this.pbmpmSolveIterations = pbmpmSolveIterations;
         this.colliderFriction = colliderFriction;
         this.isInteracting = isInteracting;
         this.interactionStrength = interactionStrength;
@@ -471,22 +479,10 @@ export class GpuSnowPipelineRunner {
             particleDataBuffer: mpmManager.particleDataBuffer,
             particleFlagsBuffer: mpmManager.particleFlagsBuffer,
             sparseGridBuffer: mpmManager.sparseGridBuffer,
-            nextSparseGridBuffer: mpmManager.nextSparseGridBuffer,
             gridAccumulatorBuffer: mpmManager.gridAccumulatorBuffer,
-            nextGridAccumulatorBuffer: mpmManager.nextGridAccumulatorBuffer,
             gridVelocityBuffer: mpmManager.gridVelocityBuffer,
-            nextGridVelocityBuffer: mpmManager.nextGridVelocityBuffer,
             maxParticleSpeedBuffer: this.particleSpeedReductionPipelineManager.maxSpeedBuffer,
             activeBlockDispatchBuffer: mpmManager.activeBlockDispatchBuffer,
-            nextActiveBlockDispatchBuffer: mpmManager.nextActiveBlockDispatchBuffer,
-            bukkitParticleCountsBuffer: mpmManager.bukkitParticleCountsBuffer,
-            bukkitInsertCountersBuffer: mpmManager.bukkitInsertCountersBuffer,
-            bukkitIndexStartBuffer: mpmManager.bukkitIndexStartBuffer,
-            bukkitThreadDataBuffer: mpmManager.bukkitThreadDataBuffer,
-            bukkitParticleDataBuffer: mpmManager.bukkitParticleDataBuffer,
-            bukkitDispatchBuffer: mpmManager.bukkitDispatchBuffer,
-            bukkitParticleAllocatorBuffer: mpmManager.bukkitParticleAllocatorBuffer,
-            bukkitThreadGroupCountBuffer: mpmManager.bukkitThreadGroupCountBuffer,
             uniformsManager,
             colliderManager,
             kinematicColliderManager,
@@ -1490,23 +1486,6 @@ export class GpuSnowPipelineRunner {
             && this.colliderSdfValid;
         const useValidColliderPipeline = this.colliderSdfValid;
 
-        if (simulationMethodType === GpuSimulationMethodType.FusedMlsMpm) {
-            this.mpmPipelineManager.addFusedMlsMpmDispatchPassesBatch({
-                commandEncoder,
-                enableInteraction,
-                nSimulationSteps,
-                recordParticleSpeed,
-                timestampWrites: this.performanceMeasurementManager !== null && measureGpuTimestamps
-                    ? {
-                        querySet: this.performanceMeasurementManager.querySet,
-                        beginningOfPassWriteIndex: 0,
-                        endOfPassWriteIndex: 1,
-                    }
-                    : undefined,
-            });
-            return;
-        }
-
         const computePassEncoder = commandEncoder.beginComputePass({
             label: "simulation step compute pass",
             timestampWrites: this.performanceMeasurementManager !== null && measureGpuTimestamps
@@ -1547,6 +1526,19 @@ export class GpuSnowPipelineRunner {
                 });
                 break;
 
+            case GpuSimulationMethodType.Pbmpm:
+                this.mpmPipelineManager.addPbmpmDispatchesBatch({
+                    computePassEncoder,
+                    activeBlockDispatchBuffer: this.mpmManager.activeBlockDispatchBuffer,
+                    enableInteraction,
+                    nSimulationSteps,
+                    solveIterations: this.pbmpmSolveIterations(),
+                    recordParticleSpeed,
+                    useStaticColliderPipeline,
+                    useValidColliderPipeline,
+                    bindCommonGroups: false,
+                });
+                break;
         }
 
         computePassEncoder.end();
@@ -1828,8 +1820,10 @@ export class GpuSnowPipelineRunner {
                 return this.explicitMpmMaxSimulationTimestepS();
 
             case GpuSimulationMethodType.MlsMpm:
-            case GpuSimulationMethodType.FusedMlsMpm:
                 return this.mlsMpmMaxSimulationTimestepS();
+
+            case GpuSimulationMethodType.Pbmpm:
+                return this.pbmpmMaxSimulationTimestepS();
         }
     });
 
@@ -1846,6 +1840,7 @@ export class GpuSnowPipelineRunner {
             maxCflSpeed,
             externalAcceleration: this.cflExternalAcceleration(this.isInteracting()),
             elasticWaveSpeed: this.elasticWaveSpeed,
+            simulationMethodType: this.getSimulationMethodType(),
         });
     });
 

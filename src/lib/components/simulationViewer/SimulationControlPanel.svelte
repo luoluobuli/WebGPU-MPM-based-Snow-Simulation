@@ -6,6 +6,7 @@ import Button from "$lib/components/generic/Button.svelte";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 import OverlayPanel from "./OverlayPanel.svelte";
+import { MAX_PBMPM_SOLVE_ITERATIONS, normalizePbmpmSolveIterations } from "$lib/gpu/mpm/pbmpmSettings";
 import { ParticleControlMode } from "./ParticleControlMode";
 import {
     formatReciprocalSecondsDivisor,
@@ -34,8 +35,10 @@ const timestepProgress = $derived.by(() => {
             return progressFromTimestep(simulationState.explicitMpmMaxSimulationTimestepS);
 
         case GpuSimulationMethodType.MlsMpm:
-        case GpuSimulationMethodType.FusedMlsMpm:
             return progressFromTimestep(simulationState.mlsMpmMaxSimulationTimestepS);
+
+        case GpuSimulationMethodType.Pbmpm:
+            return progressFromTimestep(simulationState.pbmpmMaxSimulationTimestepS);
     }
 });
 
@@ -52,8 +55,11 @@ const updateTimestepDivisor = (divisor: number) => {
             break;
 
         case GpuSimulationMethodType.MlsMpm:
-        case GpuSimulationMethodType.FusedMlsMpm:
             simulationState.mlsMpmMaxSimulationTimestepS = 1 / divisor;
+            break;
+
+        case GpuSimulationMethodType.Pbmpm:
+            simulationState.pbmpmMaxSimulationTimestepS = 1 / divisor;
             break;
     }
 };
@@ -221,10 +227,23 @@ const updateTimestepDivisor = (divisor: number) => {
             type="radio"
             name="simulation-method-type"
             bind:group={simulationState.simulationMethodType}
-            value={GpuSimulationMethodType.FusedMlsMpm}
+            value={GpuSimulationMethodType.Pbmpm}
         />
-        Fused MLS-MPM
+        PBMPM
     </label>
+
+    {#if simulationState.simulationMethodType === GpuSimulationMethodType.Pbmpm}
+        <h4>Solve iterations</h4>
+        <number-control>
+            <EntrySlider
+                value={simulationState.pbmpmSolveIterations}
+                onValueChange={(value) => simulationState.pbmpmSolveIterations = normalizePbmpmSolveIterations(value)}
+                min={1}
+                max={MAX_PBMPM_SOLVE_ITERATIONS}
+                step={1}
+            />
+        </number-control>
+    {/if}
 
     <h4>Max timestep</h4>
 

@@ -31,7 +31,7 @@ const canonicalColliderScene: SimulationSceneConfig = {
     nParticles: 120_000,
     gridResolution: [128, 64, 64],
     renderMethodType: GpuRenderMethodType.Splats,
-    simulationMethodType: GpuSimulationMethodType.FusedMlsMpm,
+    simulationMethodType: GpuSimulationMethodType.Pbmpm,
     domain: {
         min: [-4, -2, -2],
         max: [4, 4, 2],
@@ -52,15 +52,28 @@ const settings: SimulationTimelineCacheSettings = {
     colliderFriction: 0.4,
     nParticles: 120_000,
     gridResolution: [128, 64, 64],
-    simulationMethodType: GpuSimulationMethodType.FusedMlsMpm,
+    simulationMethodType: GpuSimulationMethodType.Pbmpm,
     explicitMpmMaxSimulationTimestepS: 1 / 240,
     mlsMpmMaxSimulationTimestepS: 1 / 240,
+    pbmpmMaxSimulationTimestepS: 1 / 240,
+    pbmpmSolveIterations: 4,
     timelineFrameCount: 73,
     timelineSecondsPerFrame: 1 / 24,
 };
 
 
 describe("simulation timeline cache keys", () => {
+    it("invalidates PBMPM frames when timestep or solve iterations change", () => {
+        const keyFor = (overrides: Partial<SimulationTimelineCacheSettings>) => createSimulationTimelineCacheKey({
+            scene: canonicalColliderScene,
+            simulationContentFingerprint: "spawn-and-zubeia",
+            settings: { ...settings, ...overrides },
+        });
+
+        expect(keyFor({ pbmpmSolveIterations: 8 })).not.toBe(keyFor({}));
+        expect(keyFor({ pbmpmMaxSimulationTimestepS: 1 / 60 })).not.toBe(keyFor({}));
+    });
+
     it("cross-matches actual and counterpart keys in both page roles", () => {
         const colliderPageKeys = createPairedSimulationTimelineCacheKeys({
             canonicalColliderScene,

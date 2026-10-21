@@ -11,15 +11,6 @@ struct GridAccumulatorAtomic {
 
 @group(1) @binding(3) var<storage, read_write> grid_accumulator: array<GridAccumulatorAtomic>;
 
-struct GridTransferAccumulatorAtomic {
-    momentum_x: atomic<i32>,
-    momentum_y: atomic<i32>,
-    momentum_z: atomic<i32>,
-    _padding: atomic<i32>,
-}
-
-@group(1) @binding(7) var<storage, read_write> grid_transfer_accumulator: array<GridTransferAccumulatorAtomic>;
-
 const ACTIVE_BLOCK_DISPATCH_WIDTH = 256u;
 
 @compute
@@ -37,8 +28,4 @@ fn clearGridAccumulator(
     atomicStore(&grid_accumulator[cell_index].momentum_x, 0i);
     atomicStore(&grid_accumulator[cell_index].momentum_y, 0i);
     atomicStore(&grid_accumulator[cell_index].momentum_z, 0i);
-    atomicStore(&grid_transfer_accumulator[cell_index].momentum_x, 0i);
-    atomicStore(&grid_transfer_accumulator[cell_index].momentum_y, 0i);
-    atomicStore(&grid_transfer_accumulator[cell_index].momentum_z, 0i);
-    atomicStore(&grid_transfer_accumulator[cell_index]._padding, 0i);
 }

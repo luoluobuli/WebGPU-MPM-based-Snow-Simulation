@@ -1,4 +1,5 @@
 import type { SpawnPointSource } from "./particleInitialize/GpuSpawnVolumeBufferManager";
+import { GpuSimulationMethodType } from "./GpuSimulationMethod";
 
 export const CFL_NUMBER = 0.5;
 export const ELASTIC_CFL_NUMBER = 0.75;
@@ -188,6 +189,7 @@ export const calculateCflLimitedSimulationTimestepS = ({
     externalAcceleration,
     elasticWaveSpeed = 0,
     elasticCflNumber = ELASTIC_CFL_NUMBER,
+    simulationMethodType = GpuSimulationMethodType.ExplicitMpm,
 }: {
     maxSimulationTimestepS: number,
     minGridCellDim: number,
@@ -195,6 +197,7 @@ export const calculateCflLimitedSimulationTimestepS = ({
     externalAcceleration: number,
     elasticWaveSpeed?: number,
     elasticCflNumber?: number,
+    simulationMethodType?: GpuSimulationMethodType,
 }) => {
     const safeMaxSimulationTimestepS = Number.isFinite(maxSimulationTimestepS)
         ? Math.max(maxSimulationTimestepS, MIN_SIMULATION_TIMESTEP_S)
@@ -210,7 +213,11 @@ export const calculateCflLimitedSimulationTimestepS = ({
 
     const elasticLimitedTimestepS = calculateElasticWaveCflLimitedTimestepS({
         minGridCellDim,
-        elasticWaveSpeed,
+        // PBMPM resolves elasticity through its constraint iterations. Motion,
+        // acceleration, and moving-collider CFL limits still apply.
+        elasticWaveSpeed: simulationMethodType === GpuSimulationMethodType.Pbmpm
+            ? 0
+            : elasticWaveSpeed,
         elasticCflNumber,
     });
 

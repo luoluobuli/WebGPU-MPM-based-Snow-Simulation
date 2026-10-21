@@ -21,7 +21,7 @@ const kinematicGroundScene: SimulationSceneConfig = {
     nParticles: 8,
     gridResolution: [16, 16, 16],
     renderMethodType: GpuRenderMethodType.Splats,
-    simulationMethodType: GpuSimulationMethodType.FusedMlsMpm,
+    simulationMethodType: GpuSimulationMethodType.Pbmpm,
 };
 
 type SimulationStateConstructor =

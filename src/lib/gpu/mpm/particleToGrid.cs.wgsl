@@ -11,23 +11,13 @@ struct GridAccumulatorAtomic {
 
 @group(1) @binding(3) var<storage, read_write> grid_accumulator: array<GridAccumulatorAtomic>;
 
-struct GridTransferAccumulatorAtomic {
-    momentum_x: atomic<i32>,
-    momentum_y: atomic<i32>,
-    momentum_z: atomic<i32>,
-    _padding: atomic<i32>,
-}
-
-@group(1) @binding(7) var<storage, read_write> grid_transfer_accumulator: array<GridTransferAccumulatorAtomic>;
-
 @group(2) @binding(0) var<storage, read> particleDataIn: array<ParticleData>;
 @group(2) @binding(2) var<storage, read> particle_flags: array<u32>;
 @group(2) @binding(3) var<storage, read_write> active_block_dispatch_args: array<u32>;
 
 override N_PARTICLES: u32 = 0u;
 override USE_MLS_MPM: u32 = 0u;
-override SANITIZE_PARTICLES_IN_P2G: u32 = 0u;
-override WRITE_FLIP_TRANSFER: u32 = 0u;
+override USE_PBMPM: u32 = 0u;
 override PARTICLE_WORKGROUP_SIZE: u32 = 256u;
 
 fn clampMomentumFixedUnitsForAtomic(value: vec3f, max_component: f32) -> vec3f {
@@ -39,23 +29,14 @@ fn accumulateParticleToGridFixedUnits(
     momentum_fixed_units: vec3f,
     mass_fixed_units: f32,
 ) {
-    let momentum_i = vec3i(momentum_fixed_units);
-    atomicAdd(&grid_accumulator[cell_index].mass, i32(mass_fixed_units));
+    // Repeated PBMPM transfers must not accumulate the directional bias from
+    // truncating every fixed-point momentum contribution toward zero.
+    let momentum_i = vec3i(select(momentum_fixed_units, round(momentum_fixed_units), USE_PBMPM != 0u));
+    let mass_i = i32(select(mass_fixed_units, round(mass_fixed_units), USE_PBMPM != 0u));
+    atomicAdd(&grid_accumulator[cell_index].mass, mass_i);
     atomicAdd(&grid_accumulator[cell_index].momentum_x, momentum_i.x);
     atomicAdd(&grid_accumulator[cell_index].momentum_y, momentum_i.y);
     atomicAdd(&grid_accumulator[cell_index].momentum_z, momentum_i.z);
-}
-
-fn accumulateParticleTransferMomentum(
-    cell_index: u32,
-    momentum_fixed_units: vec3f,
-) {
-    if WRITE_FLIP_TRANSFER == 0u { return; }
-
-    let momentum_i = vec3i(momentum_fixed_units);
-    atomicAdd(&grid_transfer_accumulator[cell_index].momentum_x, momentum_i.x);
-    atomicAdd(&grid_transfer_accumulator[cell_index].momentum_y, momentum_i.y);
-    atomicAdd(&grid_transfer_accumulator[cell_index].momentum_z, momentum_i.z);
 }
 
 fn writeActiveBlockDispatchArgs() {
@@ -88,36 +69,20 @@ fn doParticleToGrid(
 
     let flags = particle_flags[thread_index];
     let material = particleMaterial(flags);
-    var particle_pos = particleDataIn[thread_index].pos;
-    var particle_mass = DEFAULT_PARTICLE_MASS;
+    let particle_pos = particleDataIn[thread_index].pos;
+    let particle_mass = DEFAULT_PARTICLE_MASS;
     var particle_vel = vec3f(0.0);
     var deformation_elastic = IDENTITY_MAT3;
     var deformation_plastic = mat3x3f();
     var deformation_displacement = mat3x3f();
-    var elastic_is_identity = (flags & PARTICLE_FLAG_ELASTIC_NON_IDENTITY) == 0u;
-
-    // Particle data is sanitized at initialization and by integrateParticles at
-    // both ends of each substep. P2G is on the hot path and only reads it.
-    if SANITIZE_PARTICLES_IN_P2G != 0u {
-        var particle = particleDataIn[thread_index];
-        sanitizeParticle(&particle);
-        particle_pos = particle.pos;
-        particle_mass = particle.mass;
-        particle_vel = particle.vel;
-        deformation_elastic = particle.deformationElastic;
-        deformation_plastic = particle.deformationPlastic;
-        deformation_displacement = particle.deformation_displacement;
-        elastic_is_identity = mat3x3IsIdentity(deformation_elastic);
-    }
+    let elastic_is_identity = (flags & PARTICLE_FLAG_ELASTIC_NON_IDENTITY) == 0u;
 
     let particle_grid_coord = calculateGridCoordinate(particle_pos);
     if !gridCoordinateCanTouchGrid(particle_grid_coord) { return; }
 
-    if SANITIZE_PARTICLES_IN_P2G == 0u {
-        particle_vel = particleDataIn[thread_index].vel;
-        if !elastic_is_identity {
-            deformation_elastic = particleDataIn[thread_index].deformationElastic;
-        }
+    particle_vel = particleDataIn[thread_index].vel;
+    if !elastic_is_identity {
+        deformation_elastic = particleDataIn[thread_index].deformationElastic;
     }
 
     let start_cell_number = vec3i(floor(particle_grid_coord));
@@ -128,23 +93,27 @@ fn doParticleToGrid(
 
     var has_deformation_delta = false;
     if USE_MLS_MPM != 0u {
-        if SANITIZE_PARTICLES_IN_P2G == 0u {
-            has_deformation_delta = (flags & PARTICLE_FLAG_DEFORMATION_DELTA_VALID) != 0u;
-            if has_deformation_delta {
-                deformation_displacement = sanitizeVelocityGradient(
-                    particleDataIn[thread_index].deformation_displacement,
-                );
-            }
-        } else {
-            has_deformation_delta = !mat3x3IsZero(deformation_displacement);
+        has_deformation_delta = (flags & PARTICLE_FLAG_DEFORMATION_DELTA_VALID) != 0u;
+        if has_deformation_delta {
+            deformation_displacement = sanitizeVelocityGradient(
+                particleDataIn[thread_index].deformation_displacement,
+            );
         }
     }
 
+    if USE_PBMPM != 0u && (!elastic_is_identity || has_deformation_delta) {
+        deformation_displacement = solvePbmpmVelocityGradient(
+            deformation_elastic,
+            particleDataIn[thread_index].deformationPlastic,
+            deformation_displacement,
+            material,
+        );
+        has_deformation_delta = !mat3x3IsZero(deformation_displacement);
+    }
+
     var stress_force_matrix = mat3x3f();
-    if !elastic_is_identity {
-        if SANITIZE_PARTICLES_IN_P2G == 0u {
-            deformation_plastic = particleDataIn[thread_index].deformationPlastic;
-        }
+    if USE_PBMPM == 0u && !elastic_is_identity {
+        deformation_plastic = particleDataIn[thread_index].deformationPlastic;
         var shear_resistance = SHEAR_RESISTANCE; // μ
         var volumetric_resistance = VOLUME_RESISTANCE; // λ
         applyMaterialLameParameters(material, &shear_resistance, &volumetric_resistance);
@@ -168,7 +137,7 @@ fn doParticleToGrid(
     let simple_transfer = elastic_is_identity && (USE_MLS_MPM == 0u || !has_deformation_delta);
     let transfer_affine_fixed_units = particle_mass_fixed_units * deformation_displacement;
     var mls_affine_fixed_units = transfer_affine_fixed_units;
-    if USE_MLS_MPM != 0u && !elastic_is_identity {
+    if USE_MLS_MPM != 0u && USE_PBMPM == 0u && !elastic_is_identity {
         mls_affine_fixed_units += scaleMatrixColumns(
             particle_mass * stress_force_matrix,
             uniforms.mlsStressAffineScale,
@@ -192,7 +161,6 @@ fn doParticleToGrid(
 
                 let cell_weight = cell_weights[x].x * (cell_weights[y].y * cell_weights[z].z);
                 var momentum_fixed_units = cell_weight * particle_momentum_fixed_units;
-                var transfer_momentum_fixed_units = momentum_fixed_units;
 
                 if !simple_transfer {
                     if USE_MLS_MPM != 0u {
@@ -202,10 +170,6 @@ fn doParticleToGrid(
                         momentum_fixed_units = cell_weight * (
                             particle_momentum_fixed_units
                             + mls_affine_fixed_units * cell_particle_offset
-                        );
-                        transfer_momentum_fixed_units = cell_weight * (
-                            particle_momentum_fixed_units
-                            + transfer_affine_fixed_units * cell_particle_offset
                         );
                     } else {
                         // ∇w (gradient wrt world position)
@@ -221,10 +185,6 @@ fn doParticleToGrid(
                         momentum_fixed_units,
                         max_particle_momentum_fixed_units,
                     );
-                    transfer_momentum_fixed_units = clampMomentumFixedUnitsForAtomic(
-                        transfer_momentum_fixed_units,
-                        max_particle_momentum_fixed_units,
-                    );
                 }
 
                 accumulateParticleToGridFixedUnits(
@@ -232,9 +192,6 @@ fn doParticleToGrid(
                     momentum_fixed_units,
                     cell_weight * particle_mass_fixed_units,
                 );
-                if USE_MLS_MPM != 0u || simple_transfer {
-                    accumulateParticleTransferMomentum(cell_index, transfer_momentum_fixed_units);
-                }
             }
         }
     }

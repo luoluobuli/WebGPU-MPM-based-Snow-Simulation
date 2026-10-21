@@ -15,6 +15,8 @@ export type SimulationTimelineCacheSettings = {
     simulationMethodType: SimulationSceneConfig["simulationMethodType"],
     explicitMpmMaxSimulationTimestepS: number,
     mlsMpmMaxSimulationTimestepS: number,
+    pbmpmMaxSimulationTimestepS: number,
+    pbmpmSolveIterations: number,
     timelineFrameCount: number,
     timelineSecondsPerFrame: number,
 };
@@ -63,6 +65,8 @@ export const createSimulationTimelineCacheKey = ({
         settings.explicitMpmMaxSimulationTimestepS,
     mlsMpmMaxSimulationTimestepS:
         settings.mlsMpmMaxSimulationTimestepS,
+    pbmpmMaxSimulationTimestepS: settings.pbmpmMaxSimulationTimestepS,
+    pbmpmSolveIterations: settings.pbmpmSolveIterations,
     timelineFrameCount: settings.timelineFrameCount,
     timelineSecondsPerFrame: settings.timelineSecondsPerFrame,
 }));

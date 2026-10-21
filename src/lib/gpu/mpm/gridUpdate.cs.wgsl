@@ -13,6 +13,8 @@ struct GridVelocity {
 @group(2) @binding(0) var<storage, read> active_block_dispatch_args: array<u32>;
 
 override ENABLE_INTERACTION: u32 = 1u;
+override APPLY_EXTERNAL_FORCES: u32 = 1u;
+override USE_PBMPM_CONTACT: u32 = 0u;
 override GRID_BOUNDARY_MAX_X: i32 = 381i;
 override GRID_BOUNDARY_MAX_Y: i32 = 381i;
 override GRID_BOUNDARY_MAX_Z: i32 = 381i;
@@ -104,6 +106,35 @@ fn clampVelocityToFixedPointRange(velocity: vec3f) -> vec3f {
     );
 }
 
+fn projectPbmpmGridContact(world_position: vec3f, velocity: vec3f) -> vec3f {
+    let predicted_position = world_position + velocity * uniforms.simulationTimestep;
+    let projected_velocity = projectVelocityAgainstKinematicCollider(predicted_position, velocity);
+    if !colliderSdfIsValid() || segmentOutsideColliderWorldBounds(world_position, predicted_position) {
+        return projected_velocity;
+    }
+
+    let local_position = (uniforms.colliderTransformInv * vec4f(predicted_position, 1.0)).xyz;
+    let sample = sampleColliderSdfValueGradient(local_position);
+    if sample.value >= 0.0 { return projected_velocity; }
+
+    var local_normal = sample.gradient;
+    if sample.has_gradient == 0u {
+        local_normal = colliderSdfGradient(local_position);
+    }
+    let world_normal = (transpose(uniforms.colliderTransformInv) * vec4f(local_normal, 0.0)).xyz;
+    let normal_length_squared = dot(world_normal, world_normal);
+    if !(normal_length_squared > 1e-12) { return projected_velocity; }
+
+    return projectVelocityAgainstKinematicColliderSample(
+        KinematicColliderSample(
+            sample.value,
+            world_normal * inverseSqrt(normal_length_squared),
+            uniforms.colliderVelocity,
+        ),
+        projected_velocity,
+    );
+}
+
 @compute
 @workgroup_size(64)
 fn doGridUpdate(
@@ -157,8 +188,11 @@ fn doGridUpdate(
 
     let cell_velocity_in = vec3f(cell_accumulator.yzw) * inv_cell_mass_fixed;
 
-    var cell_velocity = cell_velocity_in + uniforms.gravityDeltaVelocity;
-    if ENABLE_INTERACTION != 0u && uniforms.isInteracting != 0u && uniforms.interactionRadiusSquared > 0.0 {
+    var cell_velocity = cell_velocity_in;
+    if APPLY_EXTERNAL_FORCES != 0u {
+        cell_velocity += uniforms.gravityDeltaVelocity;
+    }
+    if APPLY_EXTERNAL_FORCES != 0u && ENABLE_INTERACTION != 0u && uniforms.isInteracting != 0u && uniforms.interactionRadiusSquared > 0.0 {
         let cell_offset = cellOffsetWithinBlock(cell_index_within_block);
         cell_velocity = applyInteractionVelocity(cell_velocity, block_cell_base, cell_offset);
         if !workgroup_is_interior_block {
@@ -177,6 +211,9 @@ fn doGridUpdate(
         world_position,
         cell_velocity,
     );
+    if USE_PBMPM_CONTACT != 0u {
+        cell_velocity = projectPbmpmGridContact(world_position, cell_velocity);
+    }
     cell_velocity = clampVelocityToFixedPointRange(cell_velocity);
 
     grid_velocity[cell_index].velocity = cell_velocity;

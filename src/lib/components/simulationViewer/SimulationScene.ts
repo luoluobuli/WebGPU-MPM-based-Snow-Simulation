@@ -49,6 +49,8 @@ export type SimulationCameraDefaults = {
 export type SimulationTimingConfig = {
     explicitMpmMaxSimulationTimestepS?: number,
     mlsMpmMaxSimulationTimestepS?: number,
+    pbmpmMaxSimulationTimestepS?: number,
+    pbmpmSolveIterations?: number,
     oneSimulationStepPerFrame?: boolean,
 };
 
@@ -140,7 +142,7 @@ const createZubeiaGroundScene = ({
         : ZUBEIA_GROUND_PREVIEW_PARTICLE_COUNT,
     gridResolution: [...ZUBEIA_GROUND_GRID_RESOLUTION],
     renderMethodType: GpuRenderMethodType.Splats,
-    simulationMethodType: GpuSimulationMethodType.FusedMlsMpm,
+    simulationMethodType: GpuSimulationMethodType.Pbmpm,
     camera: {
         radius: 9,
         lat: 0.75,
@@ -148,7 +150,8 @@ const createZubeiaGroundScene = ({
         offset: [0, 0.9, 0.9],
     },
     timing: {
-        mlsMpmMaxSimulationTimestepS: 1 / 240,
+        pbmpmMaxSimulationTimestepS: 1 / 240,
+        pbmpmSolveIterations: 4,
         oneSimulationStepPerFrame: true,
     },
     timeline: {

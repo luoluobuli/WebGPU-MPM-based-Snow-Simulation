@@ -10,32 +10,18 @@ const GRID_CELLS_PER_BLOCK = 64;
 const SPARSE_GRID_HEADER_BYTES = 16;
 const UINT32_BYTES = 4;
 const VEC3I_STORAGE_STRIDE_BYTES = 16;
-const BUKKIT_THREAD_DATA_BYTES = 32;
-const FUSED_SUBBUKKITS_PER_BLOCK = 8;
 
-function alignTo(value: number, alignment: number) {
+const alignTo = (value: number, alignment: number) => {
     return Math.ceil(value / alignment) * alignment;
-}
+};
 
 export class GpuMpmBufferManager {
     readonly particleDataBuffer: GPUBuffer;
     readonly particleFlagsBuffer: GPUBuffer;
     readonly sparseGridBuffer: GPUBuffer;
-    readonly nextSparseGridBuffer: GPUBuffer;
     readonly gridAccumulatorBuffer: GPUBuffer;
-    readonly nextGridAccumulatorBuffer: GPUBuffer;
     readonly gridVelocityBuffer: GPUBuffer;
-    readonly nextGridVelocityBuffer: GPUBuffer;
     readonly activeBlockDispatchBuffer: GPUBuffer;
-    readonly nextActiveBlockDispatchBuffer: GPUBuffer;
-    readonly bukkitParticleCountsBuffer: GPUBuffer;
-    readonly bukkitInsertCountersBuffer: GPUBuffer;
-    readonly bukkitIndexStartBuffer: GPUBuffer;
-    readonly bukkitThreadDataBuffer: GPUBuffer;
-    readonly bukkitParticleDataBuffer: GPUBuffer;
-    readonly bukkitDispatchBuffer: GPUBuffer;
-    readonly bukkitParticleAllocatorBuffer: GPUBuffer;
-    readonly bukkitThreadGroupCountBuffer: GPUBuffer;
 
     readonly nParticles: number;
     readonly particleDataByteLength: number;
@@ -86,7 +72,6 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
         const sparseGridBuffer = createSparseGridBuffer("MPM sparse grid storage buffer");
-        const nextSparseGridBuffer = createSparseGridBuffer("MPM fused next sparse grid storage buffer");
 
         const gridVectorStorageSize = this.nMaxActiveBlocks * GRID_CELLS_PER_BLOCK * VEC3I_STORAGE_STRIDE_BYTES;
         const createGridAccumulatorBuffer = (label: string) => device.createBuffer({
@@ -95,19 +80,8 @@ export class GpuMpmBufferManager {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
         const gridAccumulatorBuffer = createGridAccumulatorBuffer("MPM packed grid accumulator buffer");
-        const nextGridAccumulatorBuffer = createGridAccumulatorBuffer(
-            "MPM fused next packed grid accumulator buffer",
-        );
 
-        // Classic MPM uses the primary buffer for post-force grid velocity.
-        // Fused MLS reuses both 16-byte buffers as ping-ponged, stress-free
-        // transfer accumulators for the FLIP velocity delta.
-        const gridVelocityBuffer = createGridAccumulatorBuffer(
-            "MPM packed grid velocity or fused transfer accumulator buffer",
-        );
-        const nextGridVelocityBuffer = createGridAccumulatorBuffer(
-            "MPM fused next transfer accumulator buffer",
-        );
+        const gridVelocityBuffer = createGridAccumulatorBuffer("MPM packed grid velocity buffer");
 
         // 0..2: active block dispatch, 3: active block count.
         const activeBlockDispatchBuffer = device.createBuffer({
@@ -115,79 +89,15 @@ export class GpuMpmBufferManager {
             size: 4 * UINT32_BYTES,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
         });
-        const nextActiveBlockDispatchBuffer = device.createBuffer({
-            label: "MPM fused next active block indirect dispatch buffer",
-            size: 4 * UINT32_BYTES,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
-        });
         const emptyActiveBlockDispatchArgs = new Uint32Array([1, 1, 1, 0]);
         device.queue.writeBuffer(activeBlockDispatchBuffer, 0, emptyActiveBlockDispatchArgs);
-        device.queue.writeBuffer(nextActiveBlockDispatchBuffer, 0, emptyActiveBlockDispatchArgs);
-
-        const bukkitTableEntryCount = Math.max(
-            this.bukkitDomainBlockCount,
-            this.nMaxActiveBlocks * FUSED_SUBBUKKITS_PER_BLOCK,
-        );
-        const bukkitTableSize = bukkitTableEntryCount * UINT32_BYTES;
-        const bukkitParticleCountsBuffer = device.createBuffer({
-            label: "MPM fused bukkit particle counts buffer",
-            size: bukkitTableSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-        const bukkitInsertCountersBuffer = device.createBuffer({
-            label: "MPM fused bukkit insert counters buffer",
-            size: bukkitTableSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-        const bukkitIndexStartBuffer = device.createBuffer({
-            label: "MPM fused bukkit index starts buffer",
-            size: bukkitTableSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-        const bukkitThreadDataBuffer = device.createBuffer({
-            label: "MPM fused bukkit thread data buffer",
-            size: Math.max(1, nParticles) * BUKKIT_THREAD_DATA_BYTES,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-        const bukkitParticleDataBuffer = device.createBuffer({
-            label: "MPM fused bukkit particle index buffer",
-            size: Math.max(1, nParticles) * UINT32_BYTES,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-        const bukkitDispatchBuffer = device.createBuffer({
-            label: "MPM fused bukkit indirect dispatch buffer",
-            size: 4 * UINT32_BYTES,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
-        });
-        const bukkitParticleAllocatorBuffer = device.createBuffer({
-            label: "MPM fused bukkit particle allocator buffer",
-            size: UINT32_BYTES,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-        const bukkitThreadGroupCountBuffer = device.createBuffer({
-            label: "MPM fused bukkit thread group count buffer",
-            size: UINT32_BYTES,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
 
         this.particleDataBuffer = particleDataBuffer;
         this.particleFlagsBuffer = particleFlagsBuffer;
         this.sparseGridBuffer = sparseGridBuffer;
-        this.nextSparseGridBuffer = nextSparseGridBuffer;
         this.gridAccumulatorBuffer = gridAccumulatorBuffer;
-        this.nextGridAccumulatorBuffer = nextGridAccumulatorBuffer;
         this.gridVelocityBuffer = gridVelocityBuffer;
-        this.nextGridVelocityBuffer = nextGridVelocityBuffer;
         this.activeBlockDispatchBuffer = activeBlockDispatchBuffer;
-        this.nextActiveBlockDispatchBuffer = nextActiveBlockDispatchBuffer;
-        this.bukkitParticleCountsBuffer = bukkitParticleCountsBuffer;
-        this.bukkitInsertCountersBuffer = bukkitInsertCountersBuffer;
-        this.bukkitIndexStartBuffer = bukkitIndexStartBuffer;
-        this.bukkitThreadDataBuffer = bukkitThreadDataBuffer;
-        this.bukkitParticleDataBuffer = bukkitParticleDataBuffer;
-        this.bukkitDispatchBuffer = bukkitDispatchBuffer;
-        this.bukkitParticleAllocatorBuffer = bukkitParticleAllocatorBuffer;
-        this.bukkitThreadGroupCountBuffer = bukkitThreadGroupCountBuffer;
 
         this.nParticles = nParticles;
         this.particleDataByteLength = particleDataByteLength;
@@ -198,20 +108,8 @@ export class GpuMpmBufferManager {
         this.particleDataBuffer.destroy();
         this.particleFlagsBuffer.destroy();
         this.sparseGridBuffer.destroy();
-        this.nextSparseGridBuffer.destroy();
         this.gridAccumulatorBuffer.destroy();
-        this.nextGridAccumulatorBuffer.destroy();
         this.gridVelocityBuffer.destroy();
-        this.nextGridVelocityBuffer.destroy();
         this.activeBlockDispatchBuffer.destroy();
-        this.nextActiveBlockDispatchBuffer.destroy();
-        this.bukkitParticleCountsBuffer.destroy();
-        this.bukkitInsertCountersBuffer.destroy();
-        this.bukkitIndexStartBuffer.destroy();
-        this.bukkitThreadDataBuffer.destroy();
-        this.bukkitParticleDataBuffer.destroy();
-        this.bukkitDispatchBuffer.destroy();
-        this.bukkitParticleAllocatorBuffer.destroy();
-        this.bukkitThreadGroupCountBuffer.destroy();
     }
 }
