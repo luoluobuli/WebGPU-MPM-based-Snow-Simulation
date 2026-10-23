@@ -1,8 +1,4 @@
 import {
-    ParticleAppearanceMaterial,
-    packParticleAppearance,
-} from "$lib/gpu/particleAppearance/GpuParticleAppearanceBufferManager";
-import {
     ZUBEIA_WALK_GROUND_SURFACE_Z_M,
     ZUBEIA_WALK_STRIDE_M,
 } from "./ZubeiaWalkCalibration";
@@ -18,7 +14,6 @@ export type ZubeiaGroundProfile = "preview" | "final";
 
 export type ZubeiaGroundData = {
     points: Float32Array,
-    particleAppearances: Uint32Array,
 };
 
 export const ZUBEIA_GROUND_CELL_SIZE_M = 0.025;
@@ -72,15 +67,6 @@ export const ZUBEIA_GROUND_PREVIEW_PARTICLE_COUNT =
 export const ZUBEIA_GROUND_FINAL_PARTICLE_COUNT =
     ZUBEIA_GROUND_CELL_COUNT * ZUBEIA_GROUND_FINAL_PARTICLES_PER_CELL;
 
-export const ZUBEIA_GROUND_BASE_APPEARANCE = packParticleAppearance({
-    color: [0.29, 0.18, 0.11],
-    material: ParticleAppearanceMaterial.Soil,
-}) >>> 0;
-export const ZUBEIA_GROUND_CRUST_APPEARANCE = packParticleAppearance({
-    color: [0.3, 0.34, 0.37],
-    material: ParticleAppearanceMaterial.Soil,
-}) >>> 0;
-
 const PREVIEW_SAMPLE_OFFSETS: readonly Vec3[] = [
     [0.5, 0.5, 0.5],
 ];
@@ -111,7 +97,6 @@ export const buildZubeiaGround = (
     const sampleOffsets = sampleOffsetsForProfile(profile);
     const particleCount = zubeiaGroundParticleCount(profile);
     const points = new Float32Array(particleCount * 4);
-    const particleAppearances = new Uint32Array(particleCount);
     const [cellCountX, cellCountY, cellCountZ] =
         ZUBEIA_GROUND_STRIP_CELL_COUNTS;
     const crustStartZ = cellCountZ - ZUBEIA_GROUND_CRUST_CELL_COUNT;
@@ -122,9 +107,6 @@ export const buildZubeiaGround = (
         const material = isCrust
             ? ZUBEIA_GROUND_CRUST_MATERIAL_ID
             : ZUBEIA_GROUND_DEFAULT_MATERIAL_ID;
-        const appearance = isCrust
-            ? ZUBEIA_GROUND_CRUST_APPEARANCE
-            : ZUBEIA_GROUND_BASE_APPEARANCE;
 
         for (let y = 0; y < cellCountY; y++) {
             for (let x = 0; x < cellCountX; x++) {
@@ -140,7 +122,6 @@ export const buildZubeiaGround = (
                         ZUBEIA_GROUND_STRIP_BOUNDS.min[2]
                         + (z + offset[2]) * ZUBEIA_GROUND_CELL_SIZE_M;
                     points[pointOffset + 3] = material;
-                    particleAppearances[particleIndex] = appearance;
                     particleIndex++;
                 }
             }
@@ -149,6 +130,5 @@ export const buildZubeiaGround = (
 
     return {
         points,
-        particleAppearances,
     };
 };

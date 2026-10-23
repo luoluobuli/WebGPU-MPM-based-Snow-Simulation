@@ -36,7 +36,6 @@ import { PrerenderPassElapsedTime } from "$lib/components/simulationViewer/Prere
 import { GpuSsaoPipelineManager } from "./ssao/GpuSsaoPipelineManager";
 import { GpuDepthPicker } from "./GpuDepthPicker";
 import { GpuParticleSpeedReductionPipelineManager } from "./mpm/GpuParticleSpeedReductionPipelineManager";
-import { GpuParticleAppearanceBufferManager } from "./particleAppearance/GpuParticleAppearanceBufferManager";
 import { GRAVITATIONAL_ACCELERATION_M_PER_S2 } from "./gravity";
 import { GpuSimulationPlaybackFrameCacheManager } from "./simulationFrameCache/GpuSimulationPlaybackFrameCacheManager";
 import {
@@ -46,7 +45,7 @@ import {
     calculateSimulationSubstepTimestepS,
     calculateSimulationSubstepsPerMaxStep,
     canRelaxParticleSpeedSampling,
-    calculateSpawnSourceMaxElasticWaveSpeed,
+    MPM_MAX_ELASTIC_WAVE_SPEED,
     MAX_SIMULATION_DRIFT_MS,
     MAX_SIMULATION_STEPS_PER_FRAME,
     MAX_SIMULATION_SUBSTEPS_PER_FRAME,
@@ -214,7 +213,6 @@ export class GpuSnowPipelineRunner {
 
     private readonly mpmManager: GpuMpmBufferManager;
     private readonly spawnVolumeManager: GpuSpawnVolumeBufferManager;
-    private readonly particleAppearanceManager: GpuParticleAppearanceBufferManager;
     private readonly colliderManager: GpuColliderBufferManager;
     private readonly kinematicColliderManager: GpuRigidPawSdfKinematicColliderManager;
     private readonly kinematicColliderIntervalBatch: GpuKinematicColliderIntervalBatchBuffer;
@@ -254,7 +252,6 @@ export class GpuSnowPipelineRunner {
         spawnSource,
         collider,
         renderCollider = true,
-        particleAppearances,
         getSimulationMethodType,
         getRenderMethodType,
         oneSimulationStepPerFrame,
@@ -285,7 +282,6 @@ export class GpuSnowPipelineRunner {
         spawnSource: SpawnPointSource,
         collider?: ColliderGeometry | null,
         renderCollider?: boolean,
-        particleAppearances?: Uint32Array | null,
         getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
         oneSimulationStepPerFrame: () => boolean,
@@ -307,7 +303,7 @@ export class GpuSnowPipelineRunner {
         this.colliderFriction = colliderFriction;
         this.isInteracting = isInteracting;
         this.interactionStrength = interactionStrength;
-        this.elasticWaveSpeed = calculateSpawnSourceMaxElasticWaveSpeed(spawnSource);
+        this.elasticWaveSpeed = MPM_MAX_ELASTIC_WAVE_SPEED;
 
         this.camera = camera;
 
@@ -407,13 +403,6 @@ export class GpuSnowPipelineRunner {
             source: spawnSource,
         });
         this.spawnVolumeManager = spawnVolumeManager;
-
-        const particleAppearanceManager = new GpuParticleAppearanceBufferManager({
-            device,
-            nParticles,
-            appearances: particleAppearances,
-        });
-        this.particleAppearanceManager = particleAppearanceManager;
 
         const colliderGeometry = collider ?? emptyColliderGeometry();
         const animatedKinematicCollider =
@@ -572,7 +561,6 @@ export class GpuSnowPipelineRunner {
                             depthFormat: "depth32float",
                             uniformsManager,
                             mpmManager,
-                            particleAppearanceManager,
                         });
                         break;
 
@@ -583,7 +571,6 @@ export class GpuSnowPipelineRunner {
                             depthFormat: "depth32float",
                             uniformsManager,
                             mpmManager,
-                            particleAppearanceManager,
                         });
                         break;
 
@@ -727,7 +714,6 @@ export class GpuSnowPipelineRunner {
         this.kinematicColliderIntervalBatch.destroy();
         this.kinematicColliderManager.destroy();
         this.colliderManager.destroy();
-        this.particleAppearanceManager.destroy();
         this.spawnVolumeManager.destroy();
         this.performanceMeasurementManager?.destroy();
         this.mpmManager.destroy();

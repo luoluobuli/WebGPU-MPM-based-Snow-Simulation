@@ -19,6 +19,7 @@ const DEFAULT_PARTICLE_MASS = 1.0 / 3.0;
 const PARTICLE_FLAG_DEFORMATION_DELTA_VALID = 1u;
 const PARTICLE_FLAG_ELASTIC_NON_IDENTITY = 2u;
 const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
+// Material IDs retain layer metadata for cached surface analysis only.
 const PARTICLE_MATERIAL_SHIFT = 8u;
 const PARTICLE_MATERIAL_MASK = 7u << PARTICLE_MATERIAL_SHIFT;
 const PARTICLE_MATERIAL_DEFAULT = 0u;
@@ -43,10 +44,6 @@ fn particleFlagsFromSpawnPoint(encodedMaterial: f32) -> u32 {
     return materialFlagFromId(material);
 }
 
-fn particleMaterial(flags: u32) -> u32 {
-    return (flags & PARTICLE_MATERIAL_MASK) >> PARTICLE_MATERIAL_SHIFT;
-}
-
 fn particlePersistentFlags(flags: u32) -> u32 {
     return flags & (
         PARTICLE_FLAG_ELASTIC_NON_IDENTITY
@@ -68,14 +65,6 @@ fn particleElasticVolumeFactor(particle: ParticleData, flags: u32) -> f32 {
     }
 
     return determinant(particle.deformationElastic);
-}
-
-fn materialBoundaryFriction(material: u32) -> f32 {
-    if material == PARTICLE_MATERIAL_CRUST {
-        return 0.72;
-    }
-
-    return 0.35;
 }
 
 fn calculateGridCoordinate(pos: vec3f) -> vec3f {

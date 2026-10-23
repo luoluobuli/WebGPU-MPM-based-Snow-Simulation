@@ -1,7 +1,6 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> particle_data: array<ParticleData>;
-@group(0) @binding(2) var<storage, read> particle_appearance: array<u32>;
-@group(0) @binding(3) var<storage, read> particle_flags: array<u32>;
+@group(0) @binding(2) var<storage, read> particle_flags: array<u32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -12,12 +11,10 @@ struct VertexOutput {
     @location(4) elastic_volume_fac: f32,
     @location(5) shape_params: vec4f,
     @location(6) grain_params: vec4f,
-    @location(7) appearance: vec4f,
 }
 
 const BASE_PARTICLE_RADIUS = 0.1;
 const DEFAULT_SPLAT_RADIUS_SCALE = 0.88;
-const SOIL_SPLAT_RADIUS_SCALE = 0.76;
 const VERT_POSITIONS: array<vec2f, 6> = array(
     vec2f(-1, -1),
     vec2f(1, -1),
@@ -40,14 +37,6 @@ fn randomFromIndex(index: u32, salt: u32) -> f32 {
     return f32(hash1(index ^ salt)) / f32(0xffffffffu);
 }
 
-fn splatRadiusScaleForMaterial(material: f32) -> f32 {
-    if material > 0.5 {
-        return SOIL_SPLAT_RADIUS_SCALE;
-    }
-
-    return DEFAULT_SPLAT_RADIUS_SCALE;
-}
-
 @vertex
 fn vert(
     @builtin(vertex_index) vertex_index: u32,
@@ -55,7 +44,6 @@ fn vert(
 ) -> VertexOutput {
     let particle = particle_data[instance_index];
     let flags = particle_flags[instance_index];
-    let appearance = decodeParticleAppearance(particle_appearance[instance_index]);
     let uv = VERT_POSITIONS[vertex_index];
     let seed = vec3f(
         randomFromIndex(instance_index, 0x9e3779b9u),
@@ -65,7 +53,7 @@ fn vert(
     let radius_jitter = mix(0.72, 1.08, seed.x);
     let radius = BASE_PARTICLE_RADIUS
         * particle.mass
-        * splatRadiusScaleForMaterial(appearance.w)
+        * DEFAULT_SPLAT_RADIUS_SCALE
         * radius_jitter;
     let axis_scale = vec2f(
         mix(0.72, 1.18, seed.y),
@@ -90,7 +78,6 @@ fn vert(
     out.elastic_volume_fac = particleElasticVolumeFactor(particle, flags);
     out.shape_params = vec4f(axis_scale, depth_scale, seed.x);
     out.grain_params = grain_params;
-    out.appearance = appearance;
 
     return out;
 }

@@ -9,8 +9,6 @@ const SVD_RELATIVE_TOLERANCE = 1e-6;
 const SVD_MIN_NORMALIZED_SINGULAR = 1e-7;
 const DEFAULT_CRITICAL_COMPRESSION = 2.5e-2; // θ_c
 const DEFAULT_CRITICAL_STRETCH = 7.5e-3; // θ_s
-const CRUST_CRITICAL_COMPRESSION = 6.0e-2;
-const CRUST_CRITICAL_STRETCH = 2.0e-2;
 
 fn rotateSvdColumns(
     diagonalized: ptr<function, mat3x3f>,
@@ -162,7 +160,6 @@ fn calculateSvd3x3(deformation: mat3x3f) -> Svd3x3 {
  */
 fn applyPlasticity(
     particle: ptr<function, ParticleData>,
-    material: u32,
 ) -> bool {
     let deformationElastic = (*particle).deformationElastic; // F_e
     let deformationPlastic = (*particle).deformationPlastic; // F_p
@@ -182,12 +179,8 @@ fn applyPlasticity(
     }
 
     // thresholds of compression/stretching until yielding
-    var minStretchFactor = 1.0 - DEFAULT_CRITICAL_COMPRESSION;
-    var maxStretchFactor = 1.0 + DEFAULT_CRITICAL_STRETCH;
-    if material == PARTICLE_MATERIAL_CRUST {
-        minStretchFactor = 1.0 - CRUST_CRITICAL_COMPRESSION;
-        maxStretchFactor = 1.0 + CRUST_CRITICAL_STRETCH;
-    }
+    let minStretchFactor = 1.0 - DEFAULT_CRITICAL_COMPRESSION;
+    let maxStretchFactor = 1.0 + DEFAULT_CRITICAL_STRETCH;
 
     // singulars = individual scale factors extracted from the elastic deformation
     let svd = calculateSvd3x3(deformationElastic); // σ_0, σ_1, σ_2 in svd.singulars

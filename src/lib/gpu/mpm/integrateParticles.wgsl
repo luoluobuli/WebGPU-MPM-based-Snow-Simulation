@@ -15,6 +15,8 @@ override RECORD_PARTICLE_SPEED: u32 = 0u;
 override PARTICLE_WORKGROUP_SIZE: u32 = 256u;
 override PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE: u32 = 1u;
 
+const DOMAIN_BOUNDARY_FRICTION = 0.35;
+
 var<workgroup> workgroup_max_particle_speed_bits: array<u32, PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE>;
 
 fn recordWorkgroupMaxParticleSpeed(local_index: u32, speed_squared: f32) {
@@ -44,7 +46,6 @@ fn recordWorkgroupMaxParticleSpeed(local_index: u32, speed_squared: f32) {
 
 fn applySimulationDomainBoundary(
     particle: ptr<function, ParticleData>,
-    material: u32,
 ) {
     let domain_min = uniforms.gridMinCoords;
     let domain_max = uniforms.gridMaxCoords;
@@ -53,7 +54,7 @@ fn applySimulationDomainBoundary(
     }
 
     let domain_max_inside = simulationDomainMaxInside();
-    let tangential_scale = 1.0 - materialBoundaryFriction(material);
+    let tangential_scale = 1.0 - DOMAIN_BOUNDARY_FRICTION;
     if (*particle).pos.x < domain_min.x {
         (*particle).pos_displacement.x *= -0.5;
         (*particle).pos.x = domain_min.x;
@@ -104,7 +105,6 @@ fn integrateParticles(
         let sparse_grid_generation = sparse_grid.current_generation;
         var particle = particle_data[particle_index];
         var flags = particle_flags[particle_index];
-        let material = particleMaterial(flags);
 
         let unclamped_velocity = sanitizeVec3(particle.vel, vec3f(0.0));
         let unclamped_speed_squared = dot(unclamped_velocity, unclamped_velocity);
@@ -152,12 +152,12 @@ fn integrateParticles(
                 deformation_delta_remains_valid = false;
                 deformation_plastic_changed = true;
             } else {
-                deformation_plastic_changed = applyPlasticity(&particle, material);
+                deformation_plastic_changed = applyPlasticity(&particle);
             }
         }
 
         // Boundary conditions
-        applySimulationDomainBoundary(&particle, material);
+        applySimulationDomainBoundary(&particle);
 
         // SDF collision
         resolveParticleCollision(&particle);

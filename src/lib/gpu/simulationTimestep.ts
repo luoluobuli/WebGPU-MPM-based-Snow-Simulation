@@ -1,4 +1,3 @@
-import type { SpawnPointSource } from "./particleInitialize/GpuSpawnVolumeBufferManager";
 import { GpuSimulationMethodType } from "./GpuSimulationMethod";
 
 export const CFL_NUMBER = 0.5;
@@ -26,25 +25,14 @@ const MPM_VOLUME_RESISTANCE = MPM_YOUNGS_MODULUS_PA
     * MPM_POISSONS_RATIO
     / ((1 + MPM_POISSONS_RATIO) * (1 - 2 * MPM_POISSONS_RATIO));
 const MPM_PARTICLE_DENSITY = 400;
-const MPM_PARTICLE_MATERIAL_DEFAULT = 0;
-const MPM_PARTICLE_MATERIAL_CRUST = 4;
-const MPM_CRUST_STIFFNESS_SCALE = 1.5;
 export const MPM_MAX_HARDENING_SCALE = 10;
 
 
-export const MPM_ELASTIC_MATERIALS: Record<number, ElasticMaterial> = {
-    [MPM_PARTICLE_MATERIAL_DEFAULT]: {
-        shearResistance: MPM_SHEAR_RESISTANCE,
-        volumetricResistance: MPM_VOLUME_RESISTANCE,
-        density: MPM_PARTICLE_DENSITY,
-        maxHardeningScale: MPM_MAX_HARDENING_SCALE,
-    },
-    [MPM_PARTICLE_MATERIAL_CRUST]: {
-        shearResistance: MPM_SHEAR_RESISTANCE * MPM_CRUST_STIFFNESS_SCALE,
-        volumetricResistance: MPM_VOLUME_RESISTANCE * MPM_CRUST_STIFFNESS_SCALE,
-        density: MPM_PARTICLE_DENSITY,
-        maxHardeningScale: MPM_MAX_HARDENING_SCALE,
-    },
+const MPM_ELASTIC_MATERIAL: ElasticMaterial = {
+    shearResistance: MPM_SHEAR_RESISTANCE,
+    volumetricResistance: MPM_VOLUME_RESISTANCE,
+    density: MPM_PARTICLE_DENSITY,
+    maxHardeningScale: MPM_MAX_HARDENING_SCALE,
 };
 
 export const calculateElasticWaveSpeed = ({
@@ -73,62 +61,9 @@ export const calculateElasticWaveSpeed = ({
     );
 };
 
-export const calculateMaxElasticWaveSpeed = (materials: ElasticMaterial[]) => {
-    return materials.reduce(
-        (maxSpeed, material) => Math.max(maxSpeed, calculateElasticWaveSpeed(material)),
-        0,
-    );
-};
-
-export const MPM_MAX_ELASTIC_WAVE_SPEED = calculateMaxElasticWaveSpeed(
-    Object.values(MPM_ELASTIC_MATERIALS),
+export const MPM_MAX_ELASTIC_WAVE_SPEED = calculateElasticWaveSpeed(
+    MPM_ELASTIC_MATERIAL,
 );
-
-export const particleMaterialFromSpawnValue = (encodedMaterial: number) => {
-    if (!Number.isFinite(encodedMaterial)) {
-        return MPM_PARTICLE_MATERIAL_DEFAULT;
-    }
-
-    return Math.round(encodedMaterial) >= MPM_PARTICLE_MATERIAL_CRUST
-        ? MPM_PARTICLE_MATERIAL_CRUST
-        : MPM_PARTICLE_MATERIAL_DEFAULT;
-};
-
-export const calculateMaxElasticWaveSpeedForMaterialIds = (materialIds: Iterable<number>) => {
-    let maxSpeed = 0;
-    let sawMaterial = false;
-
-    for (const materialId of materialIds) {
-        const material = MPM_ELASTIC_MATERIALS[
-            particleMaterialFromSpawnValue(materialId)
-        ];
-        if (material === undefined) {
-            continue;
-        }
-
-        sawMaterial = true;
-        maxSpeed = Math.max(maxSpeed, calculateElasticWaveSpeed(material));
-    }
-
-    return sawMaterial
-        ? maxSpeed
-        : calculateElasticWaveSpeed(MPM_ELASTIC_MATERIALS[MPM_PARTICLE_MATERIAL_DEFAULT]);
-};
-
-export const calculateSpawnSourceMaxElasticWaveSpeed = (source: SpawnPointSource) => {
-    if (source.type === "mesh") {
-        return calculateMaxElasticWaveSpeedForMaterialIds([
-            MPM_PARTICLE_MATERIAL_DEFAULT,
-        ]);
-    }
-
-    const materialIds = new Set<number>();
-    for (let i = 3; i < source.points.length; i += 4) {
-        materialIds.add(particleMaterialFromSpawnValue(source.points[i]));
-    }
-
-    return calculateMaxElasticWaveSpeedForMaterialIds(materialIds);
-};
 
 export const calculateElasticWaveCflLimitedTimestepS = ({
     minGridCellDim,

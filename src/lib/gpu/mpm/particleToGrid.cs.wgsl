@@ -68,7 +68,6 @@ fn doParticleToGrid(
     if thread_index >= N_PARTICLES { return; }
 
     let flags = particle_flags[thread_index];
-    let material = particleMaterial(flags);
     let particle_pos = particleDataIn[thread_index].pos;
     let particle_mass = DEFAULT_PARTICLE_MASS;
     var particle_vel = vec3f(0.0);
@@ -106,7 +105,6 @@ fn doParticleToGrid(
             deformation_elastic,
             particleDataIn[thread_index].deformationPlastic,
             deformation_displacement,
-            material,
         );
         has_deformation_delta = !mat3x3IsZero(deformation_displacement);
     }
@@ -116,9 +114,7 @@ fn doParticleToGrid(
         deformation_plastic = particleDataIn[thread_index].deformationPlastic;
         var shear_resistance = SHEAR_RESISTANCE; // μ
         var volumetric_resistance = VOLUME_RESISTANCE; // λ
-        applyMaterialLameParameters(material, &shear_resistance, &volumetric_resistance);
         hardenLameParameters(
-            material,
             deformation_plastic,
             &shear_resistance,
             &volumetric_resistance,

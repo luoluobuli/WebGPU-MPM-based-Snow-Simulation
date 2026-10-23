@@ -13,8 +13,5 @@ fn frag(
         0.85
     );
 
-    return vec4f(
-        particleAppearanceColor(in.appearance, deformation_color),
-        1,
-    );
+    return vec4f(deformation_color, 1);
 }

@@ -129,7 +129,6 @@ const loadSpawnSource = async (
     nParticles: number,
 ): Promise<{
     spawnSource: SpawnPointSource,
-    particleAppearances: Uint32Array | null,
 }> => {
     switch (scene.spawnSource.type) {
         case "mesh": {
@@ -141,20 +140,15 @@ const loadSpawnSource = async (
                     vertices,
                     objects,
                 },
-                particleAppearances: null,
             };
         }
 
         case "zubeiaGround": {
             const ground = buildZubeiaGround(scene.spawnSource.profile);
             const pointCount = ground.points.length / 4;
-            if (
-                pointCount !== nParticles
-                || ground.particleAppearances.length !== nParticles
-            ) {
+            if (pointCount !== nParticles) {
                 throw new Error(
-                    `Zubeia ground produced ${pointCount} points and `
-                    + `${ground.particleAppearances.length} appearances; `
+                    `Zubeia ground produced ${pointCount} points; `
                     + `scene requires ${nParticles}`,
                 );
             }
@@ -164,7 +158,6 @@ const loadSpawnSource = async (
                     type: "points",
                     points: ground.points,
                 },
-                particleAppearances: ground.particleAppearances,
             };
         }
     }
@@ -1596,7 +1589,7 @@ export class SimulationState {
                     state.device = device;
 
                     updateStatus("loading particles...");
-                    const { spawnSource, particleAppearances } = await loadSpawnSource(scene, state.nParticles);
+                    const { spawnSource } = await loadSpawnSource(scene, state.nParticles);
                     const spawnContentFingerprint =
                         fingerprintLoadedSpawnSource(spawnSource);
                     if (destroyed) return;
@@ -1691,7 +1684,6 @@ export class SimulationState {
                         spawnSource,
                         collider,
                         renderCollider: scene.renderCollider ?? true,
-                        particleAppearances,
                         getSimulationMethodType: () => state.simulationMethodType,
                         getRenderMethodType: () => state.renderMethodType,
                         oneSimulationStepPerFrame: () => state.oneSimulationStepPerFrame,

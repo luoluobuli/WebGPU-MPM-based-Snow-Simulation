@@ -18,10 +18,8 @@ let {
     <Draggable
         onDown={({ pointerEvent }) => {
             if (pointerEvent.button === 2) {
-                // Right click: Interact
                 simulationState.onInteractionStart(pointerEvent.clientX, pointerEvent.clientY, canvas!);
             } else {
-                // Left/Middle: Camera
                 canvas?.requestPointerLock();
             }
         }}
@@ -58,8 +56,10 @@ let {
                 width={simulationState.width}
                 height={simulationState.height}
                 {onpointerdown}
-                oncontextmenu={(e) => { e.preventDefault(); }}
-                onwheel={(event) => {
+                oncontextmenu={event => {
+                    event.preventDefault();
+                }}
+                onwheel={event => {
                     simulationState.zoomCamera(event.deltaY);
                     event.preventDefault();
                 }}
@@ -69,8 +69,8 @@ let {
 </section>
 
 <style lang="scss">
-    section {
-        width: 100vw;
-        height: 100vh;
-    }
+section {
+    width: 100vw;
+    height: 100vh;
+}
 </style>

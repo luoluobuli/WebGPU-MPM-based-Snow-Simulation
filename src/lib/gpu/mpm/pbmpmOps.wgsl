@@ -5,7 +5,6 @@ fn solvePbmpmVelocityGradient(
     deformation_elastic: mat3x3f,
     deformation_plastic: mat3x3f,
     velocity_gradient: mat3x3f,
-    material: u32,
 ) -> mat3x3f {
     let timestep = uniforms.simulationTimestep;
     let elastic_det = determinant(deformation_elastic);
@@ -44,9 +43,7 @@ fn solvePbmpmVelocityGradient(
 
     var shear_resistance = SHEAR_RESISTANCE;
     var volume_resistance = VOLUME_RESISTANCE;
-    applyMaterialLameParameters(material, &shear_resistance, &volume_resistance);
     hardenLameParameters(
-        material,
         deformation_plastic,
         &shear_resistance,
         &volume_resistance,
@@ -56,7 +53,7 @@ fn solvePbmpmVelocityGradient(
     let target_deformation = shape_weight * rotation + (1.0 - shape_weight) * volume_target;
     let target_displacement = target_deformation * elastic_inverse - IDENTITY_MAT3;
 
-    // Bounded local relaxation preserves material/hardening differences and
+    // Bounded local relaxation preserves hardening differences and
     // tends to a rigid projection as dt * wave_speed / cell_size grows.
     let inverse_cell_size = max(
         max(uniforms.invGridCellDims.x, uniforms.invGridCellDims.y),
