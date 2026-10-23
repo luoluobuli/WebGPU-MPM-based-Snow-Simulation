@@ -1,6 +1,5 @@
 import modelUrl from "$lib/assets/models/snow3.glb?url";
 import colliderUrl from "$lib/assets/models/forest_scaled.glb?url";
-import treeModelUrl from "$lib/assets/models/tree0.glb?url";
 import zubeiaWalkModelUrl from "$lib/assets/models/zubeia-walk-lod.glb?url";
 import zubeiaPawSdfUrl from "$lib/assets/models/zubeia-paw-sdf.bin?url";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
@@ -16,10 +15,6 @@ import {
 export type SimulationSpawnSource =
     | {
         type: "mesh",
-        url: string,
-    }
-    | {
-        type: "treeModel",
         url: string,
     }
     | {
@@ -95,27 +90,6 @@ export const defaultSimulationScene: SimulationSceneConfig = {
     timing: {
         mlsMpmMaxSimulationTimestepS: 1 / 1024,
         oneSimulationStepPerFrame: true,
-    },
-};
-
-export const environmentScene: SimulationSceneConfig = {
-    spawnSource: {
-        type: "treeModel",
-        url: treeModelUrl,
-    },
-    colliderSource: null,
-    nParticles: 480_000,
-    gridResolution: [128, 128, 128],
-    renderMethodType: GpuRenderMethodType.Splats,
-    simulationMethodType: GpuSimulationMethodType.MlsMpm,
-    camera: {
-        radius: 8,
-        lat: Math.PI / 4.6,
-        long: Math.PI * 1.18,
-        offset: [0, 0, 0],
-    },
-    timing: {
-        mlsMpmMaxSimulationTimestepS: 1 / 1024,
     },
 };
 

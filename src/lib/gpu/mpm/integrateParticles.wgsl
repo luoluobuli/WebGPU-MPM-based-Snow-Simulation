@@ -106,7 +106,6 @@ fn integrateParticles(
         var flags = particle_flags[particle_index];
         let material = particleMaterial(flags);
 
-        applyMaterialVelocityDamping(&particle, material);
         let unclamped_velocity = sanitizeVec3(particle.vel, vec3f(0.0));
         let unclamped_speed_squared = dot(unclamped_velocity, unclamped_velocity);
         particle.vel = clampVec3LengthNoSanitizeWithMaxSquared(

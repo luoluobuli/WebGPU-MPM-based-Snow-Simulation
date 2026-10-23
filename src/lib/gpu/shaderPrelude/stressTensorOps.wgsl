@@ -4,12 +4,6 @@ const POISSONS_RATIO = 0.2;
 // Lamé parameters
 const SHEAR_RESISTANCE = YOUNGS_MODULUS_PA / (2 * (1 + POISSONS_RATIO)); // μ
 const VOLUME_RESISTANCE = YOUNGS_MODULUS_PA * POISSONS_RATIO / ((1 + POISSONS_RATIO) * (1 - 2 * POISSONS_RATIO)); // λ
-const SOIL_SHEAR_RESISTANCE_SCALE = 0.1;
-const SOIL_VOLUME_RESISTANCE_SCALE = 0.14;
-const BARK_SHEAR_RESISTANCE_SCALE = 6.0;
-const BARK_VOLUME_RESISTANCE_SCALE = 8.0;
-const LEAF_SHEAR_RESISTANCE_SCALE = 0.14;
-const LEAF_VOLUME_RESISTANCE_SCALE = 0.18;
 const DEFAULT_HARDENING_COEFFICIENT = 10.0; // ξ
 // The Disney walking-character example used a stiffer, crunchier top layer.
 const CRUST_STIFFNESS_SCALE = 1.5;
@@ -24,16 +18,7 @@ fn applyMaterialLameParameters(
     shearResistance: ptr<function, f32>,
     volumetricResistance: ptr<function, f32>,
 ) {
-    if material == PARTICLE_MATERIAL_SOIL {
-        *shearResistance = SHEAR_RESISTANCE * SOIL_SHEAR_RESISTANCE_SCALE;
-        *volumetricResistance = VOLUME_RESISTANCE * SOIL_VOLUME_RESISTANCE_SCALE;
-    } else if material == PARTICLE_MATERIAL_BARK {
-        *shearResistance = SHEAR_RESISTANCE * BARK_SHEAR_RESISTANCE_SCALE;
-        *volumetricResistance = VOLUME_RESISTANCE * BARK_VOLUME_RESISTANCE_SCALE;
-    } else if material == PARTICLE_MATERIAL_LEAF {
-        *shearResistance = SHEAR_RESISTANCE * LEAF_SHEAR_RESISTANCE_SCALE;
-        *volumetricResistance = VOLUME_RESISTANCE * LEAF_VOLUME_RESISTANCE_SCALE;
-    } else if material == PARTICLE_MATERIAL_CRUST {
+    if material == PARTICLE_MATERIAL_CRUST {
         *shearResistance = SHEAR_RESISTANCE * CRUST_STIFFNESS_SCALE;
         *volumetricResistance = VOLUME_RESISTANCE * CRUST_STIFFNESS_SCALE;
     }
@@ -106,10 +91,6 @@ fn hardenLameParameters(
     baseShearResistance: ptr<function, f32>, // μ_0
     baseVolumetricResistance: ptr<function, f32>, // λ_0
 ) {
-    if material == PARTICLE_MATERIAL_BARK || material == PARTICLE_MATERIAL_LEAF {
-        return;
-    }
-
     if mat3x3IsIdentity(deformationPlastic) {
         return;
     }

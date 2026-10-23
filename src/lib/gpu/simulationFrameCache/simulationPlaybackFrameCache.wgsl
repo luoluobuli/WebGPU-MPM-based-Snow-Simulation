@@ -15,10 +15,6 @@ const DEFAULT_PARTICLE_MASS = 1.0 / 3.0;
 const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
 const PARTICLE_MATERIAL_SHIFT = 8u;
 const PARTICLE_MATERIAL_MASK = 7u << PARTICLE_MATERIAL_SHIFT;
-const PARTICLE_MATERIAL_SOIL = 1u;
-const PARTICLE_MATERIAL_BARK = 2u;
-const PARTICLE_MATERIAL_LEAF = 3u;
-const PARTICLE_MATERIAL_CRUST = 4u;
 
 fn materialFlagFromId(material: u32) -> u32 {
     return (material & 7u) << PARTICLE_MATERIAL_SHIFT;
@@ -26,20 +22,6 @@ fn materialFlagFromId(material: u32) -> u32 {
 
 fn particleMaterialFromFlags(flags: u32) -> u32 {
     return (flags & PARTICLE_MATERIAL_MASK) >> PARTICLE_MATERIAL_SHIFT;
-}
-
-fn particleMassForMaterial(material: u32) -> f32 {
-    if material == PARTICLE_MATERIAL_SOIL {
-        return 0.82;
-    }
-    if material == PARTICLE_MATERIAL_BARK {
-        return 0.48;
-    }
-    if material == PARTICLE_MATERIAL_LEAF {
-        return 0.18;
-    }
-
-    return DEFAULT_PARTICLE_MASS;
 }
 
 struct SimulationPlaybackFrameParticle {
@@ -83,7 +65,7 @@ fn restoreSimulationPlaybackFrame(
     // scatter before baking again, so restore only fields the renderers consume.
     (*particle).pos = cached_particle.pos;
     (*particle)._hom = 1.0;
-    (*particle).mass = particleMassForMaterial(material);
+    (*particle).mass = DEFAULT_PARTICLE_MASS;
 
     restored_particle_flags[particle_index] =
         materialFlagFromId(material)

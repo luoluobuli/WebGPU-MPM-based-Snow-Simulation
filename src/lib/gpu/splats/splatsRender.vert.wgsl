@@ -18,8 +18,6 @@ struct VertexOutput {
 const BASE_PARTICLE_RADIUS = 0.1;
 const DEFAULT_SPLAT_RADIUS_SCALE = 0.88;
 const SOIL_SPLAT_RADIUS_SCALE = 0.76;
-const BARK_SPLAT_RADIUS_SCALE = 0.72;
-const LEAF_SPLAT_RADIUS_SCALE = 1.55;
 const VERT_POSITIONS: array<vec2f, 6> = array(
     vec2f(-1, -1),
     vec2f(1, -1),
@@ -43,12 +41,6 @@ fn randomFromIndex(index: u32, salt: u32) -> f32 {
 }
 
 fn splatRadiusScaleForMaterial(material: f32) -> f32 {
-    if material > 2.5 {
-        return LEAF_SPLAT_RADIUS_SCALE;
-    }
-    if material > 1.5 {
-        return BARK_SPLAT_RADIUS_SCALE;
-    }
     if material > 0.5 {
         return SOIL_SPLAT_RADIUS_SCALE;
     }

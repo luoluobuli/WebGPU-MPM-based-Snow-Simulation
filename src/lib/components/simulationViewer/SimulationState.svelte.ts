@@ -17,7 +17,6 @@ import {
     defaultSimulationScene,
     type SimulationSceneConfig,
 } from "./SimulationScene";
-import { loadTreeModelSpawnPoints } from "./loadTreeModel";
 import {
     buildZubeiaGround,
     ZUBEIA_GROUND_CELL_SIZE_M,
@@ -143,21 +142,6 @@ const loadSpawnSource = async (
                     objects,
                 },
                 particleAppearances: null,
-            };
-        }
-
-        case "treeModel": {
-            const tree = await loadTreeModelSpawnPoints({
-                url: scene.spawnSource.url,
-                nParticles,
-            });
-
-            return {
-                spawnSource: {
-                    type: "points",
-                    points: tree.spawnPoints,
-                },
-                particleAppearances: tree.particleAppearances,
             };
         }
 

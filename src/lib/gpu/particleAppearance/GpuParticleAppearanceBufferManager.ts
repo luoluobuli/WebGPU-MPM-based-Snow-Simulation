@@ -1,8 +1,6 @@
 export enum ParticleAppearanceMaterial {
     Default = 0,
     Soil = 1,
-    Bark = 2,
-    Leaf = 3,
 }
 
 const clampByte = (value: number) =>

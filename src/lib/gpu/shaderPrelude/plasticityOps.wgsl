@@ -170,10 +170,6 @@ fn applyPlasticity(
         return false;
     }
 
-    if material == PARTICLE_MATERIAL_BARK || material == PARTICLE_MATERIAL_LEAF {
-        return false;
-    }
-
     let stretchMetric = transpose(deformationElastic) * deformationElastic;
     let stretchDelta = stretchMetric - IDENTITY_MAT3;
     let stretchDeltaFrobeniusSquared = dot(stretchDelta[0], stretchDelta[0])
@@ -188,10 +184,7 @@ fn applyPlasticity(
     // thresholds of compression/stretching until yielding
     var minStretchFactor = 1.0 - DEFAULT_CRITICAL_COMPRESSION;
     var maxStretchFactor = 1.0 + DEFAULT_CRITICAL_STRETCH;
-    if material == PARTICLE_MATERIAL_SOIL {
-        minStretchFactor = 0.88;
-        maxStretchFactor = 1.08;
-    } else if material == PARTICLE_MATERIAL_CRUST {
+    if material == PARTICLE_MATERIAL_CRUST {
         minStretchFactor = 1.0 - CRUST_CRITICAL_COMPRESSION;
         maxStretchFactor = 1.0 + CRUST_CRITICAL_STRETCH;
     }

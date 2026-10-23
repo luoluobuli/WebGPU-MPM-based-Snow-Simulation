@@ -22,20 +22,20 @@ const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
 const PARTICLE_MATERIAL_SHIFT = 8u;
 const PARTICLE_MATERIAL_MASK = 7u << PARTICLE_MATERIAL_SHIFT;
 const PARTICLE_MATERIAL_DEFAULT = 0u;
-const PARTICLE_MATERIAL_SOIL = 1u;
-const PARTICLE_MATERIAL_BARK = 2u;
-const PARTICLE_MATERIAL_LEAF = 3u;
 const PARTICLE_MATERIAL_CRUST = 4u;
 const PARTICLE_MATRIX_ELASTIC_CHANGED = 1u;
 const PARTICLE_MATRIX_PLASTIC_CHANGED = 2u;
-const MATERIAL_DAMPING_REFERENCE_TIMESTEP_S = 1.0 / 60.0;
 
 fn materialFlagFromId(material: u32) -> u32 {
     return (material & 7u) << PARTICLE_MATERIAL_SHIFT;
 }
 
 fn particleMaterialFromSpawnPoint(encodedMaterial: f32) -> u32 {
-    return u32(clamp(round(encodedMaterial), 0.0, 4.0));
+    return select(
+        PARTICLE_MATERIAL_DEFAULT,
+        PARTICLE_MATERIAL_CRUST,
+        round(encodedMaterial) >= f32(PARTICLE_MATERIAL_CRUST),
+    );
 }
 
 fn particleFlagsFromSpawnPoint(encodedMaterial: f32) -> u32 {
@@ -70,68 +70,12 @@ fn particleElasticVolumeFactor(particle: ParticleData, flags: u32) -> f32 {
     return determinant(particle.deformationElastic);
 }
 
-fn particleMassForMaterial(material: u32) -> f32 {
-    if material == PARTICLE_MATERIAL_SOIL {
-        return 0.82;
-    }
-    if material == PARTICLE_MATERIAL_BARK {
-        return 0.48;
-    }
-    if material == PARTICLE_MATERIAL_LEAF {
-        return 0.18;
-    }
-
-    return DEFAULT_PARTICLE_MASS;
-}
-
-fn materialVelocityDampingPerReferenceStep(material: u32) -> vec3f {
-    if material == PARTICLE_MATERIAL_SOIL {
-        return vec3f(0.72, 0.72, 0.82);
-    }
-    if material == PARTICLE_MATERIAL_BARK {
-        return vec3f(0.78, 0.78, 0.84);
-    }
-    if material == PARTICLE_MATERIAL_LEAF {
-        return vec3f(0.86, 0.86, 0.9);
-    }
-
-    return vec3f(1.0);
-}
-
-fn materialVelocityDamping(material: u32) -> vec3f {
-    // Damping values are authored as 60 Hz frame retention. Scale them to the
-    // current substep so CFL subdivision does not make gravity look weaker.
-    return pow(
-        materialVelocityDampingPerReferenceStep(material),
-        vec3f(uniforms.simulationTimestep / MATERIAL_DAMPING_REFERENCE_TIMESTEP_S),
-    );
-}
-
 fn materialBoundaryFriction(material: u32) -> f32 {
-    if material == PARTICLE_MATERIAL_SOIL {
-        return 0.96;
-    }
-    if material == PARTICLE_MATERIAL_BARK {
-        return 0.97;
-    }
-    if material == PARTICLE_MATERIAL_LEAF {
-        return 0.86;
-    }
     if material == PARTICLE_MATERIAL_CRUST {
         return 0.72;
     }
 
     return 0.35;
-}
-
-fn applyMaterialVelocityDamping(
-    particle: ptr<function, ParticleData>,
-    material: u32,
-) {
-    let gravity_delta = uniforms.gravityDeltaVelocity;
-    (*particle).vel = ((*particle).vel - gravity_delta)
-        * materialVelocityDamping(material)
-        + gravity_delta;
 }
 
 fn calculateGridCoordinate(pos: vec3f) -> vec3f {

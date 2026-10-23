@@ -20,14 +20,13 @@ fn scatterParticles(
         uniforms.gridMinCoords + uniforms.gridCellDims,
         uniforms.gridMaxCoords - uniforms.gridCellDims,
     );
-    let material = particleMaterialFromSpawnPoint(spawnPointMaterial);
 
     let particle = &particles[threadIndex];
 
     (*particle).pos = candidatePos;
     (*particle)._hom = 1;
     (*particle).vel = vec3f();
-    (*particle).mass = particleMassForMaterial(material);
+    (*particle).mass = DEFAULT_PARTICLE_MASS;
     (*particle).deformationElastic = IDENTITY_MAT3;
     (*particle).deformationPlastic = IDENTITY_MAT3;
 
