@@ -23,6 +23,8 @@ jobs:
 
       - name: Install PNPM
         uses: pnpm/setup@v3
+        with:
+          version: 12.16.1
 
       - name: Install step
         run: "pnpm install --frozen-lockfile"
