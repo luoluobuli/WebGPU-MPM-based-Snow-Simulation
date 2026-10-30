@@ -1,0 +1,3 @@
+allowBuilds:
+  "@parcel/watcher": true
+  "svelte-preprocess": true
