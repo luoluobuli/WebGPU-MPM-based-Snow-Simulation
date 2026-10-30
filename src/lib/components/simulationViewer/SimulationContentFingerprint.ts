@@ -15,8 +15,7 @@ export const fingerprintLoadedSpawnSource = (
         ]);
     }
 
-    // Mesh-spawn timelines are outside the Zubeia proof route. Keep their
-    // identity deterministic without allocating a second flattened mesh.
+    // Keep mesh identity deterministic without allocating a second flattened mesh.
     return fingerprintString(JSON.stringify({
         type: source.type,
         vertices: source.vertices,

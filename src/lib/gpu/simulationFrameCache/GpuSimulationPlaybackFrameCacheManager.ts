@@ -4,7 +4,6 @@ export const SIMULATION_PLAYBACK_FRAME_BYTES_PER_PARTICLE = 16;
 
 export type SimulationPlaybackFrameLayout = {
     positionByteLength: number,
-    materialByteLength: number,
     byteLength: number,
 };
 
@@ -54,11 +53,6 @@ export class GpuSimulationPlaybackFrameCacheManager {
                     buffer: { type: "read-only-storage" },
                 },
                 {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: { type: "read-only-storage" },
-                },
-                {
                     binding: 2,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "storage" },
@@ -92,10 +86,6 @@ export class GpuSimulationPlaybackFrameCacheManager {
                 {
                     binding: 0,
                     resource: { buffer: particleDataBuffer },
-                },
-                {
-                    binding: 1,
-                    resource: { buffer: particleFlagsBuffer },
                 },
                 {
                     binding: 2,
@@ -161,7 +151,6 @@ export class GpuSimulationPlaybackFrameCacheManager {
     get layout(): SimulationPlaybackFrameLayout {
         return {
             positionByteLength: this.frameByteLength / 4 * 3,
-            materialByteLength: this.frameByteLength / 4,
             byteLength: this.frameByteLength,
         };
     }

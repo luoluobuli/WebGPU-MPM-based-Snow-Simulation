@@ -17,9 +17,6 @@ export type ZubeiaGroundData = {
 };
 
 export const ZUBEIA_GROUND_CELL_SIZE_M = 0.025;
-export const ZUBEIA_GROUND_CRUST_CELL_COUNT = 2;
-export const ZUBEIA_GROUND_CRUST_DEPTH_M =
-    ZUBEIA_GROUND_CRUST_CELL_COUNT * ZUBEIA_GROUND_CELL_SIZE_M;
 export const ZUBEIA_GROUND_SURFACE_Z_M =
     ZUBEIA_WALK_GROUND_SURFACE_Z_M;
 export const ZUBEIA_GROUND_WALK_CYCLE_COUNT = 3;
@@ -53,8 +50,6 @@ export const ZUBEIA_GROUND_STRIP_CELL_COUNTS = cellCountsForBounds(
     ZUBEIA_GROUND_STRIP_BOUNDS,
 );
 
-export const ZUBEIA_GROUND_DEFAULT_MATERIAL_ID = 0;
-export const ZUBEIA_GROUND_CRUST_MATERIAL_ID = 4;
 export const ZUBEIA_GROUND_PREVIEW_PARTICLES_PER_CELL = 1;
 export const ZUBEIA_GROUND_FINAL_PARTICLES_PER_CELL = 4;
 
@@ -99,15 +94,9 @@ export const buildZubeiaGround = (
     const points = new Float32Array(particleCount * 4);
     const [cellCountX, cellCountY, cellCountZ] =
         ZUBEIA_GROUND_STRIP_CELL_COUNTS;
-    const crustStartZ = cellCountZ - ZUBEIA_GROUND_CRUST_CELL_COUNT;
     let particleIndex = 0;
 
     for (let z = 0; z < cellCountZ; z++) {
-        const isCrust = z >= crustStartZ;
-        const material = isCrust
-            ? ZUBEIA_GROUND_CRUST_MATERIAL_ID
-            : ZUBEIA_GROUND_DEFAULT_MATERIAL_ID;
-
         for (let y = 0; y < cellCountY; y++) {
             for (let x = 0; x < cellCountX; x++) {
                 for (const offset of sampleOffsets) {
@@ -121,7 +110,7 @@ export const buildZubeiaGround = (
                     points[pointOffset + 2] =
                         ZUBEIA_GROUND_STRIP_BOUNDS.min[2]
                         + (z + offset[2]) * ZUBEIA_GROUND_CELL_SIZE_M;
-                    points[pointOffset + 3] = material;
+                    points[pointOffset + 3] = 1;
                     particleIndex++;
                 }
             }

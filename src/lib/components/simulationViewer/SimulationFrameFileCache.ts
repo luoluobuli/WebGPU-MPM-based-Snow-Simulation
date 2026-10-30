@@ -114,42 +114,29 @@ const directoryContainsSimulationFrameFiles = async (
 const openFrameDirectory = async ({
     rootDirectory,
     cacheKey,
-    retainedCacheKeys,
 }: {
     rootDirectory: FileSystemDirectoryHandle,
     cacheKey: string,
-    retainedCacheKeys: readonly string[],
 }) => {
-    const usesKeyedCachePair = retainedCacheKeys.length > 0;
-    if (
-        !usesKeyedCachePair
-        && await directoryContainsSimulationFrameFiles(rootDirectory)
-    ) {
+    if (await directoryContainsSimulationFrameFiles(rootDirectory)) {
         return rootDirectory;
     }
 
     const sanitizedCacheKey = sanitizeSimulationFrameCacheKey(cacheKey);
-    if (!usesKeyedCachePair) {
-        const selectedCacheKeyDirectory = await getExistingDirectoryHandle(
-            rootDirectory,
-            sanitizedCacheKey,
-        );
-        if (selectedCacheKeyDirectory !== null) {
-            return selectedCacheKeyDirectory;
-        }
+    const selectedCacheKeyDirectory = await getExistingDirectoryHandle(
+        rootDirectory,
+        sanitizedCacheKey,
+    );
+    if (selectedCacheKeyDirectory !== null) {
+        return selectedCacheKeyDirectory;
     }
 
     const cacheRoot = await rootDirectory.getDirectoryHandle(
         SIMULATION_FRAME_CACHE_DIRECTORY_NAME,
         { create: true },
     );
-    const retainedDirectoryNames = new Set([
-        sanitizedCacheKey,
-        ...retainedCacheKeys.map(sanitizeSimulationFrameCacheKey),
-    ]);
-
     for await (const [name] of cacheRoot.entries()) {
-        if (!retainedDirectoryNames.has(name)) {
+        if (name !== sanitizedCacheKey) {
             await cacheRoot.removeEntry(name, { recursive: true });
         }
     }
@@ -462,18 +449,15 @@ class MemorySimulationFrameFileCache implements SimulationFrameFileCache {
 export const createSimulationFrameFileCache = async ({
     cacheKey,
     rootDirectory = null,
-    retainedCacheKeys = [],
 }: {
     cacheKey: string,
     rootDirectory?: FileSystemDirectoryHandle | null,
-    retainedCacheKeys?: readonly string[],
 }): Promise<SimulationFrameFileCache> => {
     if (rootDirectory !== null) {
         await ensureDirectoryReadWritePermission(rootDirectory);
         const directory = await openFrameDirectory({
             rootDirectory,
             cacheKey,
-            retainedCacheKeys,
         });
 
         return new DirectorySimulationFrameFileCache({
@@ -488,7 +472,6 @@ export const createSimulationFrameFileCache = async ({
         const directory = await openFrameDirectory({
             rootDirectory: root,
             cacheKey,
-            retainedCacheKeys,
         });
 
         return new DirectorySimulationFrameFileCache({

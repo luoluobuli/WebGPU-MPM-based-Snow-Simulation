@@ -13,25 +13,9 @@ struct ParticleData {
 
 const DEFAULT_PARTICLE_MASS = 1.0 / 3.0;
 const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
-const PARTICLE_MATERIAL_SHIFT = 8u;
-const PARTICLE_MATERIAL_MASK = 7u << PARTICLE_MATERIAL_SHIFT;
-
-fn materialFlagFromId(material: u32) -> u32 {
-    return (material & 7u) << PARTICLE_MATERIAL_SHIFT;
-}
-
-fn particleMaterialFromFlags(flags: u32) -> u32 {
-    return (flags & PARTICLE_MATERIAL_MASK) >> PARTICLE_MATERIAL_SHIFT;
-}
-
-struct SimulationPlaybackFrameParticle {
-    pos: vec3f,
-    material: u32,
-}
 
 @group(0) @binding(0) var<storage, read> source_particle_data: array<ParticleData>;
-@group(0) @binding(1) var<storage, read> source_particle_flags: array<u32>;
-@group(0) @binding(2) var<storage, read_write> cached_particles: array<SimulationPlaybackFrameParticle>;
+@group(0) @binding(2) var<storage, read_write> cached_particles: array<vec4f>;
 @group(0) @binding(3) var<storage, read_write> restored_particle_data: array<ParticleData>;
 @group(0) @binding(4) var<storage, read_write> restored_particle_flags: array<u32>;
 
@@ -43,9 +27,9 @@ fn packSimulationPlaybackFrame(
     let particle_index = global_id.x;
     if particle_index >= arrayLength(&source_particle_data) { return; }
 
-    cached_particles[particle_index].pos = source_particle_data[particle_index].pos;
-    cached_particles[particle_index].material = particleMaterialFromFlags(
-        source_particle_flags[particle_index],
+    cached_particles[particle_index] = vec4f(
+        source_particle_data[particle_index].pos,
+        1.0,
     );
 }
 
@@ -58,16 +42,13 @@ fn restoreSimulationPlaybackFrame(
     if particle_index >= arrayLength(&restored_particle_data) { return; }
 
     let cached_particle = cached_particles[particle_index];
-    let material = cached_particle.material;
     let particle = &restored_particle_data[particle_index];
 
     // Cached playback frames are display snapshots. Solver state is rebuilt from
     // scatter before baking again, so restore only fields the renderers consume.
-    (*particle).pos = cached_particle.pos;
+    (*particle).pos = cached_particle.xyz;
     (*particle)._hom = 1.0;
     (*particle).mass = DEFAULT_PARTICLE_MASS;
 
-    restored_particle_flags[particle_index] =
-        materialFlagFromId(material)
-        | PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS;
+    restored_particle_flags[particle_index] = PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS;
 }

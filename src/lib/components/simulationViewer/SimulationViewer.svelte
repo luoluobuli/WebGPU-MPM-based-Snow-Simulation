@@ -33,8 +33,6 @@ const urlSearchParams = browser
 const timeline = urlSearchParams?.has("timeline") === true;
 const kinematic = timeline && urlSearchParams?.has("kinematic") === true;
 const final = kinematic && urlSearchParams?.has("final") === true;
-const noColliderControl =
-    final && urlSearchParams?.has("control") === true;
 const inspect = kinematic && urlSearchParams?.has("inspect") === true;
 const inspectContact = inspect
     && urlSearchParams?.get("inspect") === "contact";
@@ -46,17 +44,10 @@ const getActiveScene = (): SimulationSceneConfig => {
         : kinematic && kinematicScene !== null
             ? kinematicScene
             : scene;
-    const simulationScene = noColliderControl
-        ? {
-            ...activeScene,
-            colliderSource: null,
-            renderCollider: false,
-        }
-        : activeScene;
-    if (!inspect) return simulationScene;
+    if (!inspect) return activeScene;
 
     return {
-        ...simulationScene,
+        ...activeScene,
         renderCollider: inspectCollider,
         camera: inspectContact
             ? {
@@ -76,8 +67,6 @@ const getActiveScene = (): SimulationSceneConfig => {
 
 const simulationState = SimulationState.loadOntoCanvas({
     getScene: getActiveScene,
-    getPairedTimelineScene: () =>
-        final ? kinematicFinalScene : null,
     timeline,
     canvasPromise: canvasPromise.promise,
     onStatusChange: text => status = text,

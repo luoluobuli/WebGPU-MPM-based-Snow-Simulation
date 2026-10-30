@@ -14,7 +14,6 @@ fn scatterParticles(
 
     let spawnPointIndex = min(threadIndex, arrayLength(&spawnPoints) - 1u);
     let spawnPoint = spawnPoints[spawnPointIndex];
-    let spawnPointMaterial = spawnPoint.w;
     let candidatePos = clamp(
         spawnPoint.xyz,
         uniforms.gridMinCoords + uniforms.gridCellDims,
@@ -32,5 +31,5 @@ fn scatterParticles(
 
     (*particle).pos_displacement = vec3f();
     (*particle).deformation_displacement = mat3x3f();
-    particle_flags[threadIndex] = particleFlagsFromSpawnPoint(spawnPointMaterial);
+    particle_flags[threadIndex] = 0u;
 }

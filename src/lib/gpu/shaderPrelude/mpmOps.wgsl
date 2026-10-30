@@ -19,36 +19,11 @@ const DEFAULT_PARTICLE_MASS: f32 = 0.3333333;
 const PARTICLE_FLAG_DEFORMATION_DELTA_VALID = 1u;
 const PARTICLE_FLAG_ELASTIC_NON_IDENTITY = 2u;
 const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
-// Material IDs retain layer metadata for cached surface analysis only.
-const PARTICLE_MATERIAL_SHIFT = 8u;
-const PARTICLE_MATERIAL_MASK = 7u << PARTICLE_MATERIAL_SHIFT;
-const PARTICLE_MATERIAL_DEFAULT = 0u;
-const PARTICLE_MATERIAL_CRUST = 4u;
 const PARTICLE_MATRIX_ELASTIC_CHANGED = 1u;
 const PARTICLE_MATRIX_PLASTIC_CHANGED = 2u;
 
-fn materialFlagFromId(material: u32) -> u32 {
-    return (material & 7u) << PARTICLE_MATERIAL_SHIFT;
-}
-
-fn particleMaterialFromSpawnPoint(encodedMaterial: f32) -> u32 {
-    return select(
-        PARTICLE_MATERIAL_DEFAULT,
-        PARTICLE_MATERIAL_CRUST,
-        round(encodedMaterial) >= f32(PARTICLE_MATERIAL_CRUST),
-    );
-}
-
-fn particleFlagsFromSpawnPoint(encodedMaterial: f32) -> u32 {
-    let material = particleMaterialFromSpawnPoint(encodedMaterial);
-    return materialFlagFromId(material);
-}
-
 fn particlePersistentFlags(flags: u32) -> u32 {
-    return flags & (
-        PARTICLE_FLAG_ELASTIC_NON_IDENTITY
-        | PARTICLE_MATERIAL_MASK
-    );
+    return flags & PARTICLE_FLAG_ELASTIC_NON_IDENTITY;
 }
 
 fn particlePlasticVolumeFactor(particle: ParticleData, flags: u32) -> f32 {

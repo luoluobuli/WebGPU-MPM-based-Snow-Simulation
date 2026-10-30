@@ -27,22 +27,6 @@ type SimulationTimelineCacheKeyArgs = {
     settings: SimulationTimelineCacheSettings,
 };
 
-type PairedSimulationTimelineCacheKeyArgs = {
-    canonicalColliderScene: SimulationSceneConfig,
-    colliderSimulationContentFingerprint: string,
-    controlSimulationContentFingerprint: string,
-    activeHasCollider: boolean,
-    settings: SimulationTimelineCacheSettings,
-};
-
-export type PairedSimulationTimelineCacheKeys = {
-    activeCacheKey: string,
-    counterpartCacheKey: string,
-    colliderCacheKey: string,
-    controlCacheKey: string,
-    retainedCacheKeys: readonly [string, string],
-};
-
 
 export const createSimulationTimelineCacheKey = ({
     scene,
@@ -70,37 +54,3 @@ export const createSimulationTimelineCacheKey = ({
     timelineFrameCount: settings.timelineFrameCount,
     timelineSecondsPerFrame: settings.timelineSecondsPerFrame,
 }));
-
-export const createPairedSimulationTimelineCacheKeys = ({
-    canonicalColliderScene,
-    colliderSimulationContentFingerprint,
-    controlSimulationContentFingerprint,
-    activeHasCollider,
-    settings,
-}: PairedSimulationTimelineCacheKeyArgs): PairedSimulationTimelineCacheKeys => {
-    const colliderCacheKey = createSimulationTimelineCacheKey({
-        scene: canonicalColliderScene,
-        simulationContentFingerprint: colliderSimulationContentFingerprint,
-        settings,
-    });
-    const controlCacheKey = createSimulationTimelineCacheKey({
-        scene: {
-            ...canonicalColliderScene,
-            colliderSource: null,
-        },
-        simulationContentFingerprint: controlSimulationContentFingerprint,
-        settings,
-    });
-
-    return {
-        activeCacheKey: activeHasCollider
-            ? colliderCacheKey
-            : controlCacheKey,
-        counterpartCacheKey: activeHasCollider
-            ? controlCacheKey
-            : colliderCacheKey,
-        colliderCacheKey,
-        controlCacheKey,
-        retainedCacheKeys: [colliderCacheKey, controlCacheKey],
-    };
-};

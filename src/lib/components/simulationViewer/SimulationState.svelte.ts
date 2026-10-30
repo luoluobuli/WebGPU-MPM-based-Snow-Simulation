@@ -17,25 +17,8 @@ import {
     defaultSimulationScene,
     type SimulationSceneConfig,
 } from "./SimulationScene";
-import {
-    buildZubeiaGround,
-    ZUBEIA_GROUND_CELL_SIZE_M,
-    ZUBEIA_GROUND_STRIP_BOUNDS,
-    ZUBEIA_GROUND_SURFACE_Z_M,
-} from "./zubeia/ZubeiaGround";
-import {
-    analyzeZubeiaMatchedCachedFrameTopology,
-    type ZubeiaMatchedTopologyProof,
-} from "./zubeia/ZubeiaMatchedTopologyProof";
-import {
-    buildZubeiaPawContactMask,
-    type ZubeiaPawContactMask,
-} from "./zubeia/ZubeiaPawContactMask";
+import { buildZubeiaGround } from "./zubeia/ZubeiaGround";
 import { loadZubeiaRigidPawWalkCollider } from "./zubeia/loadZubeiaRigidPawWalkCollider";
-import {
-    isAnimatedRigidPawSdfKinematicColliderGeometry,
-    type RigidPawSdfKinematicColliderAnimation,
-} from "$lib/gpu/kinematicCollider/RigidPawSdfKinematicCollider";
 import type { SpawnPointSource } from "$lib/gpu/particleInitialize/GpuSpawnVolumeBufferManager";
 import { vec3 } from "wgpu-matrix";
 import {
@@ -64,7 +47,6 @@ import {
     loadZubeiaColliderContentFingerprint,
 } from "./SimulationContentFingerprint";
 import {
-    createPairedSimulationTimelineCacheKeys,
     createSimulationTimelineCacheKey,
     type SimulationTimelineCacheSettings,
 } from "./SimulationTimelineCacheKey";
@@ -193,15 +175,6 @@ const loadCollider = async (
     }
 };
 
-const loadColliderSourceContentFingerprint = async (
-    colliderSource: SimulationSceneConfig["colliderSource"],
-) => colliderSource?.type === "zubeiaWalk"
-    ? await loadZubeiaColliderContentFingerprint({
-        modelUrl: colliderSource.modelUrl,
-        rigidPawSdfUrl: colliderSource.rigidPawSdfUrl,
-    })
-    : fingerprintString(JSON.stringify(colliderSource));
-
 export class SimulationState {
     width = $state(300);
     height = $state(150);
@@ -238,17 +211,11 @@ export class SimulationState {
     private runner = $state<GpuSnowPipelineRunner | null>(null);
     prerenderElapsedTimes = $derived(this.runner?.prerenderElapsedTimes ?? null);
     actualSimulationTimestepS = $derived(this.runner?.selectedSimulationTimestepS ?? null);
-    zubeiaTopologyProof = $state<ZubeiaMatchedTopologyProof | null>(null);
-    zubeiaPawContactMask = $state<ZubeiaPawContactMask | null>(null);
-    zubeiaTopologyProofStatus = $state<string | null>(null);
-    private zubeiaRigidPawColliderAnimation:
-        RigidPawSdfKinematicColliderAnimation | null = null;
     private restartEpoch = 0;
 
     private onStatusChange: ((status: string) => void) | null = null;
     private onErr: ((err: string) => void) | null = null;
     private readonly scene: SimulationSceneConfig;
-    private readonly pairedTimelineScene: SimulationSceneConfig | null;
     private simulationContentFingerprint =
         "simulation-content-unloaded-v1";
     readonly timeline: boolean;
@@ -275,11 +242,6 @@ export class SimulationState {
     private timelineCache: SimulationFrameFileCache | null = null;
     private timelineCacheRootDirectory: FileSystemDirectoryHandle | null = null;
     private timelineCacheKey = "";
-    private pairedTimelineColliderSimulationContentFingerprint = "";
-    private pairedTimelineControlSimulationContentFingerprint = "";
-    private pairedTimelineActiveCacheKey = "";
-    private counterpartTimelineCacheKey = "";
-    private retainedTimelineCacheKeys: readonly string[] = [];
     private readonly timelineMemoryFrames = new Map<number, ArrayBuffer>();
     private readonly timelinePendingFrameReads = new Map<number, Promise<ArrayBuffer | null>>();
     private timelineMemoryFrameReadEpoch = 0;
@@ -295,26 +257,16 @@ export class SimulationState {
 
     constructor({
         scene = defaultSimulationScene,
-        pairedTimelineScene = null,
         timeline = false,
         onStatusChange = null,
         onErr = null,
     }: {
         scene?: SimulationSceneConfig,
-        pairedTimelineScene?: SimulationSceneConfig | null,
         timeline?: boolean,
         onStatusChange?: ((status: string) => void) | null,
         onErr?: ((err: string) => void) | null,
     }) {
         this.scene = scene;
-        this.pairedTimelineScene = pairedTimelineScene;
-        if (
-            pairedTimelineScene !== null
-            && scene.colliderSource === null
-        ) {
-            this.zubeiaTopologyProofStatus =
-                "Matched control bake; proof is shown on the collider route.";
-        }
         this.timeline = timeline;
         this.configuredTimelineFrameCount =
             scene.timeline?.frameCount ?? TIMELINE_FRAME_COUNT;
@@ -382,41 +334,7 @@ export class SimulationState {
         };
     }
 
-    private refreshPairedTimelineCacheKeys() {
-        if (
-            this.pairedTimelineScene === null
-            || this.pairedTimelineColliderSimulationContentFingerprint === ""
-            || this.pairedTimelineControlSimulationContentFingerprint === ""
-        ) {
-            this.pairedTimelineActiveCacheKey = "";
-            this.counterpartTimelineCacheKey = "";
-            this.retainedTimelineCacheKeys = [];
-            return;
-        }
-
-        const keys = createPairedSimulationTimelineCacheKeys({
-            canonicalColliderScene: this.pairedTimelineScene,
-            colliderSimulationContentFingerprint:
-                this.pairedTimelineColliderSimulationContentFingerprint,
-            controlSimulationContentFingerprint:
-                this.pairedTimelineControlSimulationContentFingerprint,
-            activeHasCollider: this.scene.colliderSource !== null,
-            settings: this.currentTimelineCacheSettings(),
-        });
-        this.pairedTimelineActiveCacheKey = keys.activeCacheKey;
-        this.counterpartTimelineCacheKey = keys.counterpartCacheKey;
-        this.retainedTimelineCacheKeys = [
-            keys.activeCacheKey,
-            this.counterpartTimelineCacheKey,
-        ];
-    }
-
     private currentTimelineCacheKey() {
-        this.refreshPairedTimelineCacheKeys();
-        if (this.pairedTimelineActiveCacheKey !== "") {
-            return this.pairedTimelineActiveCacheKey;
-        }
-
         return createSimulationTimelineCacheKey({
             scene: this.scene,
             simulationContentFingerprint: this.simulationContentFingerprint,
@@ -467,7 +385,6 @@ export class SimulationState {
             this.timelineCache = await createSimulationFrameFileCache({
                 cacheKey,
                 rootDirectory: this.timelineCacheRootDirectory,
-                retainedCacheKeys: this.retainedTimelineCacheKeys,
             });
             this.timelineCacheKey = cacheKey;
             this.timelineStorageLabel = this.timelineCache.storageLabel;
@@ -617,130 +534,11 @@ export class SimulationState {
 
         const frame = await this.runner.readSimulationPlaybackFrame();
         await this.timelineCache.writeFrame(frameIndex, frame);
-        await this.updateZubeiaMatchedTopologyProof(frameIndex);
         this.rememberTimelineMemoryFrame(frameIndex, frame);
         this.timelineNextUncachedFrame = Math.max(
             this.timelineNextUncachedFrame,
             frameIndex + 1,
         );
-    }
-
-    private clearZubeiaMatchedTopologyProof(status: string | null) {
-        this.zubeiaTopologyProof = null;
-        this.zubeiaPawContactMask = null;
-        this.zubeiaTopologyProofStatus = status;
-    }
-
-    private isMatchedZubeiaControlRoute() {
-        return this.pairedTimelineScene !== null
-            && this.scene.spawnSource.type === "zubeiaGround"
-            && this.scene.colliderSource === null;
-    }
-
-    private isMatchedZubeiaColliderRoute() {
-        return this.pairedTimelineScene?.colliderSource?.type
-            === "zubeiaWalk"
-            && this.scene.spawnSource.type === "zubeiaGround"
-            && this.scene.colliderSource?.type === "zubeiaWalk";
-    }
-
-    private async updateZubeiaMatchedTopologyProof(
-        frameIndex: number,
-        analyzeIntermediate = false,
-    ) {
-        if (this.isMatchedZubeiaControlRoute()) {
-            this.clearZubeiaMatchedTopologyProof(
-                "Matched control bake; proof is shown on the collider route.",
-            );
-            return;
-        }
-        if (
-            !this.isMatchedZubeiaColliderRoute()
-            || (!analyzeIntermediate
-                && frameIndex !== this.timelineFrameCount - 1)
-        ) {
-            this.clearZubeiaMatchedTopologyProof(null);
-            return;
-        }
-        if (this.zubeiaRigidPawColliderAnimation === null) {
-            this.clearZubeiaMatchedTopologyProof(
-                "Matched proof unavailable: rigid paw animation was not loaded.",
-            );
-            return;
-        }
-        if (
-            this.timelineCache === null
-            || this.counterpartTimelineCacheKey === ""
-            || this.retainedTimelineCacheKeys.length !== 2
-        ) {
-            this.clearZubeiaMatchedTopologyProof(
-                "Matched proof cache pair is unavailable.",
-            );
-            return;
-        }
-
-        const [colliderBaselineFrame, colliderCurrentFrame] =
-            await Promise.all([
-                this.timelineCache.readFrame(0),
-                this.timelineCache.readFrame(frameIndex),
-            ]);
-        if (
-            colliderBaselineFrame === null
-            || colliderCurrentFrame === null
-        ) {
-            this.clearZubeiaMatchedTopologyProof(
-                `Bake collider through frame ${frameIndex}`,
-            );
-            return;
-        }
-
-        let controlBaselineFrame: ArrayBuffer | null = null;
-        let controlCurrentFrame: ArrayBuffer | null = null;
-        try {
-            const controlCache = await createSimulationFrameFileCache({
-                cacheKey: this.counterpartTimelineCacheKey,
-                rootDirectory: this.timelineCacheRootDirectory,
-                retainedCacheKeys: this.retainedTimelineCacheKeys,
-            });
-            [controlBaselineFrame, controlCurrentFrame] =
-                await Promise.all([
-                    controlCache.readFrame(0),
-                    controlCache.readFrame(frameIndex),
-                ]);
-        } catch (error) {
-            console.warn("Unable to read matched control cache", error);
-        }
-        if (
-            controlBaselineFrame === null
-            || controlCurrentFrame === null
-        ) {
-            this.clearZubeiaMatchedTopologyProof(
-                `Bake matched control through frame ${frameIndex}`,
-            );
-            return;
-        }
-
-        const pawContactMask = buildZubeiaPawContactMask({
-            animation: this.zubeiaRigidPawColliderAnimation,
-            groundStripBounds: ZUBEIA_GROUND_STRIP_BOUNDS,
-            cellSizeM: ZUBEIA_GROUND_CELL_SIZE_M,
-            groundSurfaceZM: ZUBEIA_GROUND_SURFACE_Z_M,
-            outputFrameIndex: frameIndex,
-            secondsPerFrame: this.timelineSecondsPerFrame,
-        });
-        const proof = analyzeZubeiaMatchedCachedFrameTopology({
-            colliderBaselineFrame,
-            colliderCurrentFrame,
-            controlBaselineFrame,
-            controlCurrentFrame,
-            gridCellSizeM: ZUBEIA_GROUND_CELL_SIZE_M,
-            structuralGroundMask: pawContactMask,
-        });
-
-        this.zubeiaPawContactMask = pawContactMask;
-        this.zubeiaTopologyProof = proof;
-        this.zubeiaTopologyProofStatus =
-            `Matched collider/control proof through frame ${frameIndex}.`;
     }
 
     private async restoreTimelineFrameFromCache(
@@ -749,12 +547,10 @@ export class SimulationState {
             render = true,
             measureRenderPerformance = false,
             prefetch = true,
-            analyzeTopology = false,
         }: {
             render?: boolean,
             measureRenderPerformance?: boolean,
             prefetch?: boolean,
-            analyzeTopology?: boolean,
         } = {},
     ) {
         if (this.runner === null || this.timelineCache === null) return false;
@@ -763,10 +559,6 @@ export class SimulationState {
         if (frame === null) {
             return false;
         }
-        await this.updateZubeiaMatchedTopologyProof(
-            frameIndex,
-            analyzeTopology,
-        );
 
         const targetTimeS = timelineFrameSimulationTimeS(
             frameIndex,
@@ -989,7 +781,6 @@ export class SimulationState {
                     targetFrame,
                     {
                         measureRenderPerformance,
-                        analyzeTopology: !keepPlaying,
                     },
                 );
                 if (!restored) {
@@ -1375,11 +1166,6 @@ export class SimulationState {
         if (restartEpoch !== this.restartEpoch) return;
         
         try {
-            this.clearZubeiaMatchedTopologyProof(
-                this.isMatchedZubeiaControlRoute()
-                    ? "Matched control bake; proof is shown on the collider route."
-                    : null,
-            );
             this.runner.scatterParticles();
 
             await this.device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
@@ -1532,21 +1318,18 @@ export class SimulationState {
 
     static loadOntoCanvas({
         getScene = () => defaultSimulationScene,
-        getPairedTimelineScene = () => null,
         timeline = false,
         canvasPromise,
         onStatusChange,
         onErr,
     }: {
         getScene?: () => SimulationSceneConfig,
-        getPairedTimelineScene?: () => SimulationSceneConfig | null,
         timeline?: boolean,
         canvasPromise: Promise<HTMLCanvasElement>,
         onStatusChange?: (status: string) => void,
         onErr?: (err: string) => void,
     }) {
         const scene = getScene();
-        const pairedTimelineScene = getPairedTimelineScene();
         let destroyed = false;
         const updateStatus = (status: string) => {
             if (!destroyed) {
@@ -1561,7 +1344,6 @@ export class SimulationState {
 
         const state = new SimulationState({
             scene,
-            pairedTimelineScene,
             timeline: timeline,
             onStatusChange: updateStatus,
             onErr: updateErr,
@@ -1597,15 +1379,6 @@ export class SimulationState {
                     updateStatus("loading collider...");
                     const collider = await loadCollider(scene);
                     if (destroyed) return;
-                    if (
-                        pairedTimelineScene !== null
-                        && isAnimatedRigidPawSdfKinematicColliderGeometry(
-                            collider,
-                        )
-                    ) {
-                        state.zubeiaRigidPawColliderAnimation =
-                            collider.kinematicCollider;
-                    }
 
                     const colliderContentFingerprint =
                         scene.colliderSource?.type === "zubeiaWalk"
@@ -1622,39 +1395,6 @@ export class SimulationState {
                             spawnContentFingerprint,
                             colliderContentFingerprint,
                         ]);
-
-                    if (pairedTimelineScene !== null) {
-                        if (
-                            pairedTimelineScene.colliderSource?.type
-                            !== "zubeiaWalk"
-                        ) {
-                            throw new Error(
-                                "Paired timeline scene must use the Zubeia walk collider",
-                            );
-                        }
-
-                        const pairedColliderContentFingerprint =
-                            scene.colliderSource === null
-                                ? await loadColliderSourceContentFingerprint(
-                                    pairedTimelineScene.colliderSource,
-                                )
-                                : colliderContentFingerprint;
-                        state.pairedTimelineColliderSimulationContentFingerprint =
-                            combineCacheFingerprints([
-                                spawnContentFingerprint,
-                                pairedColliderContentFingerprint,
-                            ]);
-                        state.pairedTimelineControlSimulationContentFingerprint =
-                            combineCacheFingerprints([
-                                spawnContentFingerprint,
-                                fingerprintString(JSON.stringify(null)),
-                            ]);
-                        state.simulationContentFingerprint =
-                            scene.colliderSource === null
-                                ? state.pairedTimelineControlSimulationContentFingerprint
-                                : state.pairedTimelineColliderSimulationContentFingerprint;
-                        state.refreshPairedTimelineCacheKeys();
-                    }
 
                     updateStatus("loading environment...");
                     const environmentImageBitmap = await loadEnvironmentMap();

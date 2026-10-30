@@ -31,7 +31,7 @@ import { fingerprintString } from "./SimulationCacheFingerprint";
 // output must create a different cache namespace. This is separate from the
 // packed-frame schema because identical bytes can encode different physics.
 export const SIMULATION_FRAME_CACHE_SCHEMA_REVISION =
-    "position-material-v2";
+    "position-v3";
 
 export const SIMULATION_PHYSICS_SOURCE_FINGERPRINT = fingerprintString([
     runnerSource,
