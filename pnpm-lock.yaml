@@ -17,6 +17,9 @@ importers:
       '@vaie/hui':
         specifier: ^0.2.0
         version: 0.2.1(postcss@8.5.30)(sass@1.105.1)(svelte@5.57.2)(typescript@6.0.3)
+      '@vaie/wgsl-templates':
+        specifier: ^0.0.5
+        version: 0.0.5
       chart.js:
         specifier: ^4.5.1
         version: 4.5.1
@@ -383,6 +386,9 @@ packages:
     resolution: {integrity: sha512-/zaAU1JnetqTUiKgiw4LwjWcLEEySxRAiCHkK/hNebSDI2IqFddJSA8P7hM3VVzXQjxMWKM/ziMXbmU6GflA5g==}
     peerDependencies:
       svelte: ^5.0.0
+
+  '@vaie/wgsl-templates@0.0.5':
+    resolution: {integrity: sha512-CRI3p2y1nlKr4gTc22W8cbIOIekf2E90lczf0w16jHA4Nauoci6w//iRkNF631wZnsYK8PPOHIYHN0jNUa8ahQ==}
 
   '@webgpu/types@0.1.74':
     resolution: {integrity: sha512-lgiI4hbuLcI9unnm2cL/tvCaQU45dp0xcLWJh5uB/9MBGvIA4F8XIk7nSiBeg+K4xWGYwgZKn80LmERI5CxoTA==}
@@ -1069,6 +1075,8 @@ snapshots:
       - stylus
       - sugarss
       - typescript
+
+  '@vaie/wgsl-templates@0.0.5': {}
 
   '@webgpu/types@0.1.74': {}
 

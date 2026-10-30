@@ -137,7 +137,7 @@ fn calculateSvd3x3(deformation: mat3x3f) -> Svd3x3 {
     var left2 = normalize(cross(left0, left1));
     if (
         normalizedSingulars.z > SVD_MIN_NORMALIZED_SINGULAR
-        && dot(left2, diagonalized[2]) < 0.0
+        && dot(left2, diagonalized[2]) < 0
     ) {
         left2 = -left2;
     }
@@ -204,7 +204,7 @@ fn applyPlasticity(
         * transpose(svd.right);
     // assuming the overall deformation stays the same, we can also derive the new plastic deformation
     let newDeformationElasticInverse =
-        scaleMatrixColumns(svd.right, vec3f(1.0) / clampedSingulars)
+        scaleMatrixColumns(svd.right, vec3f(1) / clampedSingulars)
         * transpose(svd.left);
     let deformation = deformationElastic * deformationPlastic;
 

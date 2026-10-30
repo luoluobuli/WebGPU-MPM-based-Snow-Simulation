@@ -16,6 +16,7 @@
 		"@loaders.gl/core": "^4.4.2",
 		"@loaders.gl/gltf": "^4.4.2",
 		"@vaie/hui": "^0.2.0",
+		"@vaie/wgsl-templates": "^0.0.5",
 		"chart.js": "^4.5.1",
 		"three": "^0.184.0",
 		"wgpu-matrix": "^3.4.2"
