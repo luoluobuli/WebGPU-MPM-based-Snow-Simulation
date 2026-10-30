@@ -10,8 +10,6 @@ export type ZubeiaGroundBounds = {
     max: Vec3,
 };
 
-export type ZubeiaGroundProfile = "preview" | "final";
-
 export type ZubeiaGroundData = {
     points: Float32Array,
 };
@@ -50,48 +48,13 @@ export const ZUBEIA_GROUND_STRIP_CELL_COUNTS = cellCountsForBounds(
     ZUBEIA_GROUND_STRIP_BOUNDS,
 );
 
-export const ZUBEIA_GROUND_PREVIEW_PARTICLES_PER_CELL = 1;
-export const ZUBEIA_GROUND_FINAL_PARTICLES_PER_CELL = 4;
-
-export const ZUBEIA_GROUND_CELL_COUNT =
+export const ZUBEIA_GROUND_PARTICLE_COUNT =
     ZUBEIA_GROUND_STRIP_CELL_COUNTS[0]
     * ZUBEIA_GROUND_STRIP_CELL_COUNTS[1]
     * ZUBEIA_GROUND_STRIP_CELL_COUNTS[2];
-export const ZUBEIA_GROUND_PREVIEW_PARTICLE_COUNT =
-    ZUBEIA_GROUND_CELL_COUNT * ZUBEIA_GROUND_PREVIEW_PARTICLES_PER_CELL;
-export const ZUBEIA_GROUND_FINAL_PARTICLE_COUNT =
-    ZUBEIA_GROUND_CELL_COUNT * ZUBEIA_GROUND_FINAL_PARTICLES_PER_CELL;
 
-const PREVIEW_SAMPLE_OFFSETS: readonly Vec3[] = [
-    [0.5, 0.5, 0.5],
-];
-
-// These four points form a regular tetrahedron centered in the cell. This
-// deterministic layout supplies four particles per cell without coincident
-// samples or a random seed.
-const FINAL_SAMPLE_OFFSETS: readonly Vec3[] = [
-    [0.25, 0.25, 0.25],
-    [0.75, 0.75, 0.25],
-    [0.75, 0.25, 0.75],
-    [0.25, 0.75, 0.75],
-];
-
-const sampleOffsetsForProfile = (profile: ZubeiaGroundProfile) =>
-    profile === "final"
-        ? FINAL_SAMPLE_OFFSETS
-        : PREVIEW_SAMPLE_OFFSETS;
-
-export const zubeiaGroundParticleCount = (profile: ZubeiaGroundProfile) =>
-    profile === "final"
-        ? ZUBEIA_GROUND_FINAL_PARTICLE_COUNT
-        : ZUBEIA_GROUND_PREVIEW_PARTICLE_COUNT;
-
-export const buildZubeiaGround = (
-    profile: ZubeiaGroundProfile,
-): ZubeiaGroundData => {
-    const sampleOffsets = sampleOffsetsForProfile(profile);
-    const particleCount = zubeiaGroundParticleCount(profile);
-    const points = new Float32Array(particleCount * 4);
+export const buildZubeiaGround = (): ZubeiaGroundData => {
+    const points = new Float32Array(ZUBEIA_GROUND_PARTICLE_COUNT * 4);
     const [cellCountX, cellCountY, cellCountZ] =
         ZUBEIA_GROUND_STRIP_CELL_COUNTS;
     let particleIndex = 0;
@@ -99,20 +62,18 @@ export const buildZubeiaGround = (
     for (let z = 0; z < cellCountZ; z++) {
         for (let y = 0; y < cellCountY; y++) {
             for (let x = 0; x < cellCountX; x++) {
-                for (const offset of sampleOffsets) {
-                    const pointOffset = particleIndex * 4;
-                    points[pointOffset] =
-                        ZUBEIA_GROUND_STRIP_BOUNDS.min[0]
-                        + (x + offset[0]) * ZUBEIA_GROUND_CELL_SIZE_M;
-                    points[pointOffset + 1] =
-                        ZUBEIA_GROUND_STRIP_BOUNDS.min[1]
-                        + (y + offset[1]) * ZUBEIA_GROUND_CELL_SIZE_M;
-                    points[pointOffset + 2] =
-                        ZUBEIA_GROUND_STRIP_BOUNDS.min[2]
-                        + (z + offset[2]) * ZUBEIA_GROUND_CELL_SIZE_M;
-                    points[pointOffset + 3] = 1;
-                    particleIndex++;
-                }
+                const pointOffset = particleIndex * 4;
+                points[pointOffset] =
+                    ZUBEIA_GROUND_STRIP_BOUNDS.min[0]
+                    + (x + 0.5) * ZUBEIA_GROUND_CELL_SIZE_M;
+                points[pointOffset + 1] =
+                    ZUBEIA_GROUND_STRIP_BOUNDS.min[1]
+                    + (y + 0.5) * ZUBEIA_GROUND_CELL_SIZE_M;
+                points[pointOffset + 2] =
+                    ZUBEIA_GROUND_STRIP_BOUNDS.min[2]
+                    + (z + 0.5) * ZUBEIA_GROUND_CELL_SIZE_M;
+                points[pointOffset + 3] = 1;
+                particleIndex++;
             }
         }
     }

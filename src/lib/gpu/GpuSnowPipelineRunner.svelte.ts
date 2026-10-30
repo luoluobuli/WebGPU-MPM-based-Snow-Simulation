@@ -251,7 +251,6 @@ export class GpuSnowPipelineRunner {
         camera,
         spawnSource,
         collider,
-        renderCollider = true,
         getSimulationMethodType,
         getRenderMethodType,
         oneSimulationStepPerFrame,
@@ -281,7 +280,6 @@ export class GpuSnowPipelineRunner {
         camera: Camera,
         spawnSource: SpawnPointSource,
         collider?: ColliderGeometry | null,
-        renderCollider?: boolean,
         getSimulationMethodType: () => GpuSimulationMethodType,
         getRenderMethodType: () => GpuRenderMethodType,
         oneSimulationStepPerFrame: () => boolean,
@@ -480,7 +478,7 @@ export class GpuSnowPipelineRunner {
         this.mpmPipelineManager = mpmPipelineManager;
 
         // Render
-        const rasterizeRenderPipeline = renderCollider && colliderGeometry.indices.length > 0
+        const rasterizeRenderPipeline = colliderGeometry.indices.length > 0
             ? new GpuRasterizeRenderPipelineManager({
                 device,
                 format,

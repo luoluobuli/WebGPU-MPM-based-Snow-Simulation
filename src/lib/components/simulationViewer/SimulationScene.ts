@@ -6,10 +6,8 @@ import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
 import {
     ZUBEIA_GROUND_DOMAIN_BOUNDS,
-    ZUBEIA_GROUND_FINAL_PARTICLE_COUNT,
     ZUBEIA_GROUND_GRID_RESOLUTION,
-    ZUBEIA_GROUND_PREVIEW_PARTICLE_COUNT,
-    type ZubeiaGroundProfile,
+    ZUBEIA_GROUND_PARTICLE_COUNT,
 } from "./zubeia/ZubeiaGround";
 
 export type SimulationSpawnSource =
@@ -19,7 +17,6 @@ export type SimulationSpawnSource =
     }
     | {
         type: "zubeiaGround",
-        profile: ZubeiaGroundProfile,
     };
 
 export type SimulationColliderSource =
@@ -71,7 +68,6 @@ export type SimulationSceneConfig = {
     timeline?: SimulationTimelineConfig,
     domain?: SimulationDomain,
     colliderFriction?: number,
-    renderCollider?: boolean,
 };
 
 export const defaultSimulationScene: SimulationSceneConfig = {
@@ -94,15 +90,12 @@ export const defaultSimulationScene: SimulationSceneConfig = {
 };
 
 const createZubeiaGroundScene = ({
-    profile,
     animated,
 }: {
-    profile: ZubeiaGroundProfile,
     animated: boolean,
 }): SimulationSceneConfig => ({
     spawnSource: {
         type: "zubeiaGround",
-        profile,
     },
     colliderSource: animated
         ? {
@@ -111,9 +104,7 @@ const createZubeiaGroundScene = ({
             rigidPawSdfUrl: zubeiaPawSdfUrl,
         }
         : null,
-    nParticles: profile === "final"
-        ? ZUBEIA_GROUND_FINAL_PARTICLE_COUNT
-        : ZUBEIA_GROUND_PREVIEW_PARTICLE_COUNT,
+    nParticles: ZUBEIA_GROUND_PARTICLE_COUNT,
     gridResolution: [...ZUBEIA_GROUND_GRID_RESOLUTION],
     renderMethodType: GpuRenderMethodType.Splats,
     simulationMethodType: GpuSimulationMethodType.Pbmpm,
@@ -140,16 +131,9 @@ const createZubeiaGroundScene = ({
 });
 
 export const groundScene = createZubeiaGroundScene({
-    profile: "preview",
     animated: false,
 });
 
 export const kinematicGroundScene = createZubeiaGroundScene({
-    profile: "preview",
-    animated: true,
-});
-
-export const kinematicGroundFinalScene = createZubeiaGroundScene({
-    profile: "final",
     animated: true,
 });

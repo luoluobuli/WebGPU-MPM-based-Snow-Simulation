@@ -126,7 +126,7 @@ const loadSpawnSource = async (
         }
 
         case "zubeiaGround": {
-            const ground = buildZubeiaGround(scene.spawnSource.profile);
+            const ground = buildZubeiaGround();
             const pointCount = ground.points.length / 4;
             if (pointCount !== nParticles) {
                 throw new Error(
@@ -1423,7 +1423,6 @@ export class SimulationState {
                         camera: state.camera,
                         spawnSource,
                         collider,
-                        renderCollider: scene.renderCollider ?? true,
                         getSimulationMethodType: () => state.simulationMethodType,
                         getRenderMethodType: () => state.renderMethodType,
                         oneSimulationStepPerFrame: () => state.oneSimulationStepPerFrame,
