@@ -13,11 +13,6 @@ export interface ColliderGeometry {
     }[];
 }
 
-export type AnimatedColliderGeometry = ColliderGeometry & {
-    animationDurationS: number,
-    sampleAtTimeS: (timeS: number) => ColliderGeometry,
-};
-
 export const COLLIDER_SDF_RESOLUTION = 64;
 export const COLLIDER_SDF_SURFACE_THICKNESS = 0.05;
 
@@ -53,8 +48,6 @@ export class GpuColliderBufferManager {
     readonly indicesOffset: number;
     readonly verticesOffset: number;
     readonly normalsOffset: number;
-    readonly verticesSize: number;
-    readonly normalsSize: number;
     readonly uvsOffset: number;
     readonly materialIndicesOffset: number;
     
@@ -71,7 +64,6 @@ export class GpuColliderBufferManager {
         materialIndices,
         textures,
         indices,
-        buildCollisionSdf = true,
     }: {
         device: GPUDevice,
         vertices: number[],
@@ -80,7 +72,6 @@ export class GpuColliderBufferManager {
         materialIndices: number[],
         textures: ImageBitmap[],
         indices: number[],
-        buildCollisionSdf?: boolean,
     }) {
         if (vertices.length === 0 || indices.length === 0) {
             this.minCoords = [0, 0, 0];
@@ -91,8 +82,6 @@ export class GpuColliderBufferManager {
             this.indicesOffset = 0;
             this.verticesOffset = 0;
             this.normalsOffset = 0;
-            this.verticesSize = 0;
-            this.normalsSize = 0;
             this.uvsOffset = 0;
             this.materialIndicesOffset = 0;
 
@@ -149,12 +138,7 @@ export class GpuColliderBufferManager {
             meshMax[2] = Math.max(meshMax[2], vertices[i+2]);
         }
 
-        const sdfBounds = buildCollisionSdf
-            ? this.buildSdfBounds(meshMin, meshMax)
-            : {
-                min: [0, 0, 0] as Vec3,
-                max: [0, 0, 0] as Vec3,
-            };
+        const sdfBounds = this.buildSdfBounds(meshMin, meshMax);
         this.minCoords = sdfBounds.min;
         this.maxCoords = sdfBounds.max;
 
@@ -169,8 +153,6 @@ export class GpuColliderBufferManager {
         const uvsSize = uvs.length * 4;
         const materialIndicesSize = materialIndices.length * 4;
         const totalSize = indicesSize + verticesSize + normalsSize + uvsSize + materialIndicesSize;
-        this.verticesSize = verticesSize;
-        this.normalsSize = normalsSize;
         
         this.colliderDataBuffer = device.createBuffer({
             label: "collider data buffer",
@@ -246,13 +228,9 @@ export class GpuColliderBufferManager {
             });
         }
 
-        const sdfData = buildCollisionSdf
-            ? this.buildColliderSdf(vertices, indices, sdfBounds)
-            : new Float32Array([1e6]);
+        const sdfData = this.buildColliderSdf(vertices, indices, sdfBounds);
         this.colliderSdfBuffer = device.createBuffer({
-            label: buildCollisionSdf
-                ? "collider SDF buffer"
-                : "disabled collider SDF buffer",
+            label: "collider SDF buffer",
             size: Math.max(sdfData.byteLength, 4),
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
@@ -262,44 +240,6 @@ export class GpuColliderBufferManager {
             sdfData.buffer as ArrayBuffer,
             sdfData.byteOffset,
             sdfData.byteLength,
-        );
-    }
-
-    updateRenderGeometry({
-        device,
-        vertices,
-        normals,
-        indices,
-    }: {
-        device: GPUDevice,
-        vertices: number[],
-        normals: number[],
-        indices: number[],
-    }) {
-        if (indices.length !== this.numIndices) {
-            throw new Error("animated collider topology must keep the same index count");
-        }
-
-        const verticesByteLength = vertices.length * 4;
-        const normalsByteLength = normals.length * 4;
-        if (
-            verticesByteLength !== this.verticesSize
-            || normalsByteLength !== this.normalsSize
-        ) {
-            throw new Error("animated collider topology must keep the same vertex and normal counts");
-        }
-
-        const flatVertices = new Float32Array(vertices);
-        const flatNormals = new Float32Array(normals);
-        device.queue.writeBuffer(
-            this.colliderDataBuffer,
-            this.verticesOffset,
-            flatVertices,
-        );
-        device.queue.writeBuffer(
-            this.colliderDataBuffer,
-            this.normalsOffset,
-            flatNormals,
         );
     }
 

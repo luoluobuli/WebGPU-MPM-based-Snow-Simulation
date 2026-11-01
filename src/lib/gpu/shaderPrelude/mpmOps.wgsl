@@ -18,28 +18,11 @@ const MAX_FIXED_POINT_GRID_SPEED: f32 = MAX_FIXED_POINT_I32 * INV_FIXED_POINT_SC
 const DEFAULT_PARTICLE_MASS: f32 = 0.3333333;
 const PARTICLE_FLAG_DEFORMATION_DELTA_VALID = 1u;
 const PARTICLE_FLAG_ELASTIC_NON_IDENTITY = 2u;
-const PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS = 4u;
 const PARTICLE_MATRIX_ELASTIC_CHANGED = 1u;
 const PARTICLE_MATRIX_PLASTIC_CHANGED = 2u;
 
 fn particlePersistentFlags(flags: u32) -> u32 {
     return flags & PARTICLE_FLAG_ELASTIC_NON_IDENTITY;
-}
-
-fn particlePlasticVolumeFactor(particle: ParticleData, flags: u32) -> f32 {
-    if (flags & PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS) != 0u {
-        return 1.0;
-    }
-
-    return determinant(particle.deformationPlastic);
-}
-
-fn particleElasticVolumeFactor(particle: ParticleData, flags: u32) -> f32 {
-    if (flags & PARTICLE_FLAG_CACHED_IDENTITY_DETERMINANTS) != 0u {
-        return 1.0;
-    }
-
-    return determinant(particle.deformationElastic);
 }
 
 fn calculateGridCoordinate(pos: vec3f) -> vec3f {

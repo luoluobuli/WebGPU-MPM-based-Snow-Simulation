@@ -108,14 +108,13 @@ fn clampVelocityToFixedPointRange(velocity: vec3f) -> vec3f {
 
 fn projectPbmpmGridContact(world_position: vec3f, velocity: vec3f) -> vec3f {
     let predicted_position = world_position + velocity * uniforms.simulationTimestep;
-    let projected_velocity = projectVelocityAgainstKinematicCollider(predicted_position, velocity);
     if !colliderSdfIsValid() || segmentOutsideColliderWorldBounds(world_position, predicted_position) {
-        return projected_velocity;
+        return velocity;
     }
 
     let local_position = (uniforms.colliderTransformInv * vec4f(predicted_position, 1.0)).xyz;
     let sample = sampleColliderSdfValueGradient(local_position);
-    if sample.value >= 0.0 { return projected_velocity; }
+    if sample.value >= 0.0 { return velocity; }
 
     var local_normal = sample.gradient;
     if sample.has_gradient == 0u {
@@ -123,16 +122,22 @@ fn projectPbmpmGridContact(world_position: vec3f, velocity: vec3f) -> vec3f {
     }
     let world_normal = (transpose(uniforms.colliderTransformInv) * vec4f(local_normal, 0.0)).xyz;
     let normal_length_squared = dot(world_normal, world_normal);
-    if !(normal_length_squared > 1e-12) { return projected_velocity; }
+    if !(normal_length_squared > 1e-12) { return velocity; }
 
-    return projectVelocityAgainstKinematicColliderSample(
-        KinematicColliderSample(
-            sample.value,
-            world_normal * inverseSqrt(normal_length_squared),
-            uniforms.colliderVelocity,
-        ),
-        projected_velocity,
+    let normal = world_normal * inverseSqrt(normal_length_squared);
+    let relative_velocity = velocity - uniforms.colliderVelocity;
+    let normal_velocity = dot(relative_velocity, normal);
+    if normal_velocity >= 0.0 { return velocity; }
+
+    let tangential_velocity = relative_velocity - normal_velocity * normal;
+    let tangential_speed = length(tangential_velocity);
+    let friction_speed = max(uniforms.colliderFriction, 0.0) * -normal_velocity;
+    let tangential_scale = max(
+        0.0,
+        1.0 - friction_speed / max(tangential_speed, 1e-7),
     );
+
+    return uniforms.colliderVelocity + tangential_scale * tangential_velocity;
 }
 
 @compute
@@ -207,10 +212,6 @@ fn doGridUpdate(
     let world_position = uniforms.gridMinCoords
         + cellCenterGridCoord(block_cell_base, cell_offset)
         * uniforms.gridCellDims;
-    cell_velocity = projectVelocityAgainstKinematicCollider(
-        world_position,
-        cell_velocity,
-    );
     if USE_PBMPM_CONTACT != 0u {
         cell_velocity = projectPbmpmGridContact(world_position, cell_velocity);
     }

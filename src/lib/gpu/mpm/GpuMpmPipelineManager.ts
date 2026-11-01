@@ -14,11 +14,6 @@ import { attachPrelude } from "../shaderPrelude";
 import type { GpuColliderBufferManager } from "../collider/GpuColliderBufferManager";
 import colliderPreludeModuleSrc from "./colliderPrelude.wgsl?raw";
 import { BUKKIT_DOMAIN_BLOCK_COUNT, BUKKIT_DOMAIN_BLOCKS_PER_AXIS } from "./GpuMpmBufferManager";
-import type {
-    GpuRigidPawSdfKinematicColliderManager,
-} from "../kinematicCollider/GpuRigidPawSdfKinematicColliderManager";
-import rigidPawSdfColliderPreludeSrc from "../kinematicCollider/rigidPawSdfKinematicColliderPrelude.wgsl?raw";
-
 const BUKKIT_GENERATION_RESERVED = 0xFFFFFFFF;
 const PARTICLE_WORKGROUP_SIZE = 256;
 
@@ -72,7 +67,6 @@ export class GpuMpmPipelineManager {
         activeBlockDispatchBuffer,
         uniformsManager,
         colliderManager,
-        kinematicColliderManager,
     }: {
         device: GPUDevice,
         nParticles: number,
@@ -88,19 +82,12 @@ export class GpuMpmPipelineManager {
         activeBlockDispatchBuffer: GPUBuffer,
         uniformsManager: GpuUniformsBufferManager,
         colliderManager: GpuColliderBufferManager,
-        kinematicColliderManager: GpuRigidPawSdfKinematicColliderManager,
     }) {
         const particleCountConstant = nParticles;
         const nParticleWorkgroups = Math.ceil(nParticles / PARTICLE_WORKGROUP_SIZE);
         const particleKernelConstants = {
             N_PARTICLES: particleCountConstant,
             PARTICLE_WORKGROUP_SIZE,
-        };
-        const kinematicColliderConstants = {
-            KINEMATIC_COLLIDER_COUNT:
-                kinematicColliderManager.primitiveCount,
-            KINEMATIC_COLLIDER_SDF_RESOLUTION:
-                kinematicColliderManager.sdfResolution,
         };
         const gridBoundaryMaxX = gridResolutionX - 3;
         const gridBoundaryMaxY = gridResolutionY - 3;
@@ -127,8 +114,6 @@ export class GpuMpmPipelineManager {
                 { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-                { binding: 11, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-                { binding: 12, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
             ],
         });
 
@@ -145,8 +130,6 @@ export class GpuMpmPipelineManager {
                 { binding: 3, resource: { buffer: accumulatorBuffer } },
                 { binding: 7, resource: { buffer: velocityBuffer } },
                 { binding: 10, resource: { buffer: colliderManager.colliderSdfBuffer } },
-                { binding: 11, resource: { buffer: kinematicColliderManager.poseBuffer } },
-                { binding: 12, resource: { buffer: kinematicColliderManager.sdfBuffer } },
             ],
         });
         const sparseGridBindGroup = createSparseGridBindGroup(
@@ -398,7 +381,7 @@ export class GpuMpmPipelineManager {
         const gridUpdateModule = device.createShaderModule({
             label: "grid update module",
             code: attachPrelude(
-                `${colliderPreludeModuleSrc}\n${rigidPawSdfColliderPreludeSrc}\n${sparseGridPreludeSrc}\n${gridUpdateModuleSrc}`,
+                `${colliderPreludeModuleSrc}\n${sparseGridPreludeSrc}\n${gridUpdateModuleSrc}`,
             ),
         });
 
@@ -415,7 +398,6 @@ export class GpuMpmPipelineManager {
                 entryPoint: "doGridUpdate",
                 constants: {
                     ...sparseGridConstants,
-                    ...kinematicColliderConstants,
                     ENABLE_INTERACTION: enableInteraction ? 1 : 0,
                     APPLY_EXTERNAL_FORCES: applyExternalForces ? 1 : 0,
                     USE_PBMPM_CONTACT: usePbmpmContact ? 1 : 0,
@@ -470,7 +452,7 @@ export class GpuMpmPipelineManager {
         const integrateParticlesModule = device.createShaderModule({
             label: "integrate particles module",
             code: attachPrelude(
-                `${colliderPreludeModuleSrc}\n${rigidPawSdfColliderPreludeSrc}\n${sparseGridPreludeSrc}\n${integrateParticlesSrc}`,
+                `${colliderPreludeModuleSrc}\n${sparseGridPreludeSrc}\n${integrateParticlesSrc}`,
             ),
         });
 
@@ -497,7 +479,6 @@ export class GpuMpmPipelineManager {
                 constants: {
                     ...sparseGridConstants,
                     ...particleKernelConstants,
-                    ...kinematicColliderConstants,
                     RECORD_PARTICLE_SPEED: recordParticleSpeed ? 1 : 0,
                     PARTICLE_SPEED_REDUCTION_WORKGROUP_SIZE: particleSpeedReductionWorkgroupSize,
                     COLLIDER_TRANSFORM_ALWAYS_IDENTITY: colliderTransformAlwaysIdentity ? 1 : 0,

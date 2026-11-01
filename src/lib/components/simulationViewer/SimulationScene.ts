@@ -1,35 +1,17 @@
 import modelUrl from "$lib/assets/models/snow3.glb?url";
 import colliderUrl from "$lib/assets/models/forest_scaled.glb?url";
-import zubeiaWalkModelUrl from "$lib/assets/models/zubeia-walk-lod.glb?url";
-import zubeiaPawSdfUrl from "$lib/assets/models/zubeia-paw-sdf.bin?url";
 import { GpuRenderMethodType } from "$lib/gpu/GpuRenderMethod";
 import { GpuSimulationMethodType } from "$lib/gpu/GpuSimulationMethod";
-import {
-    ZUBEIA_GROUND_DOMAIN_BOUNDS,
-    ZUBEIA_GROUND_GRID_RESOLUTION,
-    ZUBEIA_GROUND_PARTICLE_COUNT,
-} from "./zubeia/ZubeiaGround";
 
-export type SimulationSpawnSource =
-    | {
-        type: "mesh",
-        url: string,
-    }
-    | {
-        type: "zubeiaGround",
-    };
+export type SimulationSpawnSource = {
+    type: "mesh",
+    url: string,
+};
 
-export type SimulationColliderSource =
-    | {
-        type: "mesh",
-        url: string,
-    }
-    | {
-        type: "zubeiaWalk",
-        modelUrl: string,
-        rigidPawSdfUrl: string,
-    }
-    | null;
+export type SimulationColliderSource = {
+    type: "mesh",
+    url: string,
+} | null;
 
 export type SimulationCameraDefaults = {
     radius?: number,
@@ -46,11 +28,6 @@ export type SimulationTimingConfig = {
     oneSimulationStepPerFrame?: boolean,
 };
 
-export type SimulationTimelineConfig = {
-    frameCount: number,
-    secondsPerFrame: number,
-};
-
 export type SimulationDomain = {
     min: [number, number, number],
     max: [number, number, number],
@@ -65,7 +42,6 @@ export type SimulationSceneConfig = {
     simulationMethodType: GpuSimulationMethodType,
     camera?: SimulationCameraDefaults,
     timing?: SimulationTimingConfig,
-    timeline?: SimulationTimelineConfig,
     domain?: SimulationDomain,
     colliderFriction?: number,
 };
@@ -88,52 +64,3 @@ export const defaultSimulationScene: SimulationSceneConfig = {
         oneSimulationStepPerFrame: true,
     },
 };
-
-const createZubeiaGroundScene = ({
-    animated,
-}: {
-    animated: boolean,
-}): SimulationSceneConfig => ({
-    spawnSource: {
-        type: "zubeiaGround",
-    },
-    colliderSource: animated
-        ? {
-            type: "zubeiaWalk",
-            modelUrl: zubeiaWalkModelUrl,
-            rigidPawSdfUrl: zubeiaPawSdfUrl,
-        }
-        : null,
-    nParticles: ZUBEIA_GROUND_PARTICLE_COUNT,
-    gridResolution: [...ZUBEIA_GROUND_GRID_RESOLUTION],
-    renderMethodType: GpuRenderMethodType.Splats,
-    simulationMethodType: GpuSimulationMethodType.Pbmpm,
-    camera: {
-        radius: 9,
-        lat: 0.75,
-        long: Math.PI * 0.5,
-        offset: [0, 0.9, 0.9],
-    },
-    timing: {
-        pbmpmMaxSimulationTimestepS: 1 / 240,
-        pbmpmSolveIterations: 4,
-        oneSimulationStepPerFrame: true,
-    },
-    timeline: {
-        frameCount: 109,
-        secondsPerFrame: 1 / 30,
-    },
-    domain: {
-        min: [...ZUBEIA_GROUND_DOMAIN_BOUNDS.min],
-        max: [...ZUBEIA_GROUND_DOMAIN_BOUNDS.max],
-    },
-    colliderFriction: 0.65,
-});
-
-export const groundScene = createZubeiaGroundScene({
-    animated: false,
-});
-
-export const kinematicGroundScene = createZubeiaGroundScene({
-    animated: true,
-});

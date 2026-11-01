@@ -1,22 +1,18 @@
 <script lang="ts">
 import Canvas from "./Canvas.svelte";
 import { SimulationState } from "./SimulationState.svelte";
-import { onMount } from "svelte";
+import { onMount, untrack } from "svelte";
 import SimulationStatusPanel from "./SimulationStatusPanel.svelte";
 import SimulationControlPanel from "./SimulationControlPanel.svelte";
-import SimulationTimeline from "./SimulationTimeline.svelte";
 import {
     defaultSimulationScene,
     type SimulationSceneConfig,
 } from "./SimulationScene";
-import { browser } from "$app/environment";
 
 let {
     scene = defaultSimulationScene,
-    kinematicScene = null,
 }: {
     scene?: SimulationSceneConfig,
-    kinematicScene?: SimulationSceneConfig | null,
 } = $props();
 
 let status = $state("loading javascript");
@@ -25,19 +21,8 @@ let err = $state<string | null>(null);
 let canvas = $state<HTMLCanvasElement | null>(null);
 let canvasPromise = Promise.withResolvers<HTMLCanvasElement>();
 
-const urlSearchParams = browser
-    ? new URLSearchParams(location.search)
-    : null;
-const timeline = urlSearchParams?.has("timeline") === true;
-const kinematic = timeline && urlSearchParams?.has("kinematic") === true;
-const getActiveScene = (): SimulationSceneConfig =>
-    kinematic && kinematicScene !== null
-        ? kinematicScene
-        : scene;
-
 const simulationState = SimulationState.loadOntoCanvas({
-    getScene: getActiveScene,
-    timeline,
+    scene: untrack(() => scene),
     canvasPromise: canvasPromise.promise,
     onStatusChange: text => status = text,
     onErr: text => err = text,
@@ -66,11 +51,6 @@ onMount(() => {
             {err}
         />
 
-        {#if timeline}
-            <SimulationTimeline
-                {simulationState}
-            />
-        {/if}
     </simulation-overlay-panels>
 </main>
 
@@ -93,7 +73,7 @@ simulation-overlay-panels {
 
     display: grid;
     grid-template-columns: auto 1fr auto;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
 
     pointer-events: none;
@@ -116,10 +96,5 @@ simulation-overlay-panels {
         max-height: 100%;
     }
 
-    > :global(:nth-child(3)) {
-        grid-area: 2/1/3/4;
-        align-self: end;
-        justify-self: center;
-    }
 }
 </style>

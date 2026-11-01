@@ -1,15 +1,9 @@
 import { buildUniformSpawnPoints, type SpawnMeshObject } from "./buildUniformSpawnPoints";
 
-export type SpawnPointSource =
-    | {
-        type: "mesh",
-        vertices: number[][],
-        objects?: SpawnMeshObject[],
-    }
-    | {
-        type: "points",
-        points: Float32Array,
-    };
+export type SpawnMeshSource = {
+    vertices: number[][],
+    objects?: SpawnMeshObject[],
+};
 
 export class GpuSpawnVolumeBufferManager {
     readonly spawnPointsBuffer: GPUBuffer;
@@ -22,14 +16,12 @@ export class GpuSpawnVolumeBufferManager {
     }: {
         device: GPUDevice,
         nParticles: number,
-        source: SpawnPointSource,
+        source: SpawnMeshSource,
     }) {
-        const spawnPoints = source.type === "mesh"
-            ? buildUniformSpawnPoints(source.vertices, {
-                nPoints: nParticles,
-                objects: source.objects,
-            }).points
-            : source.points;
+        const { points: spawnPoints } = buildUniformSpawnPoints(source.vertices, {
+            nPoints: nParticles,
+            objects: source.objects,
+        });
 
         if (spawnPoints.length !== nParticles * 4) {
             throw new Error("spawn point buffer must contain one vec4 per particle");

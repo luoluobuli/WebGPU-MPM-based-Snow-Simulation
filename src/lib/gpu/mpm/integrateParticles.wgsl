@@ -113,10 +113,6 @@ fn integrateParticles(
             uniforms.maxStableParticleSpeed,
             uniforms.maxStableParticleSpeedSquared,
         );
-        particle.vel = projectVelocityAgainstKinematicCollider(
-            particle.pos,
-            particle.vel,
-        );
 
         // let gravitational_acceleration = vec3f(0, 0, -9.81);
         // particle.pos_displacement += gravitational_acceleration * uniforms.simulationTimestep * uniforms.simulationTimestep;
@@ -124,11 +120,6 @@ fn integrateParticles(
         let pre_advection_position = particle.pos;
         particle.pos_displacement = particle.vel * uniforms.simulationTimestep;
         particle.pos += particle.pos_displacement;
-        // Disney applies particle collision before advection. This position-only
-        // cleanup is the optional Taichi-style guard for residual penetration.
-        particle.pos = resolveParticlePositionAgainstKinematicCollider(
-            particle.pos,
-        );
         particle.pos_displacement =
             particle.pos - pre_advection_position;
 

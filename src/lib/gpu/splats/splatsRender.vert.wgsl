@@ -1,6 +1,5 @@
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> particle_data: array<ParticleData>;
-@group(0) @binding(2) var<storage, read> particle_flags: array<u32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -43,7 +42,6 @@ fn vert(
     @builtin(instance_index) instance_index: u32,
 ) -> VertexOutput {
     let particle = particle_data[instance_index];
-    let flags = particle_flags[instance_index];
     let uv = VERT_POSITIONS[vertex_index];
     let seed = vec3f(
         randomFromIndex(instance_index, 0x9e3779b9u),
@@ -74,8 +72,8 @@ fn vert(
     out.uv = uv;
     out.center_world = particle.pos;
     out.radius = radius;
-    out.compression_volume_fac = particlePlasticVolumeFactor(particle, flags);
-    out.elastic_volume_fac = particleElasticVolumeFactor(particle, flags);
+    out.compression_volume_fac = determinant(particle.deformationPlastic);
+    out.elastic_volume_fac = determinant(particle.deformationElastic);
     out.shape_params = vec4f(axis_scale, depth_scale, seed.x);
     out.grain_params = grain_params;
 

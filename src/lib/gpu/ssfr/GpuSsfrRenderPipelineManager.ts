@@ -116,13 +116,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                         type: "read-only-storage",
                     },
                 },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.VERTEX,
-                    buffer: {
-                        type: "read-only-storage",
-                    },
-                },
             ],
         });
 
@@ -140,12 +133,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                     binding: 1,
                     resource: {
                         buffer: mpmManager.particleDataBuffer,
-                    },
-                },
-                {
-                    binding: 2,
-                    resource: {
-                        buffer: mpmManager.particleFlagsBuffer,
                     },
                 },
             ],
@@ -440,11 +427,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
                     visibility: GPUShaderStage.VERTEX,
                     buffer: { type: "read-only-storage" },
                 },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.VERTEX,
-                    buffer: { type: "read-only-storage" },
-                },
             ],
         });
 
@@ -489,7 +471,6 @@ export class GpuSsfrRenderPipelineManager implements GpuRenderMethod {
             entries: [
                 { binding: 0, resource: { buffer: uniformsManager.buffer } },
                 { binding: 1, resource: { buffer: mpmManager.particleDataBuffer } },
-                { binding: 2, resource: { buffer: mpmManager.particleFlagsBuffer } },
             ],
         });
 

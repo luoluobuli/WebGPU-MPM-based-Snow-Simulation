@@ -17,132 +17,25 @@ import {
     defaultSimulationScene,
     type SimulationSceneConfig,
 } from "./SimulationScene";
-import { buildZubeiaGround } from "./zubeia/ZubeiaGround";
-import { loadZubeiaRigidPawWalkCollider } from "./zubeia/loadZubeiaRigidPawWalkCollider";
-import type { SpawnPointSource } from "$lib/gpu/particleInitialize/GpuSpawnVolumeBufferManager";
+import type { SpawnMeshSource } from "$lib/gpu/particleInitialize/GpuSpawnVolumeBufferManager";
 import { vec3 } from "wgpu-matrix";
-import {
-    canSelectSimulationFrameCacheDirectory,
-    createSimulationFrameFileCache,
-    isQuotaExceededError,
-    selectSimulationFrameCacheDirectory,
-    type SimulationFrameFileCache,
-} from "./SimulationFrameFileCache";
-import {
-    TIMELINE_DEFAULT_SECONDS_PER_FRAME,
-    TIMELINE_FRAME_COUNT,
-    TIMELINE_FRAME_INTERVAL_MS,
-    clampTimelineSecondsPerFrame,
-    calculateTimelineBakeSubsteps,
-    timelineSecondsPerFrameFromStepDivisor,
-    timelineStepDivisorFromSecondsPerFrame,
-    timelineFrameSimulationTimeS,
-} from "./SimulationTimelineTiming";
-import {
-    combineCacheFingerprints,
-    fingerprintString,
-} from "./SimulationCacheFingerprint";
-import {
-    fingerprintLoadedSpawnSource,
-    loadZubeiaColliderContentFingerprint,
-} from "./SimulationContentFingerprint";
-import {
-    createSimulationTimelineCacheKey,
-    type SimulationTimelineCacheSettings,
-} from "./SimulationTimelineCacheKey";
 
-const TIMELINE_BACKGROUND_WORK_YIELD_MS = 250;
-const TIMELINE_MEMORY_CACHE_BYTE_LIMIT = 96 * 1024 * 1024;
-const TIMELINE_MEMORY_CACHE_MIN_FRAME_LIMIT = 3;
-const TIMELINE_MEMORY_CACHE_MAX_FRAME_LIMIT = 24;
-const TIMELINE_PLAYBACK_READY_FRAME_COUNT = 3;
-const TIMELINE_PLAYBACK_PERF_SAMPLE_INTERVAL_FRAMES = 30;
-
-const waitForTimelineWorkYield = () => new Promise<void>((resolve) => {
-    if (typeof requestAnimationFrame === "undefined") {
-        setTimeout(resolve, 0);
-        return;
-    }
-
-    let resolved = false;
-    const timeoutHandle = setTimeout(
-        () => {
-            if (resolved) return;
-
-            resolved = true;
-            resolve();
-        },
-        TIMELINE_BACKGROUND_WORK_YIELD_MS,
-    );
-
-    const finish = () => {
-        if (resolved) return;
-
-        resolved = true;
-        clearTimeout(timeoutHandle);
-        resolve();
-    };
-
-    requestAnimationFrame(() => requestAnimationFrame(finish));
-});
 
 const errorToString = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-const formatCacheBytes = (bytes: number | null) => {
-    if (bytes === null || !Number.isFinite(bytes)) return "unknown";
-
-    const absBytes = Math.abs(bytes);
-    if (absBytes >= 1024 * 1024 * 1024) {
-        return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GiB`;
-    }
-
-    return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
-};
-
-const formatCachedTimelineFrameCount = (frameCount: number) =>
-    frameCount === 1 ? "1 cached frame" : `${frameCount} cached frames`;
-
-const sleep = (ms: number) => new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-});
-
 const loadSpawnSource = async (
     scene: SimulationSceneConfig,
-    nParticles: number,
 ): Promise<{
-    spawnSource: SpawnPointSource,
+    spawnSource: SpawnMeshSource,
 }> => {
-    switch (scene.spawnSource.type) {
-        case "mesh": {
-            const { vertices, objects } = await loadGltfScene(scene.spawnSource.url);
+    const { vertices, objects } = await loadGltfScene(scene.spawnSource.url);
 
-            return {
-                spawnSource: {
-                    type: "mesh",
-                    vertices,
-                    objects,
-                },
-            };
-        }
-
-        case "zubeiaGround": {
-            const ground = buildZubeiaGround();
-            const pointCount = ground.points.length / 4;
-            if (pointCount !== nParticles) {
-                throw new Error(
-                    `Zubeia ground produced ${pointCount} points; `
-                    + `scene requires ${nParticles}`,
-                );
-            }
-
-            return {
-                spawnSource: {
-                    type: "points",
-                    points: ground.points,
-                },
-            };
-        }
-    }
+    return {
+        spawnSource: {
+            vertices,
+            objects,
+        },
+    };
 };
 
 const loadCollider = async (
@@ -152,27 +45,17 @@ const loadCollider = async (
         return null;
     }
 
-    switch (scene.colliderSource.type) {
-        case "mesh": {
-            const {
-                positions,
-                normals,
-                uvs,
-                materialIndices,
-                textures,
-                indices,
-                objects,
-            } = await loadGltfScene(scene.colliderSource.url);
+    const {
+        positions,
+        normals,
+        uvs,
+        materialIndices,
+        textures,
+        indices,
+        objects,
+    } = await loadGltfScene(scene.colliderSource.url);
 
-            return { positions, normals, uvs, materialIndices, textures, indices, objects };
-        }
-
-        case "zubeiaWalk":
-            return await loadZubeiaRigidPawWalkCollider({
-                modelUrl: scene.colliderSource.modelUrl,
-                rigidPawSdfUrl: scene.colliderSource.rigidPawSdfUrl,
-            });
-    }
+    return { positions, normals, uvs, materialIndices, textures, indices, objects };
 };
 
 export class SimulationState {
@@ -216,65 +99,20 @@ export class SimulationState {
     private onStatusChange: ((status: string) => void) | null = null;
     private onErr: ((err: string) => void) | null = null;
     private readonly scene: SimulationSceneConfig;
-    private simulationContentFingerprint =
-        "simulation-content-unloaded-v1";
-    readonly timeline: boolean;
-    private readonly configuredTimelineFrameCount: number;
-
-    timelineFrameCount = $state(TIMELINE_FRAME_COUNT);
-    timelineFrame = $state(0);
-    timelineNextUncachedFrame = $state(0);
-    timelineCachedFrameCount = $derived(this.timelineNextUncachedFrame);
-    timelineIsBusy = $state(false);
-    timelineIsPlaying = $state(false);
-    timelineStorageLabel = $state("file cache pending");
-    timelineStatus = $state("waiting for renderer");
-    timelineCanSelectCacheDirectory = canSelectSimulationFrameCacheDirectory();
-    timelineFrameByteLength = $derived(this.runner?.simulationPlaybackFrameLayout.byteLength ?? null);
-    timelineSecondsPerFrame = $state(TIMELINE_DEFAULT_SECONDS_PER_FRAME);
-    timelineStepDivisor = $derived(
-        timelineStepDivisorFromSecondsPerFrame(this.timelineSecondsPerFrame),
-    );
-    timelineDurationS = $derived(
-        Math.max(0, this.timelineFrameCount - 1) * this.timelineSecondsPerFrame,
-    );
-
-    private timelineCache: SimulationFrameFileCache | null = null;
-    private timelineCacheRootDirectory: FileSystemDirectoryHandle | null = null;
-    private timelineCacheKey = "";
-    private readonly timelineMemoryFrames = new Map<number, ArrayBuffer>();
-    private readonly timelinePendingFrameReads = new Map<number, Promise<ArrayBuffer | null>>();
-    private timelineMemoryFrameReadEpoch = 0;
-    private pendingTimelineFrame: number | null = null;
-    private pendingTimelineSecondsPerFrame: number | null = null;
-    private timelineRunToken = 0;
-    private timelineSimulatedTimeS = 0;
-    private timelineSolverFrame: number | null = 0;
-    private stillFrameRenderHandle: number | null = null;
-    private stillFrameRenderRequested = false;
-    private stillFrameRenderInFlight = false;
 
 
     constructor({
         scene = defaultSimulationScene,
-        timeline = false,
         onStatusChange = null,
         onErr = null,
     }: {
         scene?: SimulationSceneConfig,
-        timeline?: boolean,
         onStatusChange?: ((status: string) => void) | null,
         onErr?: ((err: string) => void) | null,
     }) {
         this.scene = scene;
-        this.timeline = timeline;
-        this.configuredTimelineFrameCount =
-            scene.timeline?.frameCount ?? TIMELINE_FRAME_COUNT;
         this.onStatusChange = onStatusChange;
         this.onErr = onErr;
-        this.timelineFrameCount = this.configuredTimelineFrameCount;
-        this.timelineSecondsPerFrame =
-            scene.timeline?.secondsPerFrame ?? TIMELINE_DEFAULT_SECONDS_PER_FRAME;
         this.nParticles = scene.nParticles;
         this.gridResolutionX = scene.gridResolution[0];
         this.gridResolutionY = scene.gridResolution[1];
@@ -311,723 +149,6 @@ export class SimulationState {
         }
         if (scene.camera?.offset !== undefined) {
             this.orbit.offset = vec3.fromValues(...scene.camera.offset);
-        }
-    }
-
-    private currentTimelineCacheSettings(): SimulationTimelineCacheSettings {
-        return {
-            colliderFriction: this.colliderFriction,
-            nParticles: this.nParticles,
-            gridResolution: [
-                this.gridResolutionX,
-                this.gridResolutionY,
-                this.gridResolutionZ,
-            ],
-            simulationMethodType: this.simulationMethodType,
-            explicitMpmMaxSimulationTimestepS:
-                this.explicitMpmMaxSimulationTimestepS,
-            mlsMpmMaxSimulationTimestepS: this.mlsMpmMaxSimulationTimestepS,
-            pbmpmMaxSimulationTimestepS: this.pbmpmMaxSimulationTimestepS,
-            pbmpmSolveIterations: this.pbmpmSolveIterations,
-            timelineFrameCount: this.configuredTimelineFrameCount,
-            timelineSecondsPerFrame: this.timelineSecondsPerFrame,
-        };
-    }
-
-    private currentTimelineCacheKey() {
-        return createSimulationTimelineCacheKey({
-            scene: this.scene,
-            simulationContentFingerprint: this.simulationContentFingerprint,
-            settings: this.currentTimelineCacheSettings(),
-        });
-    }
-
-    private async updateTimelineCacheCapacity() {
-        if (this.runner === null || this.timelineCache === null) return true;
-
-        const frameByteLength = this.runner.simulationPlaybackFrameLayout.byteLength;
-        const capacity = await this.timelineCache.estimateFrameCapacity({
-            frameByteLength,
-            requestedFrameCount: this.configuredTimelineFrameCount,
-        });
-        const cappedFrameCount = Math.min(
-            this.configuredTimelineFrameCount,
-            capacity.frameCount,
-        );
-
-        if (cappedFrameCount <= 0) {
-            this.timelineFrameCount = this.configuredTimelineFrameCount;
-            this.timelineStorageLabel = `${this.timelineCache.storageLabel} (capacity estimate low)`;
-            this.timelineStatus = `browser storage estimate is below one ${formatCacheBytes(frameByteLength)} cache frame; caching until a write fails`;
-
-            return true;
-        }
-
-        this.timelineFrameCount = this.configuredTimelineFrameCount;
-        this.timelineStorageLabel = cappedFrameCount < this.configuredTimelineFrameCount
-            ? `${this.timelineCache.storageLabel} (storage estimate ${cappedFrameCount}/${this.configuredTimelineFrameCount} frames)`
-            : this.timelineCache.storageLabel;
-
-        if (cappedFrameCount < this.configuredTimelineFrameCount) {
-            this.timelineStatus = `browser storage estimate allows ${cappedFrameCount}/${this.configuredTimelineFrameCount} frames; caching until a write fails`;
-        }
-
-        return true;
-    }
-
-    private async resetTimelineCache() {
-        const cacheKey = this.currentTimelineCacheKey();
-        this.timelineFrameCount = this.configuredTimelineFrameCount;
-        this.timelineSolverFrame = 0;
-
-        if (this.timelineCache === null || this.timelineCacheKey !== cacheKey) {
-            this.clearTimelineMemoryFrames();
-            this.timelineCache = await createSimulationFrameFileCache({
-                cacheKey,
-                rootDirectory: this.timelineCacheRootDirectory,
-            });
-            this.timelineCacheKey = cacheKey;
-            this.timelineStorageLabel = this.timelineCache.storageLabel;
-        }
-
-        const frameByteLength = this.runner?.simulationPlaybackFrameLayout.byteLength ?? null;
-        const existingNextUncachedFrame = frameByteLength === null
-            ? null
-            : await this.timelineCache.findNextUncachedFrame?.({
-                frameByteLength,
-                requestedFrameCount: this.configuredTimelineFrameCount,
-            });
-        this.timelineNextUncachedFrame = existingNextUncachedFrame ?? 0;
-
-        if (this.timelineNextUncachedFrame <= 0) {
-            this.clearTimelineMemoryFrames();
-            await this.timelineCache.clear();
-            this.timelineNextUncachedFrame = 0;
-        }
-
-        return await this.updateTimelineCacheCapacity();
-    }
-
-    private clearTimelineMemoryFrames() {
-        this.timelineMemoryFrameReadEpoch++;
-        this.timelineMemoryFrames.clear();
-        this.timelinePendingFrameReads.clear();
-    }
-
-    private timelineMemoryFrameLimit() {
-        const frameByteLength = this.runner?.simulationPlaybackFrameLayout?.byteLength ?? 0;
-        if (!Number.isFinite(frameByteLength) || frameByteLength <= 0) {
-            return TIMELINE_MEMORY_CACHE_MIN_FRAME_LIMIT;
-        }
-
-        return Math.max(
-            TIMELINE_MEMORY_CACHE_MIN_FRAME_LIMIT,
-            Math.min(
-                TIMELINE_MEMORY_CACHE_MAX_FRAME_LIMIT,
-                Math.floor(TIMELINE_MEMORY_CACHE_BYTE_LIMIT / frameByteLength),
-            ),
-        );
-    }
-
-    private timelinePlaybackPrefetchFrameCount() {
-        return Math.max(
-            TIMELINE_PLAYBACK_READY_FRAME_COUNT,
-            this.timelineMemoryFrameLimit() - 1,
-        );
-    }
-
-    private rememberTimelineMemoryFrame(frameIndex: number, frame: ArrayBuffer) {
-        this.timelineMemoryFrames.delete(frameIndex);
-        this.timelineMemoryFrames.set(frameIndex, frame);
-
-        while (this.timelineMemoryFrames.size > this.timelineMemoryFrameLimit()) {
-            const oldestFrameIndex = this.timelineMemoryFrames.keys().next().value as number | undefined;
-            if (oldestFrameIndex === undefined) return;
-
-            this.timelineMemoryFrames.delete(oldestFrameIndex);
-        }
-    }
-
-    private async readTimelineFrameFromCache(frameIndex: number) {
-        if (this.timelineCache === null) return null;
-
-        const cachedFrame = this.timelineMemoryFrames.get(frameIndex);
-        if (cachedFrame !== undefined) {
-            this.timelineMemoryFrames.delete(frameIndex);
-            this.timelineMemoryFrames.set(frameIndex, cachedFrame);
-
-            return cachedFrame;
-        }
-
-        const pendingFrame = this.timelinePendingFrameReads.get(frameIndex);
-        if (pendingFrame !== undefined) {
-            return await pendingFrame;
-        }
-
-        const readEpoch = this.timelineMemoryFrameReadEpoch;
-        const framePromise = this.timelineCache.readFrame(frameIndex)
-            .then(frame => {
-                if (frame !== null && readEpoch === this.timelineMemoryFrameReadEpoch) {
-                    this.rememberTimelineMemoryFrame(frameIndex, frame);
-                }
-
-                return frame;
-            })
-            .finally(() => {
-                if (this.timelinePendingFrameReads.get(frameIndex) === framePromise) {
-                    this.timelinePendingFrameReads.delete(frameIndex);
-                }
-            });
-        this.timelinePendingFrameReads.set(frameIndex, framePromise);
-
-        return await framePromise;
-    }
-
-    private prefetchTimelineFrames(frameIndex: number) {
-        const prefetches: Array<Promise<ArrayBuffer | null>> = [];
-        if (this.timelineCache === null) return prefetches;
-
-        const maxFrameIndex = Math.min(
-            this.timelineFrameCount - 1,
-            this.timelineNextUncachedFrame - 1,
-        );
-        const lastPrefetchFrameIndex = Math.min(
-            maxFrameIndex,
-            frameIndex + this.timelinePlaybackPrefetchFrameCount(),
-        );
-
-        for (
-            let nextFrameIndex = frameIndex + 1;
-            nextFrameIndex <= lastPrefetchFrameIndex;
-            nextFrameIndex++
-        ) {
-            if (this.timelineMemoryFrames.has(nextFrameIndex)) continue;
-            if (this.timelinePendingFrameReads.has(nextFrameIndex)) continue;
-
-            const prefetch = this.readTimelineFrameFromCache(nextFrameIndex)
-                .catch(error => {
-                    console.error(error);
-
-                    return null;
-                });
-            prefetches.push(prefetch);
-        }
-
-        return prefetches;
-    }
-
-    private async primeTimelinePlaybackBuffer(runToken: number) {
-        const prefetches = this.prefetchTimelineFrames(this.timelineFrame);
-        if (prefetches.length === 0) return true;
-
-        const readyFrameCount = Math.min(
-            TIMELINE_PLAYBACK_READY_FRAME_COUNT,
-            prefetches.length,
-        );
-        await Promise.all(prefetches.slice(0, readyFrameCount));
-
-        return runToken === this.timelineRunToken && this.timelineIsPlaying;
-    }
-
-    private async cacheCurrentTimelineFrame(frameIndex: number) {
-        if (this.runner === null || this.timelineCache === null) return;
-
-        const frame = await this.runner.readSimulationPlaybackFrame();
-        await this.timelineCache.writeFrame(frameIndex, frame);
-        this.rememberTimelineMemoryFrame(frameIndex, frame);
-        this.timelineNextUncachedFrame = Math.max(
-            this.timelineNextUncachedFrame,
-            frameIndex + 1,
-        );
-    }
-
-    private async restoreTimelineFrameFromCache(
-        frameIndex: number,
-        {
-            render = true,
-            measureRenderPerformance = false,
-            prefetch = true,
-        }: {
-            render?: boolean,
-            measureRenderPerformance?: boolean,
-            prefetch?: boolean,
-        } = {},
-    ) {
-        if (this.runner === null || this.timelineCache === null) return false;
-
-        const frame = await this.readTimelineFrameFromCache(frameIndex);
-        if (frame === null) {
-            return false;
-        }
-
-        const targetTimeS = timelineFrameSimulationTimeS(
-            frameIndex,
-            this.timelineSecondsPerFrame,
-        );
-        if (this.runner.hasKinematicCollider) {
-            this.runner.updateKinematicColliderRenderPoseAtTimeS(targetTimeS);
-        }
-
-        const renderOptions = {
-            ...this.frameTimingCallbacks,
-            measureGpuTimestamps: measureRenderPerformance,
-        };
-        const renderSimulationPlaybackFrame = (this.runner as {
-            renderSimulationPlaybackFrame?: (
-                frame: ArrayBuffer,
-                options?: typeof renderOptions,
-            ) => void,
-        }).renderSimulationPlaybackFrame;
-        if (render && renderSimulationPlaybackFrame !== undefined) {
-            renderSimulationPlaybackFrame.call(
-                this.runner,
-                frame,
-                renderOptions,
-            );
-        } else {
-            this.runner.restoreSimulationPlaybackFrame(frame);
-        }
-        this.timelineSolverFrame = null;
-        this.timelineSimulatedTimeS = targetTimeS;
-        if (render && renderSimulationPlaybackFrame === undefined) {
-            this.runner.renderStillFrame(renderOptions);
-        }
-
-        this.timelineFrame = frameIndex;
-        if (prefetch) {
-            this.prefetchTimelineFrames(frameIndex);
-        }
-
-        return true;
-    }
-
-    private async rebuildTimelineSolverThroughFrame(
-        targetFrame: number,
-        runToken: number,
-    ) {
-        if (this.runner === null) return false;
-        if (this.timelineSolverFrame === targetFrame) return true;
-
-        this.timelineStatus = `rebuilding solver state at frame ${targetFrame}...`;
-        this.runner.scatterParticles();
-        if (this.runner.hasKinematicCollider) {
-            this.runner.updateKinematicColliderRenderPoseAtTimeS(0);
-        }
-        this.timelineSolverFrame = 0;
-        this.timelineSimulatedTimeS = 0;
-        await waitForTimelineWorkYield();
-        if (runToken !== this.timelineRunToken) return false;
-
-        for (let frameIndex = 1; frameIndex <= targetFrame; frameIndex++) {
-            const nSubsteps = calculateTimelineBakeSubsteps({
-                currentSimulationTimeS: this.timelineSimulatedTimeS,
-                targetFrame: frameIndex,
-                simulationTimestepS: this.runner.selectedSimulationTimestepS,
-                secondsPerFrame: this.timelineSecondsPerFrame,
-            });
-
-            this.timelineStatus = `rebuilding solver frame ${frameIndex} (${nSubsteps} substeps)...`;
-            const result = await this.runner.advanceFixedSimulationSubsteps({
-                nSubsteps,
-                kinematicColliderStartTimeS: this.timelineSimulatedTimeS,
-                ...this.frameTimingCallbacks,
-            });
-            this.timelineSimulatedTimeS += result.simulatedTimeS;
-            this.timelineSolverFrame = frameIndex;
-            if (runToken !== this.timelineRunToken) return false;
-        }
-
-        return true;
-    }
-
-    private async initializeTimelineCache(restartEpoch: number) {
-        if (this.runner === null) return;
-
-        const runToken = ++this.timelineRunToken;
-        this.timelineIsPlaying = false;
-        this.timelineIsBusy = true;
-        this.timelineFrame = 0;
-        this.timelineSimulatedTimeS = 0;
-        this.timelineStatus = "opening file cache...";
-
-        try {
-            const cacheHasRoom = await this.resetTimelineCache();
-            if (this.runner.hasKinematicCollider) {
-                this.runner.updateKinematicColliderRenderPoseAtTimeS(0);
-            }
-            if (restartEpoch !== this.restartEpoch || runToken !== this.timelineRunToken) return;
-            if (!cacheHasRoom) {
-                this.runner.renderStillFrame(this.frameTimingCallbacks);
-                this.onStatusChange?.("timeline cache unavailable");
-
-                return;
-            }
-
-            if (this.timelineNextUncachedFrame > 0) {
-                this.timelineStatus = `loading ${formatCachedTimelineFrameCount(this.timelineNextUncachedFrame)} from ${this.timelineStorageLabel}...`;
-                await waitForTimelineWorkYield();
-                if (restartEpoch !== this.restartEpoch || runToken !== this.timelineRunToken) return;
-
-                const restored = await this.restoreTimelineFrameFromCache(0);
-                if (!restored) {
-                    throw new Error("cached frame 0 disappeared while loading cache");
-                }
-                if (restartEpoch !== this.restartEpoch || runToken !== this.timelineRunToken) return;
-
-                this.timelineStatus = `loaded ${formatCachedTimelineFrameCount(this.timelineNextUncachedFrame)} from ${this.timelineStorageLabel}`;
-                this.onStatusChange?.("timeline ready");
-                return;
-            }
-
-            this.timelineStatus = "caching frame 0...";
-            await waitForTimelineWorkYield();
-            if (restartEpoch !== this.restartEpoch || runToken !== this.timelineRunToken) return;
-
-            this.runner.renderStillFrame(this.frameTimingCallbacks);
-            await this.cacheCurrentTimelineFrame(0);
-            if (restartEpoch !== this.restartEpoch || runToken !== this.timelineRunToken) return;
-
-            this.timelineFrame = 0;
-            this.timelineSolverFrame = 0;
-            this.timelineStatus = `cached frame 0 to ${this.timelineStorageLabel}`;
-            this.onStatusChange?.("timeline ready");
-        } catch (error) {
-            if (isQuotaExceededError(error)) {
-                await this.handleTimelineQuotaExceeded();
-                return;
-            }
-
-            throw error;
-        } finally {
-            this.releaseTimelineBusy(runToken);
-        }
-    }
-
-    private async bakeTimelineThroughFrame(
-        targetFrame: number,
-        runToken: number,
-    ) {
-        if (this.runner === null || this.timelineCache === null) return;
-
-        if (this.timelineNextUncachedFrame > 0) {
-            const solverReady = await this.rebuildTimelineSolverThroughFrame(
-                this.timelineNextUncachedFrame - 1,
-                runToken,
-            );
-            if (!solverReady) return;
-        }
-
-        for (
-            let frameIndex = this.timelineNextUncachedFrame;
-            frameIndex <= targetFrame;
-            frameIndex++
-        ) {
-            if (runToken !== this.timelineRunToken) return;
-
-            const nSubsteps = calculateTimelineBakeSubsteps({
-                currentSimulationTimeS: this.timelineSimulatedTimeS,
-                targetFrame: frameIndex,
-                simulationTimestepS: this.runner.selectedSimulationTimestepS,
-                secondsPerFrame: this.timelineSecondsPerFrame,
-            });
-
-            this.timelineStatus = `simulating frame ${frameIndex} (${nSubsteps} substeps)...`;
-            const result = await this.runner.advanceFixedSimulationSubsteps({
-                nSubsteps,
-                kinematicColliderStartTimeS: this.timelineSimulatedTimeS,
-                ...this.frameTimingCallbacks,
-            });
-            this.timelineSimulatedTimeS += result.simulatedTimeS;
-            this.timelineSolverFrame = frameIndex;
-            if (runToken !== this.timelineRunToken) return;
-
-            this.timelineStatus = `writing frame ${frameIndex}...`;
-            await this.cacheCurrentTimelineFrame(frameIndex);
-            if (runToken !== this.timelineRunToken) return;
-
-            this.timelineFrame = frameIndex;
-            this.timelineStatus = `cached frame ${frameIndex} to ${this.timelineStorageLabel}`;
-            if (frameIndex < targetFrame) {
-                await waitForTimelineWorkYield();
-            }
-        }
-    }
-
-    private async seekTimelineFrame(
-        frameIndex: number,
-        {
-            keepPlaying = false,
-            measureRenderPerformance = false,
-            runToken = ++this.timelineRunToken,
-        }: {
-            keepPlaying?: boolean,
-            measureRenderPerformance?: boolean,
-            runToken?: number,
-        } = {},
-    ) {
-        if (!this.timeline || this.runner === null || this.timelineCache === null) return;
-
-        const targetFrame = this.clampTimelineFrame(frameIndex);
-
-        if (!keepPlaying) {
-            this.timelineIsPlaying = false;
-        }
-
-        this.timelineIsBusy = true;
-        try {
-            if (targetFrame < this.timelineNextUncachedFrame) {
-                this.timelineStatus = `restoring frame ${targetFrame}...`;
-                const restored = await this.restoreTimelineFrameFromCache(
-                    targetFrame,
-                    {
-                        measureRenderPerformance,
-                    },
-                );
-                if (!restored) {
-                    throw new Error(`missing cached frame ${targetFrame}`);
-                }
-                this.timelineStatus = `restored frame ${targetFrame}`;
-                return;
-            }
-
-            await this.bakeTimelineThroughFrame(targetFrame, runToken);
-        } catch (error) {
-            if (isQuotaExceededError(error)) {
-                await this.handleTimelineQuotaExceeded();
-                return;
-            }
-
-            console.error(error);
-            const text = errorToString(error);
-            this.timelineStatus = `error: ${text}`;
-            this.timelineIsPlaying = false;
-            this.onErr?.(text);
-        } finally {
-            this.releaseTimelineBusy(runToken);
-        }
-    }
-
-    private releaseTimelineBusy(runToken: number) {
-        if (runToken !== this.timelineRunToken) return;
-
-        this.timelineIsBusy = false;
-        if (this.runPendingTimelineChange()) return;
-
-        if (this.stillFrameRenderRequested) {
-            this.scheduleStillFrameRenderFlush();
-        }
-    }
-
-    private clampTimelineFrame(frameIndex: number) {
-        return Math.max(
-            0,
-            Math.min(this.timelineFrameCount - 1, Math.round(frameIndex)),
-        );
-    }
-
-    private queueTimelineFrame(frameIndex: number) {
-        this.pendingTimelineFrame = this.clampTimelineFrame(frameIndex);
-        this.pauseTimeline();
-    }
-
-    private queueTimelineSecondsPerFrame(secondsPerFrame: number) {
-        this.pendingTimelineSecondsPerFrame = secondsPerFrame;
-        this.pauseTimeline();
-    }
-
-    private runPendingTimelineChange() {
-        const pendingSecondsPerFrame = this.pendingTimelineSecondsPerFrame;
-        if (pendingSecondsPerFrame !== null) {
-            this.pendingTimelineSecondsPerFrame = null;
-            void this.setTimelineSecondsPerFrame(pendingSecondsPerFrame);
-
-            return true;
-        }
-
-        const pendingFrame = this.pendingTimelineFrame;
-        if (pendingFrame !== null) {
-            this.pendingTimelineFrame = null;
-            void this.seekTimelineFrame(pendingFrame);
-
-            return true;
-        }
-
-        return false;
-    }
-
-    private async handleTimelineQuotaExceeded() {
-        this.timelineIsPlaying = false;
-
-        const cachedFrameCount = this.timelineNextUncachedFrame;
-        this.timelineFrameCount = Math.max(1, cachedFrameCount);
-        this.timelineStorageLabel = this.timelineCache === null
-            ? "file cache full"
-            : `${this.timelineCache.storageLabel} (${cachedFrameCount}/${this.configuredTimelineFrameCount} frames cached)`;
-
-        if (this.timelineNextUncachedFrame > 0) {
-            const lastCachedFrame = this.timelineNextUncachedFrame - 1;
-            await this.restoreTimelineFrameFromCache(lastCachedFrame);
-            this.timelineStatus = `cache quota reached at frame ${cachedFrameCount}; using cached frames 0-${lastCachedFrame}`;
-            this.onStatusChange?.("timeline cache full");
-            return;
-        }
-
-        const frameByteLength = this.runner?.simulationPlaybackFrameLayout.byteLength ?? null;
-        this.timelineStatus = `browser storage quota exceeded before frame 0 (${formatCacheBytes(frameByteLength)} / frame)`;
-        this.onStatusChange?.("timeline cache unavailable");
-    }
-
-    async setTimelineFrame(frameIndex: number) {
-        if (this.timelineIsBusy) {
-            this.queueTimelineFrame(frameIndex);
-
-            return;
-        }
-
-        await this.seekTimelineFrame(frameIndex);
-    }
-
-    async stepTimelineFrame(delta: number) {
-        await this.setTimelineFrame(this.timelineFrame + delta);
-    }
-
-    pauseTimeline() {
-        this.timelineIsPlaying = false;
-    }
-
-    private cancelTimelineWork() {
-        this.timelineRunToken++;
-        this.timelineIsPlaying = false;
-        this.pendingTimelineFrame = null;
-        this.pendingTimelineSecondsPerFrame = null;
-    }
-
-    async setTimelineSecondsPerFrame(secondsPerFrame: number) {
-        const clampedSecondsPerFrame = clampTimelineSecondsPerFrame(secondsPerFrame);
-        if (Math.abs(clampedSecondsPerFrame - this.timelineSecondsPerFrame) < 1e-9) return;
-        if (this.timelineIsBusy) {
-            if (this.timelineIsPlaying) {
-                this.queueTimelineSecondsPerFrame(clampedSecondsPerFrame);
-            }
-
-            return;
-        }
-
-        this.pauseTimeline();
-        this.timelineSecondsPerFrame = clampedSecondsPerFrame;
-        this.timelineStatus = "timeline step changed; rebuilding cache...";
-
-        if (!this.timeline || this.runner === null) return;
-
-        await this.initializeTimelineCache(this.restartEpoch);
-    }
-
-    async setTimelineStepDivisor(stepDivisor: number) {
-        await this.setTimelineSecondsPerFrame(
-            timelineSecondsPerFrameFromStepDivisor(stepDivisor),
-        );
-    }
-
-    async selectTimelineCacheDirectory() {
-        if (!this.timeline || this.timelineIsBusy) return;
-
-        if (!this.timelineCanSelectCacheDirectory) {
-            this.timelineStatus = "folder cache requires browser directory picker support; using browser file cache";
-            return;
-        }
-
-        this.pauseTimeline();
-        this.timelineStatus = "selecting cache folder...";
-
-        try {
-            const directory = await selectSimulationFrameCacheDirectory();
-            this.timelineCacheRootDirectory = directory;
-            this.timelineCache = null;
-            this.timelineCacheKey = "";
-            this.timelineStorageLabel = `folder cache pending: ${directory.name || "selected folder"}`;
-            this.timelineStatus = "cache folder selected; loading cache...";
-
-            if (this.runner === null) return;
-
-            await this.initializeTimelineCache(this.restartEpoch);
-        } catch (error) {
-            if (error instanceof DOMException && error.name === "AbortError") {
-                this.timelineStatus = "cache folder selection canceled";
-                return;
-            }
-
-            const text = errorToString(error);
-            this.timelineStatus = `cache folder error: ${text}`;
-            this.onErr?.(text);
-        }
-    }
-
-    async playTimeline() {
-        if (this.timelineIsBusy || this.timelineIsPlaying) return;
-
-        const runToken = ++this.timelineRunToken;
-        let playbackFrameCounter = 0;
-        this.timelineIsPlaying = true;
-
-        try {
-            const bufferReady = await this.primeTimelinePlaybackBuffer(runToken);
-            if (!bufferReady) return;
-            if (this.timelineFrameCount <= 1) return;
-
-            let nextFrameTimeMs = performance.now() + TIMELINE_FRAME_INTERVAL_MS;
-            while (
-                runToken === this.timelineRunToken
-                && this.timelineIsPlaying
-            ) {
-                if (this.timelineFrame >= this.timelineFrameCount - 1) {
-                    await this.seekTimelineFrame(
-                        0,
-                        {
-                            keepPlaying: true,
-                            runToken,
-                        },
-                    );
-                    if (runToken !== this.timelineRunToken || !this.timelineIsPlaying) {
-                        return;
-                    }
-
-                    nextFrameTimeMs = performance.now() + TIMELINE_FRAME_INTERVAL_MS;
-                    continue;
-                }
-
-                const nowMs = performance.now();
-                if (nowMs < nextFrameTimeMs) {
-                    const delayMs = nextFrameTimeMs - nowMs;
-                    await sleep(delayMs);
-                    continue;
-                }
-
-                const measureRenderPerformance =
-                    (playbackFrameCounter + 1) % TIMELINE_PLAYBACK_PERF_SAMPLE_INTERVAL_FRAMES === 0;
-                await this.seekTimelineFrame(
-                    this.timelineFrame + 1,
-                    {
-                        keepPlaying: true,
-                        measureRenderPerformance,
-                        runToken,
-                    },
-                );
-                playbackFrameCounter++;
-
-                if (runToken !== this.timelineRunToken || !this.timelineIsPlaying) {
-                    return;
-                }
-
-                const scheduledNextFrameTimeMs = nextFrameTimeMs + TIMELINE_FRAME_INTERVAL_MS;
-                const frameCompleteMs = performance.now();
-                nextFrameTimeMs = scheduledNextFrameTimeMs > frameCompleteMs
-                    ? scheduledNextFrameTimeMs
-                    : frameCompleteMs + TIMELINE_FRAME_INTERVAL_MS;
-            }
-        } finally {
-            if (runToken === this.timelineRunToken) {
-                this.timelineIsPlaying = false;
-            }
         }
     }
 
@@ -1076,80 +197,18 @@ export class SimulationState {
 
         this.width = nextWidth;
         this.height = nextHeight;
-        this.requestStillFrameRender();
-    }
-
-    requestStillFrameRender() {
-        if (!this.timeline) return;
-
-        this.stillFrameRenderRequested = true;
-        this.scheduleStillFrameRenderFlush();
-    }
-
-    private scheduleStillFrameRenderFlush() {
-        if (this.stillFrameRenderInFlight) return;
-        if (this.stillFrameRenderHandle !== null) return;
-
-        if (typeof requestAnimationFrame === "undefined") {
-            this.flushStillFrameRenderRequest();
-            return;
-        }
-
-        this.stillFrameRenderHandle = requestAnimationFrame(() => {
-            this.stillFrameRenderHandle = null;
-            this.flushStillFrameRenderRequest();
-        });
-    }
-
-    private flushStillFrameRenderRequest() {
-        if (!this.stillFrameRenderRequested) return;
-        if (this.stillFrameRenderInFlight) return;
-
-        if (
-            this.runner === null
-            || !this.timeline
-            || this.timelineIsPlaying
-        ) {
-            this.stillFrameRenderRequested = false;
-            return;
-        }
-
-        if (this.timelineIsBusy) {
-            return;
-        }
-
-        this.stillFrameRenderRequested = false;
-        this.stillFrameRenderInFlight = true;
-        void this.submitStillFrameRender();
-    }
-
-    private async submitStillFrameRender() {
-        try {
-            await this.runner?.renderStillFrame(this.frameTimingCallbacks);
-        } catch (error) {
-            console.error(error);
-            this.onErr?.(errorToString(error));
-        } finally {
-            this.stillFrameRenderInFlight = false;
-            if (this.stillFrameRenderRequested) {
-                this.scheduleStillFrameRenderFlush();
-            }
-        }
     }
 
     turnCamera(movement: { x: number, y: number }) {
         this.orbit.turn(movement);
-        this.requestStillFrameRender();
     }
 
     panCamera(movement: { x: number, y: number }) {
         this.orbit.pan(movement);
-        this.requestStillFrameRender();
     }
 
     zoomCamera(deltaY: number) {
         this.orbit.radius *= 2 ** (deltaY * 0.001);
-        this.requestStillFrameRender();
     }
 
 
@@ -1162,8 +221,6 @@ export class SimulationState {
         this.stopSimulation = null;
 
         this.onStatusChange?.("initializing particles...");
-        await waitForTimelineWorkYield();
-        if (restartEpoch !== this.restartEpoch) return;
         
         try {
             this.runner.scatterParticles();
@@ -1171,11 +228,6 @@ export class SimulationState {
             await this.device.queue.onSubmittedWorkDone(); // need this to set simulation start time accurately
 
             if (restartEpoch !== this.restartEpoch) return;
-
-            if (this.timeline) {
-                await this.initializeTimelineCache(restartEpoch);
-                return;
-            }
         } catch (error) {
             console.error(error);
             this.onErr?.(errorToString(error));
@@ -1317,19 +369,16 @@ export class SimulationState {
     }
 
     static loadOntoCanvas({
-        getScene = () => defaultSimulationScene,
-        timeline = false,
+        scene = defaultSimulationScene,
         canvasPromise,
         onStatusChange,
         onErr,
     }: {
-        getScene?: () => SimulationSceneConfig,
-        timeline?: boolean,
+        scene?: SimulationSceneConfig,
         canvasPromise: Promise<HTMLCanvasElement>,
         onStatusChange?: (status: string) => void,
         onErr?: (err: string) => void,
     }) {
-        const scene = getScene();
         let destroyed = false;
         const updateStatus = (status: string) => {
             if (!destroyed) {
@@ -1344,7 +393,6 @@ export class SimulationState {
 
         const state = new SimulationState({
             scene,
-            timeline: timeline,
             onStatusChange: updateStatus,
             onErr: updateErr,
         });
@@ -1371,37 +419,18 @@ export class SimulationState {
                     state.device = device;
 
                     updateStatus("loading particles...");
-                    const { spawnSource } = await loadSpawnSource(scene, state.nParticles);
-                    const spawnContentFingerprint =
-                        fingerprintLoadedSpawnSource(spawnSource);
+                    const { spawnSource } = await loadSpawnSource(scene);
                     if (destroyed) return;
 
                     updateStatus("loading collider...");
                     const collider = await loadCollider(scene);
                     if (destroyed) return;
 
-                    const colliderContentFingerprint =
-                        scene.colliderSource?.type === "zubeiaWalk"
-                            ? await loadZubeiaColliderContentFingerprint({
-                                modelUrl: scene.colliderSource.modelUrl,
-                                rigidPawSdfUrl:
-                                    scene.colliderSource.rigidPawSdfUrl,
-                            })
-                            : fingerprintString(JSON.stringify(
-                                scene.colliderSource,
-                            ));
-                    state.simulationContentFingerprint =
-                        combineCacheFingerprints([
-                            spawnContentFingerprint,
-                            colliderContentFingerprint,
-                        ]);
-
                     updateStatus("loading environment...");
                     const environmentImageBitmap = await loadEnvironmentMap();
                     if (destroyed) return;
 
                     updateStatus("initializing renderer...");
-                    await waitForTimelineWorkYield();
                     if (destroyed) return;
 
                     state.width = innerWidth;
@@ -1445,11 +474,6 @@ export class SimulationState {
 
         onDestroy(() => {
             destroyed = true;
-            state.cancelTimelineWork();
-            if (state.stillFrameRenderHandle !== null) {
-                cancelAnimationFrame(state.stillFrameRenderHandle);
-                state.stillFrameRenderHandle = null;
-            }
             state.restartEpoch++;
             state.stopSimulation?.();
             state.stopSimulation = null;
